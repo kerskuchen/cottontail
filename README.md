@@ -1,5 +1,4 @@
-# Cottontail Framework #
-
+# [Cottontail Framework](https://github.com/kerskuchen/cottontail)
 
 ### Installation
 
