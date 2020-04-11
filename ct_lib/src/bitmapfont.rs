@@ -8,6 +8,7 @@ use super::math::*;
 const FIRST_VISIBLE_ASCII_CODE_POINT: u8 = 32;
 const LAST_ASCII_CODE_POINT: u8 = 126;
 
+#[derive(Clone)]
 pub struct BitmapFont {
     pub font_height: i32,
     pub vertical_advance: i32,
@@ -210,6 +211,7 @@ impl BitmapFont {
     }
 }
 
+#[derive(Clone)]
 pub struct BitmapFontGlyph {
     pub code_point: char,
     pub horizontal_advance: i32,
