@@ -1,0 +1,503 @@
+mod aseprite;
+mod atlas;
+mod bitmapfont;
+
+use ct_lib::color::*;
+use ct_lib::draw::*;
+use ct_lib::game::*;
+use ct_lib::math::*;
+use ct_lib::system;
+
+use indexmap::IndexMap;
+use rayon::prelude::*;
+use serde_derive::Serialize;
+
+use std::collections::HashMap;
+
+type Spritename = String;
+type Fontname = String;
+type Animationname = String;
+
+#[derive(Clone, Serialize)]
+pub struct AssetSprite {
+    pub name: Spritename,
+    pub name_hash: u64,
+    pub atlas_texture_index: TextureIndex,
+    pub has_translucency: bool,
+
+    pub pivot_offset: Vec2i,
+    pub attachment_points: [Vec2i; SPRITE_ATTACHMENT_POINTS_MAX_COUNT],
+
+    pub untrimmed_dimensions: Vec2i,
+
+    pub trimmed_rect: Recti,
+    pub trimmed_uvs: Recti,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize)]
+pub struct AssetAnimation {
+    pub name: Animationname,
+    pub name_hash: u64,
+    pub framecount: u32,
+    pub sprite_names: Vec<Spritename>,
+    pub sprite_indices: Vec<u32>,
+    pub frame_durations_ms: Vec<u32>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize)]
+pub struct AssetGlyph {
+    pub codepoint: Codepoint,
+    pub sprite_name: Spritename,
+    pub sprite_index: SpriteIndex,
+    pub horizontal_advance: i32,
+}
+
+#[derive(Default, Debug, Clone, Serialize)]
+pub struct AssetFont {
+    pub name: Fontname,
+    pub name_hash: u64,
+    pub baseline: i32,
+    pub vertical_advance: i32,
+    pub glyphcount: u32,
+    pub glyphs: IndexMap<Codepoint, AssetGlyph>,
+    pub sprite_names: Vec<Spritename>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize)]
+pub struct AssetAtlas {
+    pub texture_size: u32,
+    pub texture_count: u32,
+    pub texture_imagepaths: Vec<String>,
+    pub sprite_positions: IndexMap<Spritename, SpritePosition>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize)]
+pub struct SpritePosition {
+    pub atlas_texture_index: TextureIndex,
+    pub atlas_texture_pixel_offset: Vec2i,
+}
+
+fn bake_graphics_resources() {
+    // bitmapfont::test_font_sizes( "assets/fonts/Proggy/ProggyTiny.ttf", "assets_temp", 5, 24,);
+
+    let color_glyph = PixelRGBA::new(255, 255, 255, 255);
+    let color_border = PixelRGBA::new(0, 0, 0, 255);
+
+    let font_properties = vec![
+        bitmapfont::BitmapFontProperties {
+            ttf_path: "assets/fonts/Proggy/ProggyTiny.ttf".to_owned(),
+            output_dir: "assets_temp".to_owned(),
+            fontsize_in_pixels: 16,
+            texture_size: 128,
+            bordered: false,
+            color_glyph,
+            color_border,
+        },
+        bitmapfont::BitmapFontProperties {
+            ttf_path: "assets/fonts/Proggy/ProggyTiny.ttf".to_owned(),
+            output_dir: "assets_temp".to_owned(),
+            fontsize_in_pixels: 16,
+            texture_size: 128,
+            bordered: true,
+            color_glyph,
+            color_border,
+        },
+        // bitmapfont::BitmapFontProperties {
+        //     ttf_path: "assets/fonts/EnterCommand/EnterCommand.ttf".to_owned(),
+        //     output_dir: "assets_temp".to_owned(),
+        //     fontsize_in_pixels: 16,
+        //     texture_size: 160,
+        //     bordered: false,
+        //     color_glyph,
+        //     color_border,
+        // },
+        // bitmapfont::BitmapFontProperties {
+        //     ttf_path: "assets/fonts/EnterCommand/EnterCommand.ttf".to_owned(),
+        //     output_dir: "assets_temp".to_owned(),
+        //     fontsize_in_pixels: 16,
+        //     texture_size: 200,
+        //     bordered: true,
+        //     color_glyph,
+        //     color_border,
+        // },
+    ];
+
+    let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
+    let mut result_fonts: IndexMap<Fontname, AssetFont> = IndexMap::new();
+    let mut result_animations: IndexMap<Animationname, AssetAnimation> = IndexMap::new();
+
+    // Collect fonts and corresponding sprites
+    let sprites_and_fonts: Vec<(IndexMap<Spritename, AssetSprite>, AssetFont)> = font_properties
+        .par_iter()
+        .map(|property| {
+            bitmapfont::bitmapfont_create_from_ttf(
+                &property.ttf_path,
+                &property.output_dir,
+                property.fontsize_in_pixels,
+                property.texture_size,
+                property.bordered,
+                property.color_glyph,
+                property.color_border,
+            )
+        })
+        .collect();
+    for (sprites, font) in sprites_and_fonts {
+        result_sprites.extend(sprites);
+        result_fonts.insert(font.name.clone(), font);
+    }
+
+    // Convert png and aseprite files to png sheets and move to them to `assets_temp`
+    let mut imagepaths = vec![];
+    imagepaths.append(&mut system::collect_files_by_extension_recursive(
+        "assets", ".ase",
+    ));
+    imagepaths.append(&mut system::collect_files_by_extension_recursive(
+        "assets", ".png",
+    ));
+    let sprites_and_animations: Vec<(
+        IndexMap<Spritename, AssetSprite>,
+        IndexMap<Animationname, AssetAnimation>,
+    )> = imagepaths
+        .par_iter()
+        .map(|imagepath| aseprite::create_sheet_animations(imagepath, "assets", "assets_temp"))
+        .collect();
+    for (sprites, animations) in sprites_and_animations {
+        result_sprites.extend(sprites);
+        result_animations.extend(animations);
+    }
+
+    // Create texture atlas
+    let mut result_atlas = atlas::atlas_create_from_pngs("assets_temp", "assets_temp", 1024);
+    for atlas_texture_path in &result_atlas.texture_imagepaths {
+        std::fs::rename(
+            atlas_texture_path,
+            system::path_join(
+                "assets_baked",
+                &system::path_to_filename(&atlas_texture_path),
+            ),
+        )
+        .unwrap();
+    }
+    // We assume that our atlas textures will be located at the root of our final destination, so
+    // we drop the prefix
+    result_atlas.texture_imagepaths = result_atlas
+        .texture_imagepaths
+        .iter_mut()
+        .map(|path| path.replace(&format!("{}/", "assets_temp"), ""))
+        .collect();
+
+    // Adjust positions of our sprites according to the final packed atlas positions
+    for (sprite_name, sprite_pos) in &result_atlas.sprite_positions {
+        if result_sprites.contains_key(sprite_name) {
+            // Atlas-sprite is a regular sprite
+            let mut sprite = result_sprites.get_mut(sprite_name).unwrap();
+            sprite.atlas_texture_index = sprite_pos.atlas_texture_index;
+            sprite.trimmed_uvs = sprite
+                .trimmed_uvs
+                .translated_by(sprite_pos.atlas_texture_pixel_offset);
+        } else if result_fonts.contains_key(sprite_name) {
+            // Atlas-sprite is a glyph-sheet of some font
+            let font = &result_fonts[sprite_name];
+            for sprite_glyph_name in &font.sprite_names {
+                let mut sprite = result_sprites.get_mut(sprite_glyph_name).unwrap();
+                sprite.atlas_texture_index = sprite_pos.atlas_texture_index;
+                sprite.trimmed_uvs = sprite
+                    .trimmed_uvs
+                    .translated_by(sprite_pos.atlas_texture_pixel_offset);
+            }
+        } else {
+            // AssetSprite must be an animation-sheet of some animation(s)
+            let mut found_anim = false;
+            for (animation_name, animation) in &result_animations {
+                if animation_name.starts_with(&(sprite_name.to_owned() + ".")) {
+                    found_anim = true;
+                    for sprite_frame_name in &animation.sprite_names {
+                        let mut sprite = result_sprites.get_mut(sprite_frame_name).unwrap();
+                        sprite.atlas_texture_index = sprite_pos.atlas_texture_index;
+                        sprite.trimmed_uvs = sprite
+                            .trimmed_uvs
+                            .translated_by(sprite_pos.atlas_texture_pixel_offset);
+                    }
+                }
+            }
+
+            assert!(
+                found_anim,
+                "Packed unknown sprite name '{}' into atlas at position ({},{},{})",
+                sprite_name,
+                sprite_pos.atlas_texture_index,
+                sprite_pos.atlas_texture_pixel_offset.x,
+                sprite_pos.atlas_texture_pixel_offset.y,
+            );
+        }
+    }
+
+    // Assign sprite indices to glyphs and animation frames
+    let spritename_to_index_map: IndexMap<Spritename, u32> = result_sprites
+        .keys()
+        .enumerate()
+        .map(|(index, key)| (key.clone(), index as u32))
+        .collect();
+    for font in result_fonts.values_mut() {
+        for glyph in font.glyphs.values_mut() {
+            glyph.sprite_index = spritename_to_index_map[&glyph.sprite_name];
+        }
+    }
+    for animation in result_animations.values_mut() {
+        for (index, sprite_name) in animation.sprite_names.iter().enumerate() {
+            animation.sprite_indices[index] = spritename_to_index_map[sprite_name];
+        }
+    }
+
+    serialize_sprites(&result_sprites, result_atlas.texture_size);
+    serialize_fonts(&result_fonts);
+    serialize_animations(&result_animations);
+    serialize_atlas(&result_atlas);
+}
+
+fn bake_audio_resources() {
+    let ogg_paths = system::collect_files_by_extension_recursive("assets", ".ogg");
+    for ogg_path_source in &ogg_paths {
+        let ogg_path_dest = ogg_path_source.replace("assets", "assets_baked");
+        std::fs::create_dir_all(system::path_without_filename(&ogg_path_dest)).unwrap();
+        std::fs::copy(ogg_path_source, ogg_path_dest).unwrap();
+    }
+
+    let wav_paths = system::collect_files_by_extension_recursive("assets", ".wav");
+    for wav_path_source in &wav_paths {
+        let wav_path_dest = wav_path_source.replace("assets", "assets_baked");
+        std::fs::create_dir_all(system::path_without_filename(&wav_path_dest)).unwrap();
+        std::fs::copy(wav_path_source, wav_path_dest).unwrap();
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Asset conversion
+
+fn convert_sprite(
+    sprite: &AssetSprite,
+    sprite_index: SpriteIndex,
+    atlas_texture_size: u32,
+) -> Sprite {
+    let attachment_points = [
+        Vec2::from(sprite.attachment_points[0]),
+        Vec2::from(sprite.attachment_points[1]),
+        Vec2::from(sprite.attachment_points[2]),
+        Vec2::from(sprite.attachment_points[3]),
+    ];
+    Sprite {
+        name: sprite.name.clone(),
+        index: sprite_index,
+        atlas_texture_index: sprite.atlas_texture_index,
+
+        has_translucency: sprite.has_translucency,
+
+        pivot_offset: Vec2::from(sprite.pivot_offset),
+        attachment_points: attachment_points,
+
+        untrimmed_dimensions: Vec2::from(sprite.untrimmed_dimensions),
+        trimmed_rect: Rect::from(sprite.trimmed_rect),
+        trimmed_uvs: AAQuad::from_rect(
+            Rect::from(sprite.trimmed_uvs)
+                .scaled_from_origin(Vec2::filled(1.0 / atlas_texture_size as f32)),
+        ),
+    }
+}
+
+fn convert_glyph(glyph: &AssetGlyph) -> Glyph {
+    Glyph {
+        horizontal_advance: glyph.horizontal_advance as f32,
+        sprite_index: glyph.sprite_index,
+    }
+}
+
+fn convert_font(font: &AssetFont) -> Font {
+    let mut ascii_glyphs: Vec<Glyph> = vec![Glyph::default(); FONT_MAX_NUM_FASTPATH_CODEPOINTS];
+    let mut unicode_glyphs: HashMap<Codepoint, Glyph> = HashMap::new();
+
+    for glyph in font.glyphs.values() {
+        let codepoint = glyph.codepoint;
+        let converted_glyph = convert_glyph(glyph);
+        if codepoint < FONT_MAX_NUM_FASTPATH_CODEPOINTS as i32 {
+            ascii_glyphs[codepoint as usize] = converted_glyph;
+        } else {
+            unicode_glyphs.insert(codepoint, converted_glyph);
+        }
+    }
+
+    Font {
+        name: font.name.clone(),
+        baseline: font.baseline as f32,
+        vertical_advance: font.vertical_advance as f32,
+        ascii_glyphs,
+        unicode_glyphs,
+    }
+}
+
+fn convert_animation(anim: &AssetAnimation) -> Animation {
+    assert!(anim.sprite_indices.len() == anim.frame_durations_ms.len());
+    let mut anim_result = Animation::new_empty(&anim.name);
+    for (&frame_duration_ms, &sprite_index) in anim
+        .frame_durations_ms
+        .iter()
+        .zip(anim.sprite_indices.iter())
+    {
+        anim_result.add_frame(frame_duration_ms as f32 / 1000.0, sprite_index as f32);
+    }
+    anim_result
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Serialization
+
+fn serialize_sprites(sprite_map: &IndexMap<Spritename, AssetSprite>, atlas_texture_size: u32) {
+    let human_readable: Vec<AssetSprite> = sprite_map.values().cloned().collect();
+    std::fs::write(
+        "assets_baked/sprites.json",
+        serde_json::to_string_pretty(&human_readable).unwrap(),
+    )
+    .unwrap();
+
+    let binary: Vec<Sprite> = human_readable
+        .iter()
+        .enumerate()
+        .map(|(index, sprite)| convert_sprite(sprite, index as u32, atlas_texture_size))
+        .collect();
+    std::fs::write(
+        "assets_baked/sprites.data",
+        bincode::serialize(&binary).unwrap(),
+    )
+    .unwrap();
+}
+
+fn serialize_fonts(font_map: &IndexMap<Fontname, AssetFont>) {
+    let human_readable: Vec<AssetFont> = font_map.values().cloned().collect();
+    std::fs::write(
+        "assets_baked/fonts.json",
+        serde_json::to_string_pretty(&human_readable).unwrap(),
+    )
+    .unwrap();
+
+    let binary: HashMap<String, Font> = font_map
+        .iter()
+        .map(|(name, font)| (name.clone(), convert_font(font)))
+        .collect();
+    std::fs::write(
+        "assets_baked/fonts.data",
+        bincode::serialize(&binary).unwrap(),
+    )
+    .unwrap();
+}
+
+fn serialize_animations(animation_map: &IndexMap<Animationname, AssetAnimation>) {
+    let human_readable: Vec<AssetAnimation> = animation_map.values().cloned().collect();
+    std::fs::write(
+        "assets_baked/animations.json",
+        serde_json::to_string_pretty(&human_readable).unwrap(),
+    )
+    .unwrap();
+
+    let binary: HashMap<String, Animation> = animation_map
+        .iter()
+        .map(|(name, anim)| (name.clone(), convert_animation(anim)))
+        .collect();
+    std::fs::write(
+        "assets_baked/animations.data",
+        bincode::serialize(&binary).unwrap(),
+    )
+    .unwrap();
+}
+
+fn serialize_atlas(atlas: &AssetAtlas) {
+    // Human readable
+    std::fs::write(
+        "assets_baked/atlas.json",
+        serde_json::to_string_pretty(&atlas).unwrap(),
+    )
+    .unwrap();
+
+    let binary: Vec<String> = atlas.texture_imagepaths.clone();
+    std::fs::write(
+        "assets_baked/atlas.data",
+        bincode::serialize(&binary).unwrap(),
+    )
+    .unwrap();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Main
+
+fn create_credits_file(
+    base_credits_file: &str,
+    license_searchdirs: &[&str],
+    output_filepath: &str,
+) {
+    let mut credits_content = std::fs::read_to_string(base_credits_file).expect(&format!(
+        "Cannot read credits basefile '{}'",
+        base_credits_file
+    ));
+    credits_content +=
+        "\r\n\r\n\r\nThe following free assetes, open source software libraries and \
+         frameworks went into the making of this software:\r\n\r\n\r\n";
+
+    let mut license_files = vec![];
+    for searchdir in license_searchdirs {
+        license_files.append(&mut system::collect_files_by_extension_recursive(
+            searchdir, ".license",
+        ));
+    }
+
+    for license_file in license_files {
+        credits_content += "===============\r\n";
+        credits_content += &std::fs::read_to_string(license_file).unwrap();
+        credits_content += "\r\n\r\n\r\n";
+    }
+
+    std::fs::write(output_filepath, credits_content).unwrap();
+}
+
+fn main() {
+    let start_time = std::time::Instant::now();
+
+    if system::path_exists("assets_temp") {
+        loop {
+            if std::fs::remove_dir_all("assets_temp").is_ok() {
+                break;
+            }
+            println!("Unable to delete 'assets_temp' dir, are files from this folder still open?");
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+    }
+    std::fs::create_dir_all("assets_temp").expect("Unable to create 'assets_temp' dir");
+
+    if system::path_exists("assets_baked") {
+        loop {
+            if std::fs::remove_dir_all("assets_baked").is_ok() {
+                break;
+            }
+            println!("Unable to delete 'assets_baked' dir, are files from this folder still open?");
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+    }
+    std::fs::create_dir_all("assets_baked").expect("Unable to create 'assets_baked' dir");
+
+    create_credits_file(
+        "assets/credits.txt",
+        &["assets", "code"],
+        "assets_baked/credits.txt",
+    );
+
+    std::fs::copy(
+        "assets/etc/gamecontrollerdb.txt",
+        "assets_baked/gamecontrollerdb.txt",
+    )
+    .unwrap();
+
+    bake_graphics_resources();
+    bake_audio_resources();
+
+    println!(
+        "ASSETS SUCCESSFULLY BAKED: Elapsed time: {:.3}s",
+        start_time.elapsed().as_secs_f64()
+    );
+}

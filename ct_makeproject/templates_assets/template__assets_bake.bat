@@ -1,0 +1,1 @@
+cargo watch --watch assets --watch cottontail/ct_assetbaker --exec "run --package ct_assetbaker

@@ -1,0 +1,21 @@
+[workspace]
+members = [
+#   "cottontail/ct_launcher",
+#   "cottontail/ct_assetbaker",
+    "cottontail/ct_lib",
+    "cottontail/ct_makeproject",
+    "{{project_directory_name}}",
+]
+
+# NOTE: The following optimizes dependencies (but not workspace members) 
+# [profile.dev.overrides."*"]
+# opt-level = 3
+
+# NOTE: The following optimizes ct_launcher 
+# [profile.dev.overrides.ct_launcher]
+# opt-level = 3
+
+# NOTE: The following overrides the whole project 
+# [profile.dev]
+# opt-level = 0
+# debug = true

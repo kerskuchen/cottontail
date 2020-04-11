@@ -1,0 +1,1 @@
+cargo run --package ct_makeproject

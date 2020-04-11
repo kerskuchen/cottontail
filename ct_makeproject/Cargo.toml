@@ -1,0 +1,20 @@
+[package]
+name = "ct_makeproject"
+version = "0.1.0"
+authors = ["Jakob Schwab <j.schwab@mail.de>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+easy_process = "*"
+heck = "0"
+chrono = "0"
+serde = "1"
+serde_json = "1"
+serde_derive = "1"
+indexmap = { version = "1", features = ["serde-1"] } 
+mustache = "0"
+
+[dependencies.ct_lib]
+path = "../ct_lib"

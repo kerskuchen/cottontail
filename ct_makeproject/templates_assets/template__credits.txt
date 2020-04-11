@@ -1,0 +1,1 @@
+{{project_display_name}} - Copyright (c) {{project_copyright_year}} {{project_company_name}}

@@ -1,0 +1,8 @@
+assets_baked/
+assets_temp/
+
+target/
+shipping_windows/
+
+logging.txt
+project_details_local.json
