@@ -10,6 +10,7 @@ use super::draw::*;
 use super::math::*;
 use super::random::*;
 use super::system;
+use super::*;
 
 use serde_derive::{Deserialize, Serialize};
 
@@ -104,7 +105,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
         out_systemcommands: &mut Vec<SystemCommand>,
     ) {
         if self.draw.is_none() {
-            let draw_init_start_time = std::time::Instant::now();
+            let _drawstate_setup_timer = TimerScoped::new_scoped("Drawstate setup time");
 
             let window_config = GameStateType::get_window_config();
             let atlas = game_load_atlas("assets_baked");
@@ -126,15 +127,6 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
                 ),
             );
             self.draw = Some(draw);
-
-            // TODO: Add some timer tools to make this less verbose
-            let duration_drawstate_init = std::time::Instant::now()
-                .duration_since(draw_init_start_time)
-                .as_secs_f32();
-            log::debug!(
-                "Drawstate initialization took {:.3}ms",
-                duration_drawstate_init * 1000.0
-            );
         }
         if self.assets.is_none() {
             let animations = game_load_animations("assets_baked");
@@ -182,33 +174,21 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
             SplashscreenState::StartedFadingIn => {}
             SplashscreenState::IsFadingIn => {}
             SplashscreenState::FinishedFadingIn => {
-                let audio_init_start_time = std::time::Instant::now();
+                {
+                    let _audiostate_setup_timer = TimerScoped::new_scoped("Audiostate setup time");
 
-                let audiorecordings_mono = game_load_audiorecordings_mono("assets_baked");
-                for (recording_name, buffer) in audiorecordings_mono.into_iter() {
-                    audio.add_recording_mono(&recording_name, buffer);
+                    let audiorecordings_mono = game_load_audiorecordings_mono("assets_baked");
+                    for (recording_name, buffer) in audiorecordings_mono.into_iter() {
+                        audio.add_recording_mono(&recording_name, buffer);
+                    }
                 }
 
-                let duration_audio_init = std::time::Instant::now()
-                    .duration_since(audio_init_start_time)
-                    .as_secs_f32();
-                log::debug!(
-                    "Audio resource loading took {:.3}ms",
-                    duration_audio_init * 1000.0
-                );
+                {
+                    let _gamestate_setup_timer = TimerScoped::new_scoped("Gamestate setup time");
 
-                let game_init_start_time = std::time::Instant::now();
-
-                assert!(self.game.is_none());
-                self.game = Some(GameStateType::new(draw, audio, assets, &input));
-
-                let duration_game_init = std::time::Instant::now()
-                    .duration_since(game_init_start_time)
-                    .as_secs_f32();
-                log::debug!(
-                    "Game initialization took {:.3}ms",
-                    duration_game_init * 1000.0
-                );
+                    assert!(self.game.is_none());
+                    self.game = Some(GameStateType::new(draw, audio, assets, &input));
+                }
             }
 
             SplashscreenState::Sustain => {}

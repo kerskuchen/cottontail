@@ -9,10 +9,11 @@
 * Read display and controller info from config file
 * We need a production/develop version where we enable/disable i.e. panic messageboxes. It would be 
   useful to having a config file for this that is read on startup. Maybe this can be the same as the 
-  display / controller config file? We want to switch on/off the following things:
+  display / controller config file? We want to configure/enable/disable the following things:
   - Show panics in messageboxes
   - Debug print frametimes
   - Set log levels
+  - Splashscreen
 * How can we make GAME_WINDOW_TITLE, GAME_SAVE_FOLDER_NAME and GAME_COMPANY_NAME available to the
   platform layer in a much more convenient way? Maybe we can use include_bytes! macro?
 * Add modulators like in https://www.youtube.com/watch?v=n-txrCMvdms especially shift register 

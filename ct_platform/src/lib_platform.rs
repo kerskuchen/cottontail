@@ -734,7 +734,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
 
         // Playback/record input events
         //
-        // TODO: We can move the playback part before polling events to be more interactive!
+        // NOTE: We can move the playback part before polling events to be more interactive!
         //       For this we need to handle the mouse and keyboard a little different. Maybe we
         //       can have `input_last` and `input_current`?
         if input_recorder.is_recording {

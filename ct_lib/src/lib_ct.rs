@@ -15,7 +15,7 @@ pub mod math;
 use std::collections::HashSet;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Utility
+// Debugging and performance
 
 /// This is pretty similar to the dbg! macro only that dformat! returns a string
 #[macro_export]
@@ -24,6 +24,36 @@ macro_rules! dformat {
         format!("{} = {:?}", stringify!($x), $x)
     };
 }
+
+pub struct TimerScoped {
+    log_message: String,
+    creation_time: std::time::Instant,
+}
+
+impl Drop for TimerScoped {
+    fn drop(&mut self) {
+        let duration_since_creation = std::time::Instant::now()
+            .duration_since(self.creation_time)
+            .as_secs_f32();
+        log::debug!(
+            "{}: {:.3}ms",
+            self.log_message,
+            duration_since_creation * 1000.0
+        );
+    }
+}
+
+impl TimerScoped {
+    pub fn new_scoped(output_text: &str) -> TimerScoped {
+        TimerScoped {
+            log_message: output_text.to_owned(),
+            creation_time: std::time::Instant::now(),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Utility
 
 /// Makes a panic info a little easier to read by splitting it into the message and location
 pub fn panic_message_split_to_message_and_location(
