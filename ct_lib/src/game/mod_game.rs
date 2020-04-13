@@ -839,7 +839,6 @@ pub fn game_handle_system_keys(
     keyboard: &KeyboardState,
     out_systemcommands: &mut Vec<SystemCommand>,
 ) {
-    // TODO: Parametrized enable/disable of these functions
     if keyboard.recently_pressed(Scancode::Escape) {
         out_systemcommands.push(SystemCommand::Shutdown);
     }
@@ -2029,7 +2028,6 @@ pub fn game_load_animations(assets_folder: &str) -> HashMap<String, Animation> {
 pub fn game_load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, Vec<AudioSample>> {
     let mut audiorecordings = HashMap::new();
 
-    // TODO: Support ogg and differentiate between mono/stereo recordings
     let wav_filepaths = system::collect_files_by_extension_recursive(assets_folder, ".wav");
     for wav_filepath in &wav_filepaths {
         let mut wav_file = audrey::open(&wav_filepath).expect(&format!(

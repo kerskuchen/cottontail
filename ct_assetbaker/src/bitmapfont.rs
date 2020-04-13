@@ -1,5 +1,3 @@
-// TODO: Remove Bitmapfont from this file and use only the one in cottontail lib
-
 use super::{AssetFont, AssetGlyph, AssetSprite, Spritename};
 
 use ct_lib::bitmap::*;

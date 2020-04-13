@@ -375,6 +375,7 @@ fn sdl_get_main_display_info(sdl_video: &sdl2::VideoSubsystem) -> DisplayInfo {
     display_infos.get(&min_display_index).unwrap().clone()
 }
 
+// NOTE: SOME OLD STUFF THAT WE WANT TO IMPLEMENT BELOW
 /*
 internal Window
 window_create(uint display_index, const char* title)
@@ -456,7 +457,6 @@ window_create(uint display_index, const char* title)
                                          flags);
     if (!result.sdl_window)
     {
-        // TODO: User facing info
         logerror("Failed to create window: %s", SDL_GetError());
         return result;
     }
@@ -464,7 +464,6 @@ window_create(uint display_index, const char* title)
     SDL_GLContext gl_context = SDL_GL_CreateContext(result.sdl_window);
     if (gl_context == NULL)
     {
-        // TODO: User facing info
         logerror("OpenGL context could not be created! SDL_Error: %s", SDL_GetError());
         window_free(&result);
         return result;
@@ -472,7 +471,6 @@ window_create(uint display_index, const char* title)
 
     if (SDL_GL_MakeCurrent(result.sdl_window, gl_context) != 0)
     {
-        // TODO: User facing info
         logerror("OpenGL context could not be made current! SDL_Error: %s", SDL_GetError());
         window_free(&result);
         return result;
@@ -481,7 +479,6 @@ window_create(uint display_index, const char* title)
 #if CT_PLATFORM_WINDOWS
     if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress))
     {
-        // TODO: User facing info
         logerror("Error initializing GLAD!");
         window_free(&result);
         return result;
@@ -489,7 +486,6 @@ window_create(uint display_index, const char* title)
 #else
     if (!gladLoadGLES2Loader((GLADloadproc)SDL_GL_GetProcAddress))
     {
-        // TODO: User facing info
         logerror("Error initializing GLAD!");
         window_free(&result);
         return result;
@@ -498,7 +494,6 @@ window_create(uint display_index, const char* title)
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
     {
-        // TODO: User facing info
         logerror("Failed to generate framebuffer! SDL_Error: %s", SDL_GetError());
         window_free(&result);
         return result;
@@ -506,7 +501,6 @@ window_create(uint display_index, const char* title)
 
     if (SDL_GL_SetSwapInterval(1) != 0)
     {
-        // TODO: User facing info
         logprint("Vsync could not be enabled! SDL_Error: %s", SDL_GetError());
     }
 

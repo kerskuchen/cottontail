@@ -868,7 +868,7 @@ impl Renderer {
                             );
                         }
                         ShaderParams::Blit(_shader_params_blit) => {
-                            todo!();
+                            panic!("The blit shader does not support drawing operations")
                         }
                     }
                 }

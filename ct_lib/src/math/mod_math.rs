@@ -1,6 +1,3 @@
-// TODO: Add modulators like in https://www.youtube.com/watch?v=n-txrCMvdms
-//       especially shift register modulator and newtonian following modulator
-
 pub use ezing as easing;
 
 mod rect;

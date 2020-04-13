@@ -8,7 +8,6 @@ use ct_platform;
 const CANVAS_WIDTH: f32 = 480.0;
 const CANVAS_HEIGHT: f32 = 270.0;
 
-// TODO: Lets put these into a resource file that can be refreshed without touching this file
 pub const GAME_WINDOW_TITLE: &str = "{{project_display_name}}";
 pub const GAME_SAVE_FOLDER_NAME: &str = "{{windows_appdata_dir}}";
 pub const GAME_COMPANY_NAME: &str = "{{project_company_name}}";

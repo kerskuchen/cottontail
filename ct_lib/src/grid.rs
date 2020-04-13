@@ -270,7 +270,6 @@ where
         assert!(dest_rect.dim.x <= dest_grid.width);
         assert!(dest_rect.dim.y <= dest_grid.height);
 
-        // TODO: make this more efficient
         for dest_y in dest_rect.top()..dest_rect.bottom() {
             for dest_x in dest_rect.left()..dest_rect.right() {
                 let source_x = sample_integer_upper_exclusive_floored(

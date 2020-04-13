@@ -1,6 +1,3 @@
-// TODO:
-// - Fix text centering with glyphs above baseline
-
 use super::bitmap::*;
 use super::color::*;
 use super::math::*;

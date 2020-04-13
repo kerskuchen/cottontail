@@ -2209,6 +2209,7 @@ impl Drawstate {
     }
 }
 
+// NOTE: SOME OLD STUFF THAT WE WANT TO IMPLEMENT BELOW
 /*
 #if 0
 
@@ -2387,7 +2388,6 @@ pub fn drawbatch_pushSprite(batch: Drawbatch*, pos: Vec2, zdepth: Depth, col: Co
     batch.vertexBufferSize += VERTEXBUFFER_NUM_BYTES_PER_QUAD;
 }
 
-// TODO: make easier interface for this
 pub fn drawbatch_pushQuadRotated(batch: Drawbatch*, pos: Vec2, dim: Vec2, dir: Vec2, uvs: UV, zdepth: Depth, col: Color) )
 {
     assert(batch.drawMode == DRAWMODE_QUADS);
@@ -2399,7 +2399,6 @@ pub fn drawbatch_pushQuadRotated(batch: Drawbatch*, pos: Vec2, dim: Vec2, dir: V
     batch.vertexBufferSize += VERTEXBUFFER_NUM_BYTES_PER_QUAD;
 }
 
-// TODO: make easier interface for this
 pub fn drawbatch_pushQuad(batch: Drawbatch*, coords: Quad, zdepth: Depth, col: Color)
 {
     assert(batch.drawMode == DRAWMODE_QUADS);
@@ -2446,7 +2445,6 @@ pub fn debugSprite(ds: &mut Drawstate, sprite: Sprite, pos: Vec2, depth: Depth, 
     pos = pixelsnapWorldCoord(pos);
     Drawbatch batch = drawbatch_begin(ds.debug_drawBuffer, DRAWMODE_QUADS);
     drawbatch_pushSprite(&batch, pos, depth, col, sprite);
-    // TODO: when supporting of multiple atlases is implemented use sprite atlas index here somehow
     drawbatch_submit(&batch, ds, ds.atlas);
 }
 
@@ -2553,8 +2551,6 @@ pub fn debugCamFrustum(ds: &mut Drawstate, cam: Camera*, col: Color, thickness: 
 
 pub fn debugDepthBuffer(ds: Drawstate*)
 {
-    // TODO: remove mallocs here
-
     int width = (int)ds.canvas.framebuffer.width;
     int height = (int)ds.canvas.framebuffer.height;
     debugi(width);

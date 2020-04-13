@@ -14,10 +14,8 @@ use std::sync::{Arc, Mutex};
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Configuration
 
-// TODO: Put this in production versions only
 const ENABLE_PANIC_MESSAGES: bool = false;
 
-// TODO: Read/create config file
 struct _GameConfig {
     display_index_to_use: u32,
     controller_deadzone_threshold_x: f32,
@@ -26,8 +24,6 @@ struct _GameConfig {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Live looped input playback and recording
-
-// TODO: Feature gate this when https://github.com/rust-lang/cargo/issues/4753 is fixed?
 
 struct InputRecorder<GameStateType: GameStateInterface + Clone> {
     game_memory: GameMemory<GameStateType>,
@@ -362,16 +358,6 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
                 .load_mappings("assets_baked/gamecontrollerdb.txt")
                 .expect("Cannot find 'assets_baked/gamecontrollerdb.txt' - game data corrupt?")
         });
-    /*
-        GamepadSystem gamepad_system = gamepad_create(controllerdb_path.cstr);
-        if (!gamepad_system.is_valid)
-        {
-            // TODO: User facing info
-            logerror("Failed to initialize gamepads");
-            abort();
-        }
-
-    */
 
     // ---------------------------------------------------------------------------------------------
     // Game memory and input
@@ -396,7 +382,6 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     let mut systemcommands: Vec<SystemCommand> = Vec::new();
     let mut event_pump = sdl_context.event_pump().unwrap();
 
-    // TODO: Remove this
     let mut debug_print_counter = 0;
 
     audio_device.resume();
