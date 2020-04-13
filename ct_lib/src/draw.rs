@@ -1622,7 +1622,6 @@ impl Drawstate {
     ) {
         // Based on the Paper "A Fast Bresenham Type AlgorithmFor Drawing Ellipses"
         // https://dai.fmph.uniba.sk/upload/0/01/Ellipse.pdf
-
         todo!()
     }
 
