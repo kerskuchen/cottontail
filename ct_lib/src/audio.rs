@@ -190,11 +190,6 @@ struct AudioStream {
     pan: f32,
 }
 
-// TODO:
-// Allow the following use cases:
-//   -schedule audio on NextBeat/NextHalfBeat/AsSoonAsPossible
-//   -interpolation based on current dsptime and/or song time
-
 #[derive(Clone)]
 pub struct Audiostate {
     /// This is can be used for interpolating time-based things that are dependent on music / beats
@@ -342,11 +337,6 @@ impl Audiostate {
         let out_start_frame = audio_chunks_to_frames(first_chunk_index);
 
         for stream in self.streams.values_mut() {
-            if stream.has_finished {
-                // TODO: We need to decide when to acually delete the finished streams
-                continue;
-            }
-
             if stream.start_frame.is_none() {
                 let segment_length = match stream.play_time {
                     SchedulePlay::Immediately => audio_frames_to_seconds(1),
@@ -408,6 +398,9 @@ impl Audiostate {
             };
         }
 
+        // Remove streams that have finished
+        self.streams.retain(|_id, stream| !stream.has_finished);
+
         // Create audio chunks from our frames
         for frame_chunk in self.out_frames.chunks_exact(AUDIO_CHUNKLENGTH_IN_FRAMES) {
             let mut sample_chunk = [0; AUDIO_CHUNKLENGTH_IN_SAMPLES];
@@ -420,6 +413,7 @@ impl Audiostate {
     }
 }
 
+/// Returns if the given stream has finished
 fn audio_add_stream(
     out_start_frame: AudioFrameIndex,
     out_frames: &mut [AudioFrame],
