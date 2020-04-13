@@ -2,6 +2,11 @@ use super::bitmap::*;
 use super::color::*;
 use super::math::*;
 
+pub const FONT_DEFAULT_TTF_TINY: &[u8] = include_bytes!("../resources/fonts/ProggyTiny.ttf");
+pub const FONT_DEFAULT_TTF_SMALL: &[u8] = include_bytes!("../resources/fonts/ProggySmall.ttf");
+pub const FONT_DEFAULT_TTF_REGULAR: &[u8] = include_bytes!("../resources/fonts/ProggyClean.ttf");
+pub const FONT_DEFAULT_TTF_SQUARE: &[u8] = include_bytes!("../resources/fonts/ProggySquare.ttf");
+
 const FIRST_VISIBLE_ASCII_CODE_POINT: u8 = 32;
 const LAST_ASCII_CODE_POINT: u8 = 126;
 
