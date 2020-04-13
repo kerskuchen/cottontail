@@ -4,6 +4,14 @@ pub use super::grid::GluePosition;
 pub type Bitmap = super::grid::Grid<PixelRGBA>;
 
 impl Bitmap {
+    pub fn from_premultiplied(&self) -> Bitmap {
+        todo!()
+    }
+
+    pub fn to_premultiplied(&self) -> Bitmap {
+        todo!()
+    }
+
     pub fn create_from_png_file(png_filepath: &str) -> Bitmap {
         let image = lodepng::decode32_file(png_filepath)
             .expect(&format!("Could not decode png file '{}'", png_filepath));

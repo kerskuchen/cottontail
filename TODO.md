@@ -1,6 +1,21 @@
+## Current:
+
+
+* fix trimming in atlas packer
+* add premultiplied colors to atlas packer
+* fix rendering issue with atlas packer
+
+* Make assetbaker not use external font and texture packer
+
+
 ## Next:
 
 * Remove Bitmapfont from Assetpacker and use only the one in Cottontail lib
+* We need to make font assets (json files?) that are placed in the assets folder and contain info 
+  on how to render the given font
+* Assets baker needs to always generate default fonts
+* We need to abstract over the fact that some fonts are embedded and some are loaded at runtime
+* Remove the need to pass font filepath to drawstate on its creation
 * Investigate if we use Bitmapfonts correctly. Are the baseline, ascend, descend etc. really 
   correctly calculated? Lets make some test renders and compare them to the outputs of 
   i.e. https://fontdrop.info/ and https://angelcode.com/products/bmfont/

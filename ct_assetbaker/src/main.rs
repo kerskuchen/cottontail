@@ -1,5 +1,6 @@
 mod aseprite;
 mod atlas;
+mod atlas_packer;
 mod bitmapfont;
 
 use ct_lib::color::*;
@@ -167,7 +168,7 @@ fn bake_graphics_resources() {
     }
 
     // Create texture atlas
-    let mut result_atlas = atlas::atlas_create_from_pngs("assets_temp", "assets_temp", 1024);
+    let mut result_atlas = atlas_packer::atlas_create_from_pngs("assets_temp", "assets_temp", 1024);
     for atlas_texture_path in &result_atlas.texture_imagepaths {
         std::fs::rename(
             atlas_texture_path,

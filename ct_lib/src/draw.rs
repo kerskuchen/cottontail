@@ -54,10 +54,10 @@ pub const SPRITE_ATTACHMENT_POINTS_MAX_COUNT: usize = 4;
 /// This is similar to a Rect but allows mirroring horizontally/vertically
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 pub struct AAQuad {
-    left: f32,
-    top: f32,
-    right: f32,
-    bottom: f32,
+    pub left: f32,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
 }
 
 impl AAQuad {
