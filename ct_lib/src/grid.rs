@@ -23,6 +23,14 @@ pub enum GluePosition {
     BottomRight,
 }
 
+#[derive(Copy, Clone)]
+pub enum SearchDirection {
+    LeftToRight,
+    TopToBottom,
+    RightToLeft,
+    BottomToTop,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Grid<CellType>
 where
@@ -219,6 +227,121 @@ where
         let rect_source = self.rect();
         let rect_dest = rect_source.translated_by(pos);
         Grid::<CellType>::copy_region(self, rect_source, other, rect_dest, mask_value);
+    }
+
+    /// Searches grid from given search direction until given condition is met.
+    /// Returns coordinate of found cell
+    pub fn find_first<F>(&self, search_dir: SearchDirection, mut compare: F) -> Option<Vec2i>
+    where
+        F: FnMut(CellType) -> bool,
+    {
+        match search_dir {
+            SearchDirection::LeftToRight => {
+                for x in 0..self.width {
+                    for y in 0..self.height {
+                        if compare(self.get(x, y)) {
+                            return Some(Vec2i::new(x, y));
+                        }
+                    }
+                }
+            }
+            SearchDirection::TopToBottom => {
+                for y in 0..self.height {
+                    for x in 0..self.width {
+                        if compare(self.get(x, y)) {
+                            return Some(Vec2i::new(x, y));
+                        }
+                    }
+                }
+            }
+            SearchDirection::RightToLeft => {
+                for x in (0..self.width).rev() {
+                    for y in 0..self.height {
+                        if compare(self.get(x, y)) {
+                            return Some(Vec2i::new(x, y));
+                        }
+                    }
+                }
+            }
+            SearchDirection::BottomToTop => {
+                for y in (0..self.height).rev() {
+                    for x in 0..self.width {
+                        if compare(self.get(x, y)) {
+                            return Some(Vec2i::new(x, y));
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    pub fn trimmed(
+        &self,
+        trim_left: bool,
+        trim_top: bool,
+        trim_right: bool,
+        trim_bottom: bool,
+        trim_value: CellType,
+    ) -> Grid<CellType> {
+        let new_left = if trim_left {
+            if let Some(coord) = self.find_first(SearchDirection::LeftToRight, |cell_value| {
+                cell_value != trim_value
+            }) {
+                coord.x
+            } else {
+                return Grid::empty();
+            }
+        } else {
+            0
+        };
+        let new_top = if trim_top {
+            if let Some(coord) = self.find_first(SearchDirection::TopToBottom, |cell_value| {
+                cell_value != trim_value
+            }) {
+                coord.y
+            } else {
+                return Grid::empty();
+            }
+        } else {
+            0
+        };
+        let new_right = if trim_right {
+            if let Some(coord) = self.find_first(SearchDirection::RightToLeft, |cell_value| {
+                cell_value != trim_value
+            }) {
+                coord.x
+            } else {
+                return Grid::empty();
+            }
+        } else {
+            self.width - 1
+        };
+        let new_bottom = if trim_bottom {
+            if let Some(coord) = self.find_first(SearchDirection::BottomToTop, |cell_value| {
+                cell_value != trim_value
+            }) {
+                coord.y
+            } else {
+                return Grid::empty();
+            }
+        } else {
+            self.height - 1
+        };
+
+        let new_width = new_right - new_left;
+        let new_height = new_bottom - new_top;
+
+        let mut trimmed_result = Grid::new(new_width as u32, new_height as u32);
+        Grid::copy_region(
+            &self,
+            Recti::from_xy_width_height(new_left, new_right, new_width, new_height),
+            &mut trimmed_result,
+            Recti::from_width_height(new_width, new_height),
+            None,
+        );
+
+        trimmed_result
     }
 
     pub fn replace_cells(&mut self, to_replace: CellType, replace_with: CellType) {
