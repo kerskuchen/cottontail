@@ -480,7 +480,6 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
                     is_running = false;
                 }
                 SystemCommand::Restart => {
-                    todo!("reset audiostate - how do we do that? we need to adjust our current sampleindex?");
                     log::info!("Received restart signal");
                     game_memory = GameMemory::default();
                     renderer.reset();
