@@ -1,7 +1,7 @@
 [workspace]
 members = [
-#   "cottontail/ct_platform",
-#   "cottontail/ct_assetbaker",
+    "cottontail/ct_platform",
+    "cottontail/ct_assetbaker",
     "cottontail/ct_lib",
     "cottontail/ct_makeproject",
     "{{project_directory_name}}",
