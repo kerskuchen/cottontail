@@ -164,6 +164,27 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
     }
 }
 
+fn log_frametimes(
+    duration_frame: f32,
+    duration_input: f32,
+    duration_update: f32,
+    duration_sound: f32,
+    duration_render: f32,
+    duration_swap: f32,
+    duration_wait: f32,
+) {
+    log::trace!(
+        "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  sound: {:.3}ms  render: {:.3}ms  swap: {:.3}ms  idle: {:.3}ms",
+        duration_frame * 1000.0,
+        duration_input * 1000.0,
+        duration_update * 1000.0,
+        duration_sound * 1000.0,
+        duration_render * 1000.0,
+        duration_swap * 1000.0,
+        duration_wait * 1000.0
+    );
+}
+
 pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     let launcher_start_time = std::time::Instant::now();
     let game_config = GameStateType::get_game_config();
@@ -381,8 +402,6 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
 
     let mut systemcommands: Vec<SystemCommand> = Vec::new();
     let mut event_pump = sdl_context.event_pump().unwrap();
-
-    let mut debug_print_counter = 0;
 
     audio_device.resume();
     let game_start_time = std::time::Instant::now();
@@ -885,20 +904,15 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         let duration_swap = post_swap_time.duration_since(pre_swap_time).as_secs_f32();
         let duration_wait = post_wait_time.duration_since(pre_wait_time).as_secs_f32();
 
-        debug_print_counter += 1;
-        debug_print_counter = debug_print_counter % 1;
-        if debug_print_counter == 0 {
-            log::trace!(
-                  "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  sound: {:.3}ms  render: {:.3}ms  swap: {:.3}ms  idle: {:.3}ms",
-                  duration_frame * 1000.0,
-                  duration_input * 1000.0,
-                  duration_update * 1000.0,
-                  duration_sound * 1000.0,
-                  duration_render * 1000.0,
-                  duration_swap * 1000.0,
-                  duration_wait * 1000.0,
-              );
-        }
+        log_frametimes(
+            duration_frame,
+            duration_input,
+            duration_update,
+            duration_sound,
+            duration_render,
+            duration_swap,
+            duration_wait,
+        );
     }
 
     //--------------------------------------------------------------------------------------
