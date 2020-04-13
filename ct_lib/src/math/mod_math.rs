@@ -73,6 +73,11 @@ pub fn compare_floats(a: f32, b: f32) -> std::cmp::Ordering {
     a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal)
 }
 
+#[inline]
+pub const fn make_even(x: u32) -> u32 {
+    (x / 2) * 2
+}
+
 //--------------------------------------------------------------------------------------------------
 // Epsilon
 
@@ -464,6 +469,14 @@ impl Circle {
     #[inline]
     pub fn new(center: Point, radius: f32) -> Circle {
         Circle { center, radius }
+    }
+
+    /// For a given radius this returns the number of vertices a circle should have to have a
+    /// visible pixel error of less than 1/2 pixels
+    pub fn get_optimal_vertex_count(radius: f32) -> usize {
+        // Based on https://stackoverflow.com/a/11774493 with maximum error of 1/2 pixel
+        ceili(2.0 * PI / f32::acos(2.0 * (1.0 - 0.5 / radius) * (1.0 - 0.5 / radius) - 1.0))
+            as usize
     }
 
     #[inline]

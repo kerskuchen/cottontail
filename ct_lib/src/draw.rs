@@ -1286,7 +1286,6 @@ impl Drawstate {
             let quad =
                 sprite.get_quad_transformed(worldpoint_pixel_snapped(pos), scale, rotation_dir);
 
-            // TODO: THIS IS WRONG - WE NEED SOMETHING LIKE AAQUAD FOR THIS
             let mut sprite_uvs = sprite.trimmed_uvs;
             if flip_horizontally {
                 std::mem::swap(&mut sprite_uvs.left, &mut sprite_uvs.right);
@@ -1481,10 +1480,8 @@ impl Drawstate {
         color: Color,
         additivity: Additivity,
     ) {
-        // TODO: Do something more intelligent but cheap for calculating the segment_count
-        //       I.e. https://stackoverflow.com/a/11774493 seems a little overkill. Maybe
-        //       https://stackoverflow.com/a/18499923 is better?
-        let segment_count = clampi(radius as i32, 16, 128) as u32;
+        let num_vertices = Circle::get_optimal_vertex_count(radius);
+        let segment_count = make_even(num_vertices as u32 + 1);
 
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
@@ -1638,10 +1635,8 @@ impl Drawstate {
         color: Color,
         additivity: Additivity,
     ) {
-        // TODO: Do something more intelligent but cheap for calculating the segment_count
-        //       I.e. https://stackoverflow.com/a/11774493 seems a little overkill. Maybe
-        //       https://stackoverflow.com/a/18499923 is better?
-        let segment_count = clampi(radius as i32, 16, 128) as u32;
+        let num_vertices = Circle::get_optimal_vertex_count(radius);
+        let segment_count = make_even(num_vertices as u32 + 1);
 
         let radius_outer = radius + 0.5 * thickness;
         let radius_inner = radius - 0.5 * thickness;
