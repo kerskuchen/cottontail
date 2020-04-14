@@ -12,16 +12,8 @@ pub const FONT_DEFAULT_TTF_SQUARE: &[u8] = include_bytes!("../resources/fonts/Pr
 const FIRST_VISIBLE_ASCII_CODE_POINT: u8 = 32;
 const LAST_ASCII_CODE_POINT: u8 = 126;
 
-<<<<<<< HEAD:cottontail/ct_lib/src/bitmap_font.rs
 type Codepoint = i32;
 
-=======
-<<<<<<< HEAD:cottontail/ct_lib/src/bitmapfont.rs
-=======
-type Codepoint = i32;
-
->>>>>>> 24395fe131ae4b13b1d7598ebd720fe801151681:cottontail/ct_lib/src/bitmap_font.rs
->>>>>>> 76db92fe87536331eb69e156a1afded3b9eca72a:cottontail/ct_lib/src/bitmap_font.rs
 #[derive(Clone)]
 pub struct BitmapFont {
     pub font_height: i32,
