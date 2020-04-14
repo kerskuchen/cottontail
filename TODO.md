@@ -1,13 +1,8 @@
 ## Current:
 
 
-* Allow font atlas to resize and trim automatically afterwards. this will get rid of the need to 
-  pass a texture size to the font packer
-
-
 ## Next:
 
-* Remove Bitmapfont from Assetpacker and use only the one in Cottontail lib
 * We need to make font assets (json files?) that are placed in the assets folder and contain info 
   on how to render the given font
 * Assets baker needs to always generate default fonts

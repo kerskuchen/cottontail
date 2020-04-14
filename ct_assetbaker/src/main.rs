@@ -60,7 +60,6 @@ pub struct AssetFont {
     pub vertical_advance: i32,
     pub glyphcount: u32,
     pub glyphs: IndexMap<Codepoint, AssetGlyph>,
-    pub sprite_names: Vec<Spritename>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize)]
@@ -180,7 +179,7 @@ fn bake_graphics_resources() {
         } else if result_fonts.contains_key(sprite_name) {
             // Atlas-sprite is a glyph-sheet of some font
             let font = &result_fonts[sprite_name];
-            for sprite_glyph_name in &font.sprite_names {
+            for sprite_glyph_name in font.glyphs.values().map(|glyph| &glyph.sprite_name) {
                 let mut sprite = result_sprites.get_mut(sprite_glyph_name).unwrap();
                 sprite.atlas_texture_index = sprite_pos.atlas_texture_index;
                 sprite.trimmed_uvs = sprite
@@ -320,58 +319,41 @@ pub fn bitmapfont_create_from_ttf(
 
     let border_thickness = if draw_border { 1 } else { 0 };
 
-    let font_ttf_bytes =
+    // Create font and atlas
+    let ttf_bytes =
         std::fs::read(ttf_filepath).expect(&format!("Cannot read fontdata '{}'", ttf_filepath));
     let font = BitmapFont::new(
-        &font_ttf_bytes,
+        &ttf_bytes,
         fontsize_pixels as i32,
         border_thickness,
         0,
         color_glyph,
         color_border,
     );
-
-    // Create sprite names
-    let sprite_names: Vec<Spritename> = font
-        .glyphs
-        .iter()
-        .map(|glyph| BitmapFont::get_glyph_name(&fontname, glyph.codepoint as Codepoint))
-        .collect();
-
     let (font_atlas_texture, font_atlas_glyph_positions) = font.create_atlas(&fontname);
     Bitmap::write_to_png_file(&font_atlas_texture, &output_filepath_png);
 
-    // Create glyphs
-    let glyphs: IndexMap<Codepoint, AssetGlyph> = font
-        .glyphs
-        .iter()
-        .map(|glyph| {
-            let codepoint = glyph.codepoint as Codepoint;
-            let sprite_name = BitmapFont::get_glyph_name(&fontname, codepoint);
-            let new_glyph = AssetGlyph {
-                codepoint,
-                sprite_name,
-                // NOTE: The `sprite_index` be set later when we finished collecting all
-                //       our the sprites
-                sprite_index: std::u32::MAX,
-                horizontal_advance: glyph.horizontal_advance,
-            };
-            (codepoint, new_glyph)
-        })
-        .collect();
+    // Create sprites and glyphs
+    let mut result_glyphs: IndexMap<Codepoint, AssetGlyph> = IndexMap::new();
+    let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
+    for glyph in &font.glyphs {
+        let codepoint = glyph.codepoint as Codepoint;
+        let sprite_name = BitmapFont::get_glyph_name(&fontname, glyph.codepoint as Codepoint);
 
-    // Create sprites
-    let result_sprites: IndexMap<Spritename, AssetSprite> = font
-        .glyphs
-        .iter()
-        .map(|glyph| {
-            let codepoint = glyph.codepoint as Codepoint;
-            let sprite_name = BitmapFont::get_glyph_name(&fontname, codepoint);
-            let sprite_pos = font_atlas_glyph_positions.get(&sprite_name).cloned();
-            let sprite = sprite_create_from_glyph_meta(&sprite_name, glyph, sprite_pos);
-            (sprite_name, sprite)
-        })
-        .collect();
+        let asset_glyph = AssetGlyph {
+            codepoint,
+            sprite_name: sprite_name.clone(),
+            // NOTE: The `sprite_index` be set later when we finished collecting all
+            //       our the sprites
+            sprite_index: std::u32::MAX,
+            horizontal_advance: glyph.horizontal_advance,
+        };
+        let sprite_pos = font_atlas_glyph_positions.get(&sprite_name).cloned();
+        let sprite = sprite_create_from_glyph_meta(&sprite_name, glyph, sprite_pos);
+
+        result_glyphs.insert(codepoint, asset_glyph);
+        result_sprites.insert(sprite_name, sprite);
+    }
 
     // Create Font
     let result_font = AssetFont {
@@ -379,9 +361,8 @@ pub fn bitmapfont_create_from_ttf(
         name_hash: ct_lib::hash_string_64(&fontname),
         baseline: font.baseline,
         vertical_advance: font.vertical_advance,
-        glyphcount: glyphs.len() as u32,
-        glyphs,
-        sprite_names,
+        glyphcount: result_glyphs.len() as u32,
+        glyphs: result_glyphs,
     };
 
     (result_sprites, result_font)
