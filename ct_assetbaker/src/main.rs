@@ -1,6 +1,6 @@
 mod aseprite;
 
-use ct_lib::atlas_packer::{AtlasPacker, AtlasPosition};
+use ct_lib::atlas_packer::{AtlasMultipacker, AtlasPosition};
 use ct_lib::bitmapfont::*;
 use ct_lib::color::*;
 use ct_lib::draw::*;
@@ -349,14 +349,14 @@ pub fn bitmapfont_create_from_ttf(
         .collect();
 
     // Pack font atlas and write to file
-    let mut font_packer = AtlasPacker::new(texture_size as i32);
+    let mut font_packer = AtlasMultipacker::new(texture_size as i32);
     for (sprite_name, glyph) in sprite_names.iter().zip(font.glyphs.iter()) {
         if let Some(bitmap) = &glyph.bitmap {
             font_packer.pack_bitmap(sprite_name, bitmap);
         }
     }
     assert!(
-        font_packer.atlas_textures.len() == 1,
+        font_packer.atlas_packers.len() == 1,
         "Font '{}' rendered in size '{}' is too big to fit into {}x{} texture",
         ttf_filepath,
         fontsize_pixels,
@@ -364,7 +364,7 @@ pub fn bitmapfont_create_from_ttf(
         texture_size
     );
     Bitmap::write_to_png_file(
-        &font_packer.atlas_textures.first().unwrap(),
+        &font_packer.atlas_packers.first().unwrap().atlas_texture,
         &output_filepath_png,
     );
 
@@ -429,7 +429,7 @@ pub fn atlas_create_from_pngs(
 
     // Pack sprites
     let (atlas_textures, result_sprite_positions) = {
-        let mut packer = AtlasPacker::new(atlas_texture_size as i32);
+        let mut packer = AtlasMultipacker::new(atlas_texture_size as i32);
         for image_path in sprite_imagepaths.into_iter() {
             let image = Bitmap::create_from_png_file(&image_path);
             let sprite_name = system::path_without_extension(&image_path)
