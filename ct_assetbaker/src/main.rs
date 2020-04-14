@@ -255,7 +255,7 @@ fn bake_audio_resources() {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Font packing
 
-fn sprite_create_from_glyph_meta(
+fn sprite_create_from_glyph(
     sprite_name: &str,
     glyph: &BitmapFontGlyph,
     position_in_font_atlas: Option<Vec2i>,
@@ -349,7 +349,7 @@ pub fn bitmapfont_create_from_ttf(
             horizontal_advance: glyph.horizontal_advance,
         };
         let sprite_pos = font_atlas_glyph_positions.get(&sprite_name).cloned();
-        let sprite = sprite_create_from_glyph_meta(&sprite_name, glyph, sprite_pos);
+        let sprite = sprite_create_from_glyph(&sprite_name, glyph, sprite_pos);
 
         result_glyphs.insert(codepoint, asset_glyph);
         result_sprites.insert(sprite_name, sprite);

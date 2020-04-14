@@ -68,7 +68,7 @@ impl BitmapAtlas {
     }
 }
 
-/// An BitmapAtlas that can have multiple fixed size atlas textures
+/// An atlaspacker that can have multiple fixed size atlas textures
 pub struct BitmapMultiAtlas {
     pub atlas_texture_size: i32,
     pub atlas_packers: Vec<BitmapAtlas>,
