@@ -575,10 +575,7 @@ where
                     )
                 } else {
                     let mut result = b.extended(a.width + padding_extra, 0, 0, 0, padding_color);
-                    let blit_pos = Vec2i::new(
-                        0,
-                        block_aligned_in_block(a.height, b.height, Alignment::Center),
-                    );
+                    let blit_pos = Vec2i::new(0, block_centered_in_block(a.height, b.height));
                     a.blit_to(&mut result, blit_pos, None);
                     result
                 }
@@ -629,10 +626,7 @@ where
                     )
                 } else {
                     let mut result = b.extended(0, a.height + padding_extra, 0, 0, padding_color);
-                    let blit_pos = Vec2i::new(
-                        block_aligned_in_block(a.width, b.width, Alignment::Center),
-                        0,
-                    );
+                    let blit_pos = Vec2i::new(block_centered_in_block(a.width, b.width), 0);
                     a.blit_to(&mut result, blit_pos, None);
                     result
                 }
@@ -677,7 +671,7 @@ where
                     let mut result = b.extended(0, 0, a.width + padding_extra, 0, padding_color);
                     let blit_pos = Vec2i::new(
                         b.width + padding_extra,
-                        block_aligned_in_block(a.height, b.height, Alignment::Center),
+                        block_centered_in_block(a.height, b.height),
                     );
                     a.blit_to(&mut result, blit_pos, None);
                     result
@@ -718,7 +712,7 @@ where
                 } else {
                     let mut result = b.extended(0, 0, 0, a.height + padding_extra, padding_color);
                     let blit_pos = Vec2i::new(
-                        block_aligned_in_block(a.width, b.width, Alignment::Center),
+                        block_centered_in_block(a.width, b.width),
                         b.height + padding_extra,
                     );
                     a.blit_to(&mut result, blit_pos, None);

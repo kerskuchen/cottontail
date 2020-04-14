@@ -473,15 +473,13 @@ pub fn letterbox_rects_create(
     canvas_width: i32,
     canvas_height: i32,
 ) -> (Recti, [Recti; 4]) {
-    let pos_x = floori(block_aligned_in_point(
+    let pos_x = floori(block_centered_in_point(
         center_width as f32,
         canvas_width as f32 / 2.0,
-        Alignment::Center,
     ));
-    let pos_y = floori(block_aligned_in_point(
+    let pos_y = floori(block_centered_in_point(
         center_height as f32,
         canvas_height as f32 / 2.0,
-        Alignment::Center,
     ));
     let center_rect = Recti::from_xy_width_height(pos_x, pos_y, center_width, center_height);
 

@@ -23,6 +23,8 @@ pub use intersection::*;
 pub type Point = Vec2;
 pub type Pointi = Vec2i;
 
+use num_traits::Num;
+
 //--------------------------------------------------------------------------------------------------
 // Misc
 
@@ -227,6 +229,7 @@ pub enum AlignmentVertical {
 }
 
 impl std::convert::Into<Alignment> for AlignmentHorizontal {
+    #[inline]
     fn into(self) -> Alignment {
         match self {
             AlignmentHorizontal::Left => Alignment::Begin,
@@ -237,6 +240,7 @@ impl std::convert::Into<Alignment> for AlignmentHorizontal {
 }
 
 impl std::convert::Into<Alignment> for AlignmentVertical {
+    #[inline]
     fn into(self) -> Alignment {
         match self {
             AlignmentVertical::Top => Alignment::Begin,
@@ -255,11 +259,11 @@ pub fn block_aligned_in_point<AlignmentType, NumberType>(
 ) -> NumberType
 where
     AlignmentType: Into<Alignment>,
-    NumberType: num_traits::Num + std::convert::From<i16>, // NOTE: This is a hack to convert 0 and 2 into f32 and i32,
+    NumberType: num_traits::Num,
 {
     match alignment.into() {
         Alignment::Begin => point,
-        Alignment::Center => point - (block_width / NumberType::from(2)),
+        Alignment::Center => block_centered_in_point(block_width, point),
         Alignment::End => point - block_width,
     }
 }
@@ -274,21 +278,43 @@ pub fn block_aligned_in_block<AlignmentType, NumberType>(
 ) -> NumberType
 where
     AlignmentType: Into<Alignment>,
-    NumberType: num_traits::Num + std::convert::From<i16>, // NOTE: This is a hack to convert 0 and 2 into f32 and i32,
+    NumberType: Num,
 {
     match alignment.into() {
-        Alignment::Begin => NumberType::from(0),
-        Alignment::Center => (other_width - block_width) / NumberType::from(2),
+        Alignment::Begin => NumberType::zero(),
+        Alignment::Center => block_centered_in_block(block_width, other_width),
         Alignment::End => other_width - block_width,
     }
 }
 
+/// Returns the left-most point of a block with given width that is centered in a given point
 #[inline(always)]
-pub fn point_mirrored_on_axis<NumberType>(point: NumberType, axis_pos: NumberType) -> NumberType
-where
-    NumberType: num_traits::Num + std::convert::From<i16>, // NOTE: This is a hack to convert 0 and 2 into f32 and i32,
-{
-    NumberType::from(2) * axis_pos - point
+pub fn block_centered_in_point<NumberType: Num>(
+    block_width: NumberType,
+    point: NumberType,
+) -> NumberType {
+    let two = NumberType::one() + NumberType::one();
+    point - (block_width / two)
+}
+
+/// Returns the left-most point of a block with given width that is aligned in a another block
+/// with given width
+#[inline(always)]
+pub fn block_centered_in_block<NumberType: Num>(
+    block_width: NumberType,
+    other_width: NumberType,
+) -> NumberType {
+    let two = NumberType::one() + NumberType::one();
+    (other_width - block_width) / two
+}
+
+#[inline(always)]
+pub fn point_mirrored_on_axis<NumberType: Num>(
+    point: NumberType,
+    axis_pos: NumberType,
+) -> NumberType {
+    let two = NumberType::one() + NumberType::one();
+    two * axis_pos - point
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

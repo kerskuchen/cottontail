@@ -218,8 +218,7 @@ impl Recti {
         match alignment {
             AlignmentHorizontal::Left => result,
             AlignmentHorizontal::Center => {
-                let new_left =
-                    block_aligned_in_point(new_width, self.center().x, Alignment::Center);
+                let new_left = block_centered_in_point(new_width, self.center().x);
                 result.pos.x = new_left;
                 result
             }
@@ -239,8 +238,7 @@ impl Recti {
         match alignment {
             AlignmentVertical::Top => result,
             AlignmentVertical::Center => {
-                let new_top =
-                    block_aligned_in_point(new_height, self.center().y, Alignment::Center);
+                let new_top = block_centered_in_point(new_height, self.center().y);
                 result.pos.y = new_top;
                 result
             }
@@ -348,7 +346,7 @@ impl Recti {
     #[must_use]
     #[inline]
     pub fn centered_in_rect_horizontally(self, target: Recti) -> Recti {
-        let pos_x = block_aligned_in_point(self.dim.x, target.center().x, Alignment::Center);
+        let pos_x = block_centered_in_point(self.dim.x, target.center().x);
         Recti::from_xy_dimensions(pos_x, self.pos.y, self.dim)
     }
 
@@ -357,7 +355,7 @@ impl Recti {
     #[must_use]
     #[inline]
     pub fn centered_in_rect_vertically(self, target: Recti) -> Recti {
-        let pos_y = block_aligned_in_point(self.dim.y, target.center().y, Alignment::Center);
+        let pos_y = block_centered_in_point(self.dim.y, target.center().y);
         Recti::from_xy_dimensions(self.pos.x, pos_y, self.dim)
     }
 }

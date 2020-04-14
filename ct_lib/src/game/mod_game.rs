@@ -2239,14 +2239,14 @@ impl Scene for SceneDebug {
         // CROSS
         //
         let rect1_initial = Rect::from_xy_width_height(
-            block_aligned_in_point(50.0, center.x, Alignment::Center),
-            block_aligned_in_point(200.0, center.y, Alignment::Center),
+            block_centered_in_point(50.0, center.x),
+            block_centered_in_point(200.0, center.y),
             50.0,
             200.0,
         );
         let rect2_initial = Rect::from_xy_width_height(
-            block_aligned_in_point(200.0, center.x, Alignment::Center),
-            block_aligned_in_point(50.0, center.y, Alignment::Center),
+            block_centered_in_point(200.0, center.x),
+            block_centered_in_point(50.0, center.y),
             200.0,
             50.0,
         );
