@@ -1,15 +1,13 @@
 mod aseprite;
-mod atlas;
-mod atlas_packer;
 mod bitmapfont;
 
+use ct_lib::atlas_packer::{AtlasPacker, AtlasPosition};
 use ct_lib::color::*;
 use ct_lib::draw::*;
 use ct_lib::game::*;
 use ct_lib::math::*;
 use ct_lib::system;
-
-use indexmap::IndexMap;
+use ct_lib::IndexMap;
 use rayon::prelude::*;
 use serde_derive::Serialize;
 
@@ -69,13 +67,7 @@ pub struct AssetAtlas {
     pub texture_size: u32,
     pub texture_count: u32,
     pub texture_imagepaths: Vec<String>,
-    pub sprite_positions: IndexMap<Spritename, SpritePosition>,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize)]
-pub struct SpritePosition {
-    pub atlas_texture_index: TextureIndex,
-    pub atlas_texture_pixel_offset: Vec2i,
+    pub sprite_positions: IndexMap<Spritename, AtlasPosition>,
 }
 
 fn bake_graphics_resources() {
@@ -168,7 +160,7 @@ fn bake_graphics_resources() {
     }
 
     // Create texture atlas
-    let mut result_atlas = atlas_packer::atlas_create_from_pngs("assets_temp", "assets_temp", 1024);
+    let mut result_atlas = atlas_create_from_pngs("assets_temp", "assets_temp", 1024);
     for atlas_texture_path in &result_atlas.texture_imagepaths {
         std::fs::rename(
             atlas_texture_path,
@@ -272,6 +264,47 @@ fn bake_audio_resources() {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Asset conversion
+
+pub fn atlas_create_from_pngs(
+    source_dir: &str,
+    output_dir: &str,
+    atlas_texture_size: u32,
+) -> AssetAtlas {
+    let sprite_imagepaths = system::collect_files_by_extension_recursive(source_dir, ".png");
+
+    // Pack sprites
+    let (atlas_textures, result_sprite_positions) = {
+        let mut packer = AtlasPacker::new(atlas_texture_size as i32);
+        for image_path in sprite_imagepaths.into_iter() {
+            let image = Bitmap::create_from_png_file(&image_path);
+            let sprite_name = system::path_without_extension(&image_path)
+                .replace(&format!("{}/", source_dir), "");
+            packer.pack_bitmap(&sprite_name, &image);
+        }
+        packer.finish()
+    };
+
+    // Write textures to disk
+    let result_texture_imagepaths = {
+        let atlas_path_without_extension = system::path_join(output_dir, "atlas");
+        let mut texture_imagepaths = Vec::new();
+        for (index, atlas_texture) in atlas_textures.iter().enumerate() {
+            let texture_path = format!("{}-{}.png", atlas_path_without_extension, index);
+            Bitmap::write_to_png_file(&atlas_texture.to_premultiplied(), &texture_path);
+            texture_imagepaths.push(texture_path);
+        }
+        texture_imagepaths
+    };
+
+    AssetAtlas {
+        texture_size: atlas_texture_size,
+        texture_count: result_texture_imagepaths.len() as u32,
+        texture_imagepaths: result_texture_imagepaths,
+        sprite_positions: result_sprite_positions,
+    }
+}
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Asset conversion
 

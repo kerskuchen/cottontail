@@ -1,21 +1,25 @@
-use super::{AssetAtlas, SpritePosition, Spritename, TextureIndex};
+use super::bitmap::Bitmap;
+use super::math::Vec2i;
+use serde_derive::Serialize;
 
-use ct_lib::bitmap::Bitmap;
-use ct_lib::math::Vec2i;
-use ct_lib::system;
-
-use indexmap::IndexMap;
+use super::IndexMap;
 
 use rect_packer;
-struct AtlasPacker {
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize)]
+pub struct AtlasPosition {
+    pub atlas_texture_index: u32,
+    pub atlas_texture_pixel_offset: Vec2i,
+}
+pub struct AtlasPacker {
     atlas_texture_size: i32,
     atlas_textures: Vec<Bitmap>,
     rect_packers: Vec<rect_packer::DensePacker>,
-    sprite_positions: IndexMap<Spritename, SpritePosition>,
+    sprite_positions: IndexMap<String, AtlasPosition>,
 }
 
 impl AtlasPacker {
-    fn new(atlas_texture_size: i32) -> AtlasPacker {
+    pub fn new(atlas_texture_size: i32) -> AtlasPacker {
         assert!(atlas_texture_size > 0);
 
         AtlasPacker {
@@ -32,7 +36,7 @@ impl AtlasPacker {
         }
     }
 
-    fn pack_bitmap(&mut self, sprite_name: &str, image: &Bitmap) {
+    pub fn pack_bitmap(&mut self, sprite_name: &str, image: &Bitmap) {
         if self.try_pack_bitmap(sprite_name, image) {
             return;
         }
@@ -55,12 +59,12 @@ impl AtlasPacker {
         }
     }
 
-    fn finish(self) -> (Vec<Bitmap>, IndexMap<Spritename, SpritePosition>) {
+    pub fn finish(self) -> (Vec<Bitmap>, IndexMap<String, AtlasPosition>) {
         (self.atlas_textures, self.sprite_positions)
     }
 
     /// Returns true if found a spot to pack the given bitmap
-    fn try_pack_bitmap(&mut self, name: &str, image: &Bitmap) -> bool {
+    pub fn try_pack_bitmap(&mut self, name: &str, image: &Bitmap) -> bool {
         for (atlas_index, (packer, texture)) in self
             .rect_packers
             .iter_mut()
@@ -73,8 +77,8 @@ impl AtlasPacker {
 
                 self.sprite_positions.insert(
                     name.to_owned(),
-                    SpritePosition {
-                        atlas_texture_index: atlas_index as TextureIndex,
+                    AtlasPosition {
+                        atlas_texture_index: atlas_index as u32,
                         atlas_texture_pixel_offset: position,
                     },
                 );
@@ -84,44 +88,5 @@ impl AtlasPacker {
         }
 
         false
-    }
-}
-
-pub fn atlas_create_from_pngs(
-    source_dir: &str,
-    output_dir: &str,
-    atlas_texture_size: u32,
-) -> AssetAtlas {
-    let sprite_imagepaths = system::collect_files_by_extension_recursive(source_dir, ".png");
-
-    // Pack sprites
-    let (atlas_textures, result_sprite_positions) = {
-        let mut packer = AtlasPacker::new(atlas_texture_size as i32);
-        for image_path in sprite_imagepaths.into_iter() {
-            let image = Bitmap::create_from_png_file(&image_path);
-            let sprite_name = system::path_without_extension(&image_path)
-                .replace(&format!("{}/", source_dir), "");
-            packer.pack_bitmap(&sprite_name, &image);
-        }
-        packer.finish()
-    };
-
-    // Write textures to disk
-    let result_texture_imagepaths = {
-        let atlas_path_without_extension = system::path_join(output_dir, "atlas");
-        let mut texture_imagepaths = Vec::new();
-        for (index, atlas_texture) in atlas_textures.iter().enumerate() {
-            let texture_path = format!("{}-{}.png", atlas_path_without_extension, index);
-            Bitmap::write_to_png_file(&atlas_texture.to_premultiplied(), &texture_path);
-            texture_imagepaths.push(texture_path);
-        }
-        texture_imagepaths
-    };
-
-    AssetAtlas {
-        texture_size: atlas_texture_size,
-        texture_count: result_texture_imagepaths.len() as u32,
-        texture_imagepaths: result_texture_imagepaths,
-        sprite_positions: result_sprite_positions,
     }
 }

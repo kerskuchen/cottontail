@@ -1,3 +1,4 @@
+pub mod atlas_packer;
 pub mod audio;
 pub mod bitmap;
 pub mod bitmapfont;
@@ -12,6 +13,7 @@ pub mod game;
 #[path = "math/mod_math.rs"]
 pub mod math;
 
+pub use indexmap::IndexMap;
 use std::collections::HashSet;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

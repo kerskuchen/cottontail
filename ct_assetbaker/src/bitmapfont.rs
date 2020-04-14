@@ -4,8 +4,7 @@ use ct_lib::bitmap::*;
 use ct_lib::draw::*;
 use ct_lib::math::*;
 use ct_lib::system;
-
-use indexmap::IndexMap;
+use ct_lib::IndexMap;
 use rayon::prelude::*;
 
 use serde_derive::Deserialize;
