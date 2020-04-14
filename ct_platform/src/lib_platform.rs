@@ -6,8 +6,7 @@ mod sdl_input;
 mod sdl_window;
 
 use ct_lib::audio::*;
-use ct_lib::game::{GameInput, Scancode, SystemCommand};
-use gamelib::GameMemory;
+use ct_lib::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand};
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -15,11 +14,9 @@ use std::sync::{Arc, Mutex};
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Configuration
 
-// TODO: Put this in production versions only
 const ENABLE_PANIC_MESSAGES: bool = false;
 
-// TODO: Read/create config file
-struct GameConfig {
+struct _GameConfig {
     display_index_to_use: u32,
     controller_deadzone_threshold_x: f32,
     controller_deadzone_threshold_y: f32,
@@ -28,11 +25,8 @@ struct GameConfig {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Live looped input playback and recording
 
-// TODO: Feature gate this when https://github.com/rust-lang/cargo/issues/4753 is fixed?
-
-#[derive(Default)]
-struct InputRecorder {
-    game_memory: GameMemory,
+struct InputRecorder<GameStateType: GameStateInterface + Clone> {
+    game_memory: GameMemory<GameStateType>,
 
     is_recording: bool,
     is_playing_back: bool,
@@ -40,12 +34,21 @@ struct InputRecorder {
     queue_recording: VecDeque<GameInput>,
 }
 
-impl InputRecorder {
-    fn new() -> InputRecorder {
-        InputRecorder::default()
-    }
+impl<GameStateType: GameStateInterface + Clone> Default for InputRecorder<GameStateType> {
+    fn default() -> Self {
+        InputRecorder {
+            game_memory: GameMemory::default(),
 
-    fn start_recording(&mut self, game_memory: &GameMemory) {
+            is_recording: false,
+            is_playing_back: false,
+            queue_playback: VecDeque::new(),
+            queue_recording: VecDeque::new(),
+        }
+    }
+}
+
+impl<GameStateType: GameStateInterface + Clone> InputRecorder<GameStateType> {
+    fn start_recording(&mut self, game_memory: &GameMemory<GameStateType>) {
         assert!(!self.is_recording);
         assert!(!self.is_playing_back);
 
@@ -61,7 +64,7 @@ impl InputRecorder {
         self.is_recording = false;
     }
 
-    fn start_playback(&mut self, game_memory: &mut GameMemory) {
+    fn start_playback(&mut self, game_memory: &mut GameMemory<GameStateType>) {
         assert!(!self.is_recording);
         assert!(!self.is_playing_back);
 
@@ -87,7 +90,7 @@ impl InputRecorder {
         self.queue_recording.push_back(input.clone());
     }
 
-    fn playback_input(&mut self, game_memory: &mut GameMemory) -> GameInput {
+    fn playback_input(&mut self, game_memory: &mut GameMemory<GameStateType>) -> GameInput {
         assert!(!self.is_recording);
         assert!(self.is_playing_back);
 
@@ -161,10 +164,34 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
     }
 }
 
-fn main() {
+fn log_frametimes(
+    duration_frame: f32,
+    duration_input: f32,
+    duration_update: f32,
+    duration_sound: f32,
+    duration_render: f32,
+    duration_swap: f32,
+    duration_wait: f32,
+) {
+    log::trace!(
+        "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  sound: {:.3}ms  render: {:.3}ms  swap: {:.3}ms  idle: {:.3}ms",
+        duration_frame * 1000.0,
+        duration_input * 1000.0,
+        duration_update * 1000.0,
+        duration_sound * 1000.0,
+        duration_render * 1000.0,
+        duration_swap * 1000.0,
+        duration_wait * 1000.0
+    );
+}
+
+pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     let launcher_start_time = std::time::Instant::now();
-    let savadata_dir =
-        platform_get_savegame_dir(gamelib::GAME_COMPANY_NAME, gamelib::GAME_SAVE_FOLDER_NAME);
+    let game_config = GameStateType::get_game_config();
+    let savadata_dir = platform_get_savegame_dir(
+        &game_config.game_company_name,
+        &game_config.game_save_folder_name,
+    );
 
     // ---------------------------------------------------------------------------------------------
     // Logging and error handling
@@ -201,10 +228,11 @@ fn main() {
             let backtrace = backtrace::Backtrace::new();
             log::error!("BACKTRACE:\r\n{:?}", backtrace);
 
+            let game_config = GameStateType::get_game_config();
             let logfile_path = ct_lib::system::path_join(
                 &platform_get_savegame_dir(
-                    gamelib::GAME_COMPANY_NAME,
-                    gamelib::GAME_SAVE_FOLDER_NAME,
+                    &game_config.game_company_name,
+                    &game_config.game_save_folder_name,
                 ),
                 "logging.txt",
             )
@@ -250,7 +278,7 @@ fn main() {
     // ---------------------------------------------------------------------------------------------
     // SDL Window
 
-    let mut window = sdl_window::Window::new(sdl_video.clone(), 0, gamelib::GAME_WINDOW_TITLE);
+    let mut window = sdl_window::Window::new(sdl_video.clone(), 0, &game_config.game_window_title);
     let mut renderer = window.create_renderer();
 
     let target_updates_per_second = window.refresh_rate();
@@ -351,16 +379,6 @@ fn main() {
                 .load_mappings("assets_baked/gamecontrollerdb.txt")
                 .expect("Cannot find 'assets_baked/gamecontrollerdb.txt' - game data corrupt?")
         });
-    /*
-        GamepadSystem gamepad_system = gamepad_create(controllerdb_path.cstr);
-        if (!gamepad_system.is_valid)
-        {
-            // TODO: User facing info
-            logerror("Failed to initialize gamepads");
-            abort();
-        }
-
-    */
 
     // ---------------------------------------------------------------------------------------------
     // Game memory and input
@@ -372,7 +390,7 @@ fn main() {
     input.keyboard = sdl_input::keyboardstate_create();
     input.textinput.is_textinput_enabled = false;
 
-    let mut game_memory = GameMemory::default();
+    let mut game_memory = GameMemory::<GameStateType>::default();
 
     // ---------------------------------------------------------------------------------------------
     // Mainloop setup
@@ -380,13 +398,10 @@ fn main() {
     let text_input = sdl_video.text_input();
     text_input.stop();
 
-    let mut input_recorder = InputRecorder::new();
+    let mut input_recorder = InputRecorder::default();
 
     let mut systemcommands: Vec<SystemCommand> = Vec::new();
     let mut event_pump = sdl_context.event_pump().unwrap();
-
-    // TODO: Remove this
-    let mut debug_print_counter = 0;
 
     audio_device.resume();
     let game_start_time = std::time::Instant::now();
@@ -469,7 +484,6 @@ fn main() {
                     is_running = false;
                 }
                 SystemCommand::Restart => {
-                    todo!("reset audiostate - how do we do that? we need to adjust our current sampleindex?");
                     log::info!("Received restart signal");
                     game_memory = GameMemory::default();
                     renderer.reset();
@@ -739,7 +753,7 @@ fn main() {
 
         // Playback/record input events
         //
-        // TODO: We can move the playback part before polling events to be more interactive!
+        // NOTE: We can move the playback part before polling events to be more interactive!
         //       For this we need to handle the mouse and keyboard a little different. Maybe we
         //       can have `input_last` and `input_current`?
         if input_recorder.is_recording {
@@ -775,12 +789,7 @@ fn main() {
             .as_secs_f64();
 
         let current_audio_frame_index = { audio_output.lock().unwrap().get_audio_time_in_frames() };
-        gamelib::game_update_and_draw(
-            &mut game_memory,
-            &input,
-            current_audio_frame_index,
-            &mut systemcommands,
-        );
+        game_memory.update(&input, current_audio_frame_index, &mut systemcommands);
 
         // Clear input state
         input.screen_framebuffer_dimensions_changed = false;
@@ -895,20 +904,15 @@ fn main() {
         let duration_swap = post_swap_time.duration_since(pre_swap_time).as_secs_f32();
         let duration_wait = post_wait_time.duration_since(pre_wait_time).as_secs_f32();
 
-        debug_print_counter += 1;
-        debug_print_counter = debug_print_counter % 1;
-        if debug_print_counter == 0 {
-            log::trace!(
-                  "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  sound: {:.3}ms  render: {:.3}ms  swap: {:.3}ms  idle: {:.3}ms",
-                  duration_frame * 1000.0,
-                  duration_input * 1000.0,
-                  duration_update * 1000.0,
-                  duration_sound * 1000.0,
-                  duration_render * 1000.0,
-                  duration_swap * 1000.0,
-                  duration_wait * 1000.0,
-              );
-        }
+        log_frametimes(
+            duration_frame,
+            duration_input,
+            duration_update,
+            duration_sound,
+            duration_render,
+            duration_swap,
+            duration_wait,
+        );
     }
 
     //--------------------------------------------------------------------------------------

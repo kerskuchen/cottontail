@@ -10,6 +10,7 @@ use super::draw::*;
 use super::math::*;
 use super::random::*;
 use super::system;
+use super::*;
 
 use serde_derive::{Deserialize, Serialize};
 
@@ -41,6 +42,172 @@ pub enum SystemCommand {
     },
     Shutdown,
     Restart,
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Gamestate
+
+pub struct GameInfo {
+    pub game_window_title: String,
+    pub game_save_folder_name: String,
+    pub game_company_name: String,
+}
+
+pub trait GameStateInterface {
+    fn get_game_config() -> GameInfo;
+    fn get_window_config() -> WindowConfig;
+    fn new(
+        draw: &mut Drawstate,
+        audio: &mut Audiostate,
+        assets: &mut GameAssets,
+        input: &GameInput,
+    ) -> Self;
+    fn update(
+        &mut self,
+        draw: &mut Drawstate,
+        audio: &mut Audiostate,
+        assets: &mut GameAssets,
+        input: &GameInput,
+    );
+}
+
+const SPLASHSCREEN_FADEIN_TIME: f32 = 0.5;
+const SPLASHSCREEN_SUSTAIN_TIME: f32 = 0.5;
+const SPLASHSCREEN_FADEOUT_TIME: f32 = 0.5;
+
+#[derive(Clone)]
+pub struct GameMemory<GameStateType: GameStateInterface> {
+    pub game: Option<GameStateType>,
+    pub draw: Option<Drawstate>,
+    pub audio: Option<Audiostate>,
+    pub assets: Option<GameAssets>,
+
+    pub splashscreen: Option<SplashScreen>,
+}
+
+impl<GameStateType: GameStateInterface> Default for GameMemory<GameStateType> {
+    fn default() -> Self {
+        GameMemory {
+            game: None,
+            draw: None,
+            audio: None,
+            assets: None,
+            splashscreen: None,
+        }
+    }
+}
+
+impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
+    pub fn update(
+        &mut self,
+        input: &GameInput,
+        current_audio_frame_index: AudioFrameIndex,
+        out_systemcommands: &mut Vec<SystemCommand>,
+    ) {
+        if self.draw.is_none() {
+            let _drawstate_setup_timer = TimerScoped::new_scoped("Drawstate setup time");
+
+            let window_config = GameStateType::get_window_config();
+            let atlas = game_load_atlas("assets_baked");
+            let mut draw = Drawstate::new(atlas, "ProggyTiny_bordered");
+            game_setup_window(
+                &mut draw,
+                &window_config,
+                input.screen_framebuffer_width,
+                input.screen_framebuffer_height,
+                out_systemcommands,
+            );
+            draw.set_shaderparams_simple(
+                Color::white(),
+                Mat4::ortho_origin_left_top(
+                    window_config.canvas_width as f32,
+                    window_config.canvas_height as f32,
+                    DEFAULT_WORLD_ZNEAR,
+                    DEFAULT_WORLD_ZFAR,
+                ),
+            );
+            self.draw = Some(draw);
+        }
+        if self.assets.is_none() {
+            let animations = game_load_animations("assets_baked");
+            self.assets = Some(GameAssets::new(animations));
+        }
+        if self.audio.is_none() {
+            self.audio = Some(Audiostate::new());
+        }
+
+        let draw = self.draw.as_mut().unwrap();
+        let audio = self.audio.as_mut().unwrap();
+        let assets = self.assets.as_mut().unwrap();
+
+        audio.update_frame_index(current_audio_frame_index);
+        draw.begin_frame();
+
+        if self.splashscreen.is_none() {
+            let splash_sprite = draw.get_sprite_by_name("splash").clone();
+            self.splashscreen = Some(SplashScreen::new(
+                splash_sprite,
+                SPLASHSCREEN_FADEIN_TIME,
+                SPLASHSCREEN_FADEOUT_TIME,
+                SPLASHSCREEN_SUSTAIN_TIME,
+            ));
+        }
+
+        let splashscreen = self
+            .splashscreen
+            .as_mut()
+            .expect("No Splashscreen initialized");
+
+        if input.keyboard.recently_pressed(Scancode::Escape) {
+            splashscreen.force_fast_forward();
+        }
+        let (canvas_width, canvas_height) = draw.get_canvas_dimensions().unwrap_or((
+            input.screen_framebuffer_width,
+            input.screen_framebuffer_height,
+        ));
+        match splashscreen.update_and_draw(
+            draw,
+            input.target_deltatime,
+            canvas_width,
+            canvas_height,
+        ) {
+            SplashscreenState::StartedFadingIn => {}
+            SplashscreenState::IsFadingIn => {}
+            SplashscreenState::FinishedFadingIn => {
+                {
+                    let _audiostate_setup_timer = TimerScoped::new_scoped("Audiostate setup time");
+
+                    let audiorecordings_mono = game_load_audiorecordings_mono("assets_baked");
+                    for (recording_name, buffer) in audiorecordings_mono.into_iter() {
+                        audio.add_recording_mono(&recording_name, buffer);
+                    }
+                }
+
+                {
+                    let _gamestate_setup_timer = TimerScoped::new_scoped("Gamestate setup time");
+
+                    assert!(self.game.is_none());
+                    self.game = Some(GameStateType::new(draw, audio, assets, &input));
+                }
+            }
+
+            SplashscreenState::Sustain => {}
+            SplashscreenState::StartedFadingOut => {}
+            SplashscreenState::IsFadingOut => {}
+            SplashscreenState::FinishedFadingOut => {}
+            SplashscreenState::IsDone => {}
+        }
+
+        if let Some(game) = self.game.as_mut() {
+            game.update(draw, audio, assets, input);
+            game_handle_system_keys(&input.keyboard, out_systemcommands);
+        }
+
+        draw.finish_frame(
+            input.screen_framebuffer_width,
+            input.screen_framebuffer_height,
+        );
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -652,7 +819,6 @@ pub fn game_handle_system_keys(
     keyboard: &KeyboardState,
     out_systemcommands: &mut Vec<SystemCommand>,
 ) {
-    // TODO: Parametrized enable/disable of these functions
     if keyboard.recently_pressed(Scancode::Escape) {
         out_systemcommands.push(SystemCommand::Shutdown);
     }
@@ -1842,7 +2008,6 @@ pub fn game_load_animations(assets_folder: &str) -> HashMap<String, Animation> {
 pub fn game_load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, Vec<AudioSample>> {
     let mut audiorecordings = HashMap::new();
 
-    // TODO: Support ogg and differentiate between mono/stereo recordings
     let wav_filepaths = system::collect_files_by_extension_recursive(assets_folder, ".wav");
     for wav_filepath in &wav_filepaths {
         let mut wav_file = audrey::open(&wav_filepath).expect(&format!(

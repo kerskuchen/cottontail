@@ -3,11 +3,16 @@ use ct_lib::draw::*;
 use ct_lib::game::*;
 use ct_lib::math::*;
 use ct_lib::random::*;
+use ct_platform;
 
 const CANVAS_WIDTH: f32 = 480.0;
 const CANVAS_HEIGHT: f32 = 270.0;
 
-pub const WINDOW_CONFIG: WindowConfig = WindowConfig {
+pub const GAME_WINDOW_TITLE: &str = "{{project_display_name}}";
+pub const GAME_SAVE_FOLDER_NAME: &str = "{{windows_appdata_dir}}";
+pub const GAME_COMPANY_NAME: &str = "{{project_company_name}}";
+
+const WINDOW_CONFIG: WindowConfig = WindowConfig {
     has_canvas: true,
     canvas_width: CANVAS_WIDTH as u32,
     canvas_height: CANVAS_HEIGHT as u32,
@@ -22,20 +27,29 @@ pub const WINDOW_CONFIG: WindowConfig = WindowConfig {
 };
 
 #[derive(Clone)]
-pub struct Gamestate {
+pub struct GameState {
     globals: Globals,
-
     debug_deltatime_factor: f32,
     scene_debug: SceneDebug,
 }
 
-impl Gamestate {
-    pub fn new(
+impl GameStateInterface for GameState {
+    fn get_game_config() -> GameInfo {
+        GameInfo {
+            game_window_title: GAME_WINDOW_TITLE.to_owned(),
+            game_save_folder_name: GAME_SAVE_FOLDER_NAME.to_owned(),
+            game_company_name: GAME_COMPANY_NAME.to_owned(),
+        }
+    }
+    fn get_window_config() -> WindowConfig {
+        WINDOW_CONFIG
+    }
+    fn new(
         draw: &mut Drawstate,
         audio: &mut Audiostate,
         assets: &mut GameAssets,
         input: &GameInput,
-    ) -> Gamestate {
+    ) -> GameState {
         let random = Random::new_from_seed((input.deltatime * 1000000.0) as u64);
 
         let camera = GameCamera::new(Vec2::zero(), CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -53,7 +67,7 @@ impl Gamestate {
         let font_default = draw.get_font("ProggyTiny_bordered");
         let font_default_no_border = draw.get_font("ProggyTiny");
 
-        let mut globals = Globals {
+        let globals = Globals {
             random,
             camera,
             cursors,
@@ -71,70 +85,78 @@ impl Gamestate {
 
         let scene_debug = SceneDebug::new(draw, audio, assets, input);
 
-        Gamestate {
+        GameState {
             globals,
 
             debug_deltatime_factor: 1.0,
             scene_debug,
         }
     }
+
+    fn update(
+        &mut self,
+        draw: &mut Drawstate,
+        audio: &mut Audiostate,
+        assets: &mut GameAssets,
+        input: &GameInput,
+    ) {
+        if input.keyboard.recently_pressed(Scancode::F5) {
+            *self = GameState::new(draw, audio, assets, input);
+        }
+
+        self.globals.cursors = Cursors::new(
+            &self.globals.camera.cam,
+            &input.mouse,
+            &input.touch,
+            input.screen_framebuffer_width,
+            input.screen_framebuffer_height,
+            CANVAS_WIDTH as u32,
+            CANVAS_HEIGHT as u32,
+        );
+
+        // DEBUG GAMESPEED MANIPULATION
+        //
+        if !is_effectively_zero(self.debug_deltatime_factor - 1.0) {
+            draw.debug_log(format!("timefactor: {:.1}", self.debug_deltatime_factor));
+        }
+        if input.keyboard.recently_pressed(Scancode::KpPlus) {
+            self.debug_deltatime_factor += 0.1;
+        }
+        if input.keyboard.recently_pressed(Scancode::KpMinus) {
+            self.debug_deltatime_factor -= 0.1;
+            if self.debug_deltatime_factor < 0.1 {
+                self.debug_deltatime_factor = 0.1;
+            }
+        }
+        if input.keyboard.recently_pressed(Scancode::Space) {
+            self.globals.is_paused = !self.globals.is_paused;
+        }
+        let mut deltatime = input.target_deltatime * self.debug_deltatime_factor;
+        if self.globals.is_paused {
+            if input.keyboard.recently_pressed_or_repeated(Scancode::N) {
+                deltatime = input.target_deltatime * self.debug_deltatime_factor;
+            } else {
+                deltatime = 0.0;
+            }
+        }
+        self.globals.deltatime = deltatime * self.globals.deltatime_speed_factor;
+
+        let mouse_coords = self.globals.cursors.mouse_coords;
+        game_handle_mouse_camera_zooming_panning(
+            &mut self.globals.camera,
+            &input.mouse,
+            &mouse_coords,
+        );
+
+        self.scene_debug
+            .update_and_draw(draw, audio, assets, input, &mut self.globals);
+
+        let deltatime = self.globals.deltatime;
+        self.globals.camera.update(deltatime);
+        draw.set_shaderparams_simple(Color::white(), self.globals.camera.proj_view_matrix());
+    }
 }
 
-pub fn update_and_draw(
-    game: &mut Gamestate,
-    draw: &mut Drawstate,
-    audio: &mut Audiostate,
-    assets: &mut GameAssets,
-    input: &GameInput,
-) {
-    if input.keyboard.recently_pressed(Scancode::F5) {
-        *game = Gamestate::new(draw, audio, assets, input);
-    }
-
-    game.globals.cursors = Cursors::new(
-        &game.globals.camera.cam,
-        &input.mouse,
-        &input.touch,
-        input.screen_framebuffer_width,
-        input.screen_framebuffer_height,
-        CANVAS_WIDTH as u32,
-        CANVAS_HEIGHT as u32,
-    );
-
-    // DEBUG GAMESPEED MANIPULATION
-    //
-    if !is_effectively_zero(game.debug_deltatime_factor - 1.0) {
-        draw.debug_log(format!("timefactor: {:.1}", game.debug_deltatime_factor));
-    }
-    if input.keyboard.recently_pressed(Scancode::KpPlus) {
-        game.debug_deltatime_factor += 0.1;
-    }
-    if input.keyboard.recently_pressed(Scancode::KpMinus) {
-        game.debug_deltatime_factor -= 0.1;
-        if game.debug_deltatime_factor < 0.1 {
-            game.debug_deltatime_factor = 0.1;
-        }
-    }
-    if input.keyboard.recently_pressed(Scancode::Space) {
-        game.globals.is_paused = !game.globals.is_paused;
-    }
-    let mut deltatime = input.target_deltatime * game.debug_deltatime_factor;
-    if game.globals.is_paused {
-        if input.keyboard.recently_pressed_or_repeated(Scancode::N) {
-            deltatime = input.target_deltatime * game.debug_deltatime_factor;
-        } else {
-            deltatime = 0.0;
-        }
-    }
-    game.globals.deltatime = deltatime * game.globals.deltatime_speed_factor;
-
-    let mouse_coords = game.globals.cursors.mouse_coords;
-    game_handle_mouse_camera_zooming_panning(&mut game.globals.camera, &input.mouse, &mouse_coords);
-
-    game.scene_debug
-        .update_and_draw(draw, audio, assets, input, &mut game.globals);
-
-    let deltatime = game.globals.deltatime;
-    game.globals.camera.update(deltatime);
-    draw.set_shaderparams_simple(Color::white(), game.globals.camera.proj_view_matrix());
+fn main() {
+    ct_platform::run_main::<GameState>();
 }

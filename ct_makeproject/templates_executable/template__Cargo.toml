@@ -8,4 +8,7 @@ default-run = "{{project_directory_name}}"
 [dependencies.ct_lib]
 path = "../cottontail/ct_lib"
 
+[dependencies.ct_platform]
+path = "../cottontail/ct_platform"
+
 [dependencies]

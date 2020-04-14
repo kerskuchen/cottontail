@@ -62,6 +62,7 @@ pub struct ButtonState {
     pub is_pressed: bool,
     pub transition_count: u32,
     pub system_repeat_count: u32,
+    // NOTE: This can be used to implement soft key-repeats
     pub tick_of_last_transition: u64,
 }
 

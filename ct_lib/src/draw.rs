@@ -54,10 +54,10 @@ pub const SPRITE_ATTACHMENT_POINTS_MAX_COUNT: usize = 4;
 /// This is similar to a Rect but allows mirroring horizontally/vertically
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 pub struct AAQuad {
-    left: f32,
-    top: f32,
-    right: f32,
-    bottom: f32,
+    pub left: f32,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
 }
 
 impl AAQuad {
@@ -1286,7 +1286,6 @@ impl Drawstate {
             let quad =
                 sprite.get_quad_transformed(worldpoint_pixel_snapped(pos), scale, rotation_dir);
 
-            // TODO: THIS IS WRONG - WE NEED SOMETHING LIKE AAQUAD FOR THIS
             let mut sprite_uvs = sprite.trimmed_uvs;
             if flip_horizontally {
                 std::mem::swap(&mut sprite_uvs.left, &mut sprite_uvs.right);
@@ -1481,10 +1480,8 @@ impl Drawstate {
         color: Color,
         additivity: Additivity,
     ) {
-        // TODO: Do something more intelligent but cheap for calculating the segment_count
-        //       I.e. https://stackoverflow.com/a/11774493 seems a little overkill. Maybe
-        //       https://stackoverflow.com/a/18499923 is better?
-        let segment_count = clampi(radius as i32, 16, 128) as u32;
+        let num_vertices = Circle::get_optimal_vertex_count(radius);
+        let segment_count = make_even(num_vertices as u32 + 1);
 
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
@@ -1625,7 +1622,6 @@ impl Drawstate {
     ) {
         // Based on the Paper "A Fast Bresenham Type AlgorithmFor Drawing Ellipses"
         // https://dai.fmph.uniba.sk/upload/0/01/Ellipse.pdf
-
         todo!()
     }
 
@@ -1638,10 +1634,8 @@ impl Drawstate {
         color: Color,
         additivity: Additivity,
     ) {
-        // TODO: Do something more intelligent but cheap for calculating the segment_count
-        //       I.e. https://stackoverflow.com/a/11774493 seems a little overkill. Maybe
-        //       https://stackoverflow.com/a/18499923 is better?
-        let segment_count = clampi(radius as i32, 16, 128) as u32;
+        let num_vertices = Circle::get_optimal_vertex_count(radius);
+        let segment_count = make_even(num_vertices as u32 + 1);
 
         let radius_outer = radius + 0.5 * thickness;
         let radius_inner = radius - 0.5 * thickness;
@@ -2214,6 +2208,7 @@ impl Drawstate {
     }
 }
 
+// NOTE: SOME OLD STUFF THAT WE WANT TO IMPLEMENT BELOW
 /*
 #if 0
 
@@ -2392,7 +2387,6 @@ pub fn drawbatch_pushSprite(batch: Drawbatch*, pos: Vec2, zdepth: Depth, col: Co
     batch.vertexBufferSize += VERTEXBUFFER_NUM_BYTES_PER_QUAD;
 }
 
-// TODO: make easier interface for this
 pub fn drawbatch_pushQuadRotated(batch: Drawbatch*, pos: Vec2, dim: Vec2, dir: Vec2, uvs: UV, zdepth: Depth, col: Color) )
 {
     assert(batch.drawMode == DRAWMODE_QUADS);
@@ -2404,7 +2398,6 @@ pub fn drawbatch_pushQuadRotated(batch: Drawbatch*, pos: Vec2, dim: Vec2, dir: V
     batch.vertexBufferSize += VERTEXBUFFER_NUM_BYTES_PER_QUAD;
 }
 
-// TODO: make easier interface for this
 pub fn drawbatch_pushQuad(batch: Drawbatch*, coords: Quad, zdepth: Depth, col: Color)
 {
     assert(batch.drawMode == DRAWMODE_QUADS);
@@ -2451,7 +2444,6 @@ pub fn debugSprite(ds: &mut Drawstate, sprite: Sprite, pos: Vec2, depth: Depth, 
     pos = pixelsnapWorldCoord(pos);
     Drawbatch batch = drawbatch_begin(ds.debug_drawBuffer, DRAWMODE_QUADS);
     drawbatch_pushSprite(&batch, pos, depth, col, sprite);
-    // TODO: when supporting of multiple atlases is implemented use sprite atlas index here somehow
     drawbatch_submit(&batch, ds, ds.atlas);
 }
 
@@ -2558,8 +2550,6 @@ pub fn debugCamFrustum(ds: &mut Drawstate, cam: Camera*, col: Color, thickness: 
 
 pub fn debugDepthBuffer(ds: Drawstate*)
 {
-    // TODO: remove mallocs here
-
     int width = (int)ds.canvas.framebuffer.width;
     int height = (int)ds.canvas.framebuffer.height;
     debugi(width);

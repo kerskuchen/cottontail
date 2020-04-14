@@ -1,13 +1,22 @@
-// TODO:
-// - Fix text centering with glyphs above baseline
-
 use super::bitmap::*;
+use super::bitmap_atlas::BitmapAtlas;
 use super::color::*;
 use super::math::*;
+use super::IndexMap;
+
+pub const FONT_DEFAULT_TTF_TINY: &[u8] = include_bytes!("../resources/fonts/ProggyTiny.ttf");
+pub const FONT_DEFAULT_TTF_SMALL: &[u8] = include_bytes!("../resources/fonts/ProggySmall.ttf");
+pub const FONT_DEFAULT_TTF_REGULAR: &[u8] = include_bytes!("../resources/fonts/ProggyClean.ttf");
+pub const FONT_DEFAULT_TTF_SQUARE: &[u8] = include_bytes!("../resources/fonts/ProggySquare.ttf");
 
 const FIRST_VISIBLE_ASCII_CODE_POINT: u8 = 32;
 const LAST_ASCII_CODE_POINT: u8 = 126;
 
+<<<<<<< HEAD:cottontail/ct_lib/src/bitmapfont.rs
+=======
+type Codepoint = i32;
+
+>>>>>>> 24395fe131ae4b13b1d7598ebd720fe801151681:cottontail/ct_lib/src/bitmap_font.rs
 #[derive(Clone)]
 pub struct BitmapFont {
     pub font_height: i32,
@@ -72,6 +81,25 @@ impl BitmapFont {
             baseline,
             glyphs,
         }
+    }
+
+    pub fn get_glyph_name(fontname: &str, codepoint: Codepoint) -> String {
+        format!("{}_codepoint_{}", fontname, codepoint)
+    }
+
+    pub fn create_atlas(&self, fontname: &str) -> (Bitmap, IndexMap<String, Vec2i>) {
+        let mut atlas = BitmapAtlas::new(64);
+        for glyph in &self.glyphs {
+            if let Some(bitmap) = &glyph.bitmap {
+                let spritename = BitmapFont::get_glyph_name(fontname, glyph.codepoint as Codepoint);
+                atlas.pack_bitmap_with_resize(&spritename, bitmap);
+            }
+        }
+        atlas
+            .atlas_texture
+            .trim(false, false, true, true, PixelRGBA::transparent());
+
+        (atlas.atlas_texture, atlas.sprite_positions)
     }
 
     /// Returns the width and height of a given utf8 text
@@ -213,7 +241,7 @@ impl BitmapFont {
 
 #[derive(Clone)]
 pub struct BitmapFontGlyph {
-    pub code_point: char,
+    pub codepoint: char,
     pub horizontal_advance: i32,
     pub offset: Vec2i,
     pub bitmap: Option<Bitmap>,
@@ -264,7 +292,7 @@ impl BitmapFontGlyph {
         }
 
         BitmapFontGlyph {
-            code_point: codepoint,
+            codepoint: codepoint,
             horizontal_advance,
             offset: Vec2i::new(offset_x, offset_y),
             bitmap: maybe_image,
@@ -323,7 +351,8 @@ fn draw_glyph_border(image: &mut Bitmap, color_glyph: PixelRGBA, color_border: P
                 for pair in pairs {
                     let neighbor_x = x + pair.0;
                     let neighbor_y = y + pair.1;
-                    let neighbor_pixel_val = image.get(neighbor_x, neighbor_y);
+                    let neighbor_pixel_val =
+                        image.get_or_default(neighbor_x, neighbor_y, color_glyph);
 
                     if neighbor_pixel_val != color_glyph {
                         image.set(neighbor_x, neighbor_y, color_border);

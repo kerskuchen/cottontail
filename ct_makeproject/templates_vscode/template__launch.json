@@ -7,7 +7,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'ct_launcher'",
+            "name": "Debug executable '{{project_directory_name}}'",
             "cargo": {
                 "args": [
                     "build",

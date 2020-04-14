@@ -251,12 +251,6 @@ fn project_refresh() {
             false,
         );
         template_copy_to_dir(
-            "cottontail/ct_makeproject/templates_executable/template__interface.rs",
-            &(project_directory_name.clone() + "/src"),
-            &project_details,
-            true,
-        );
-        template_copy_to_dir(
             "cottontail/ct_makeproject/templates_executable/template__main.rs",
             &(project_directory_name.clone() + "/src"),
             &project_details,
@@ -268,7 +262,7 @@ fn project_refresh() {
     // Assets setup
 
     for template_filepath in
-        &["cottontail/ct_makeproject/templates_assets/template__assets_bake.bat"]
+        &["cottontail/ct_makeproject/templates_assets/template__assets_autobake.bat"]
     {
         template_copy_to_dir(template_filepath, "./", &project_details, true);
     }
