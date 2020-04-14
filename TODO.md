@@ -1,7 +1,8 @@
 ## Current:
 
 
-* Make assetbaker not use external font packer
+* Allow font atlas to resize and trim automatically afterwards. this will get rid of the need to 
+  pass a texture size to the font packer
 
 
 ## Next:

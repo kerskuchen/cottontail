@@ -215,7 +215,7 @@ impl BitmapFont {
 
 #[derive(Clone)]
 pub struct BitmapFontGlyph {
-    pub code_point: char,
+    pub codepoint: char,
     pub horizontal_advance: i32,
     pub offset: Vec2i,
     pub bitmap: Option<Bitmap>,
@@ -266,7 +266,7 @@ impl BitmapFontGlyph {
         }
 
         BitmapFontGlyph {
-            code_point: codepoint,
+            codepoint: codepoint,
             horizontal_advance,
             offset: Vec2i::new(offset_x, offset_y),
             bitmap: maybe_image,
@@ -325,7 +325,8 @@ fn draw_glyph_border(image: &mut Bitmap, color_glyph: PixelRGBA, color_border: P
                 for pair in pairs {
                     let neighbor_x = x + pair.0;
                     let neighbor_y = y + pair.1;
-                    let neighbor_pixel_val = image.get(neighbor_x, neighbor_y);
+                    let neighbor_pixel_val =
+                        image.get_or_default(neighbor_x, neighbor_y, color_glyph);
 
                     if neighbor_pixel_val != color_glyph {
                         image.set(neighbor_x, neighbor_y, color_border);

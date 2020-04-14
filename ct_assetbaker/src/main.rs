@@ -1,13 +1,14 @@
 mod aseprite;
-mod bitmapfont;
 
 use ct_lib::atlas_packer::{AtlasPacker, AtlasPosition};
+use ct_lib::bitmapfont::*;
 use ct_lib::color::*;
 use ct_lib::draw::*;
 use ct_lib::game::*;
 use ct_lib::math::*;
 use ct_lib::system;
 use ct_lib::IndexMap;
+
 use rayon::prelude::*;
 use serde_derive::Serialize;
 
@@ -70,6 +71,16 @@ pub struct AssetAtlas {
     pub sprite_positions: IndexMap<Spritename, AtlasPosition>,
 }
 
+pub struct BitmapFontProperties {
+    pub ttf_path: String,
+    pub output_dir: String,
+    pub fontsize_in_pixels: u32,
+    pub texture_size: u32,
+    pub bordered: bool,
+    pub color_glyph: PixelRGBA,
+    pub color_border: PixelRGBA,
+}
+
 fn bake_graphics_resources() {
     // bitmapfont::test_font_sizes( "assets/fonts/Proggy/ProggyTiny.ttf", "assets_temp", 5, 24,);
 
@@ -77,19 +88,19 @@ fn bake_graphics_resources() {
     let color_border = PixelRGBA::new(0, 0, 0, 255);
 
     let font_properties = vec![
-        bitmapfont::BitmapFontProperties {
+        BitmapFontProperties {
             ttf_path: "assets/fonts/Proggy/ProggyTiny.ttf".to_owned(),
             output_dir: "assets_temp".to_owned(),
-            fontsize_in_pixels: 16,
+            fontsize_in_pixels: 10,
             texture_size: 128,
             bordered: false,
             color_glyph,
             color_border,
         },
-        bitmapfont::BitmapFontProperties {
+        BitmapFontProperties {
             ttf_path: "assets/fonts/Proggy/ProggyTiny.ttf".to_owned(),
             output_dir: "assets_temp".to_owned(),
-            fontsize_in_pixels: 16,
+            fontsize_in_pixels: 10,
             texture_size: 128,
             bordered: true,
             color_glyph,
@@ -123,7 +134,7 @@ fn bake_graphics_resources() {
     let sprites_and_fonts: Vec<(IndexMap<Spritename, AssetSprite>, AssetFont)> = font_properties
         .par_iter()
         .map(|property| {
-            bitmapfont::bitmapfont_create_from_ttf(
+            bitmapfont_create_from_ttf(
                 &property.ttf_path,
                 &property.output_dir,
                 property.fontsize_in_pixels,
@@ -244,6 +255,166 @@ fn bake_audio_resources() {
         std::fs::create_dir_all(system::path_without_filename(&wav_path_dest)).unwrap();
         std::fs::copy(wav_path_source, wav_path_dest).unwrap();
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Font packing
+
+fn sprite_name_for_codepoint(fontname: &str, codepoint: Codepoint) -> Spritename {
+    format!("{}_codepoint_{}", fontname, codepoint)
+}
+
+fn sprite_create_from_glyph_meta(
+    sprite_name: &str,
+    glyph: &BitmapFontGlyph,
+    position_in_font_atlas: Option<Vec2i>,
+) -> AssetSprite {
+    let (glyph_width, glyph_height, glyph_offset) = if let Some(bitmap) = &glyph.bitmap {
+        (bitmap.width, bitmap.height, glyph.offset)
+    } else {
+        (0, 0, Vec2i::zero())
+    };
+    let glyph_atlas_pos = if let Some(pos) = position_in_font_atlas {
+        pos
+    } else {
+        Vec2i::zero()
+    };
+
+    // NOTE: The `atlas_texture_index` and the `trimmed_rect_uv` will be adjusted later when we
+    // actually pack the sprites into atlas textures
+    AssetSprite {
+        name: sprite_name.to_owned(),
+        name_hash: ct_lib::hash_string_64(sprite_name),
+
+        has_translucency: false,
+
+        atlas_texture_index: std::u32::MAX,
+
+        pivot_offset: Vec2i::zero(),
+
+        attachment_points: [Vec2i::zero(); SPRITE_ATTACHMENT_POINTS_MAX_COUNT],
+
+        untrimmed_dimensions: Vec2i::new(glyph_width, glyph_height),
+
+        trimmed_rect: Recti::from_xy_width_height(
+            glyph_offset.x,
+            glyph_offset.y,
+            glyph_width,
+            glyph_height,
+        ),
+
+        trimmed_uvs: Recti::from_xy_width_height(
+            glyph_atlas_pos.x,
+            glyph_atlas_pos.y,
+            glyph_width,
+            glyph_height,
+        ),
+    }
+}
+
+pub fn bitmapfont_create_from_ttf(
+    ttf_filepath: &str,
+    output_dir: &str,
+    fontsize_pixels: u32,
+    texture_size: u32,
+    draw_border: bool,
+    color_glyph: PixelRGBA,
+    color_border: PixelRGBA,
+) -> (IndexMap<Spritename, AssetSprite>, AssetFont) {
+    let fontname = system::path_to_filename_without_extension(ttf_filepath)
+        + if draw_border { "_bordered" } else { "" };
+
+    let output_filepath_without_extension = system::path_join(output_dir, &fontname);
+    let output_filepath_meta = output_filepath_without_extension.to_owned() + ".fnt";
+    let output_filepath_png = output_filepath_without_extension.to_owned() + ".png";
+
+    let border_thickness = if draw_border { 1 } else { 0 };
+
+    let font_ttf_bytes =
+        std::fs::read(ttf_filepath).expect(&format!("Cannot read fontdata '{}'", ttf_filepath));
+    let font = BitmapFont::new(
+        &font_ttf_bytes,
+        fontsize_pixels as i32,
+        border_thickness,
+        0,
+        color_glyph,
+        color_border,
+    );
+
+    // Create sprite names
+    let sprite_names: Vec<Spritename> = font
+        .glyphs
+        .iter()
+        .map(|glyph| sprite_name_for_codepoint(&fontname, glyph.codepoint as Codepoint))
+        .collect();
+
+    // Pack font atlas and write to file
+    let mut font_packer = AtlasPacker::new(texture_size as i32);
+    for (sprite_name, glyph) in sprite_names.iter().zip(font.glyphs.iter()) {
+        if let Some(bitmap) = &glyph.bitmap {
+            font_packer.pack_bitmap(sprite_name, bitmap);
+        }
+    }
+    assert!(
+        font_packer.atlas_textures.len() == 1,
+        "Font '{}' rendered in size '{}' is too big to fit into {}x{} texture",
+        ttf_filepath,
+        fontsize_pixels,
+        texture_size,
+        texture_size
+    );
+    Bitmap::write_to_png_file(
+        &font_packer.atlas_textures.first().unwrap(),
+        &output_filepath_png,
+    );
+
+    // Create glyphs
+    let glyphs: IndexMap<Codepoint, AssetGlyph> = font
+        .glyphs
+        .iter()
+        .map(|glyph| {
+            let codepoint = glyph.codepoint as Codepoint;
+            let sprite_name = sprite_name_for_codepoint(&fontname, codepoint);
+            let new_glyph = AssetGlyph {
+                codepoint,
+                sprite_name,
+                // NOTE: The `sprite_index` be set later when we finished collecting all
+                //       our the sprites
+                sprite_index: std::u32::MAX,
+                horizontal_advance: glyph.horizontal_advance,
+            };
+            (codepoint, new_glyph)
+        })
+        .collect();
+
+    // Create sprites
+    let result_sprites: IndexMap<Spritename, AssetSprite> = font
+        .glyphs
+        .iter()
+        .map(|glyph| {
+            let codepoint = glyph.codepoint as Codepoint;
+            let sprite_name = sprite_name_for_codepoint(&fontname, codepoint);
+            let sprite_pos = font_packer
+                .sprite_positions
+                .get(&sprite_name)
+                .map(|atlas_pos| atlas_pos.atlas_texture_pixel_offset);
+            let sprite = sprite_create_from_glyph_meta(&sprite_name, glyph, sprite_pos);
+            (sprite_name, sprite)
+        })
+        .collect();
+
+    // Create Font
+    let result_font = AssetFont {
+        name: fontname.clone(),
+        name_hash: ct_lib::hash_string_64(&fontname),
+        baseline: font.baseline,
+        vertical_advance: font.vertical_advance,
+        glyphcount: glyphs.len() as u32,
+        glyphs,
+        sprite_names,
+    };
+
+    (result_sprites, result_font)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

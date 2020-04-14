@@ -12,10 +12,10 @@ pub struct AtlasPosition {
     pub atlas_texture_pixel_offset: Vec2i,
 }
 pub struct AtlasPacker {
-    atlas_texture_size: i32,
-    atlas_textures: Vec<Bitmap>,
-    rect_packers: Vec<rect_packer::DensePacker>,
-    sprite_positions: IndexMap<String, AtlasPosition>,
+    pub atlas_texture_size: i32,
+    pub atlas_textures: Vec<Bitmap>,
+    pub rect_packers: Vec<rect_packer::DensePacker>,
+    pub sprite_positions: IndexMap<String, AtlasPosition>,
 }
 
 impl AtlasPacker {
