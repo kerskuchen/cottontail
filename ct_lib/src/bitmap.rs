@@ -1,15 +1,40 @@
-pub use super::color::PixelRGBA;
+pub use super::color::{Color, PixelRGBA};
 pub use super::grid::GluePosition;
+pub use super::math;
 
 pub type Bitmap = super::grid::Grid<PixelRGBA>;
 
 impl Bitmap {
     pub fn from_premultiplied(&self) -> Bitmap {
-        todo!()
+        let mut result = self.clone();
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let mut color = self.get(x, y);
+                if color.a > 0 {
+                    let alpha = color.a as f32 / 255.0;
+                    color.r = i32::min(math::roundi(color.r as f32 / alpha), 255) as u8;
+                    color.g = i32::min(math::roundi(color.g as f32 / alpha), 255) as u8;
+                    color.b = i32::min(math::roundi(color.b as f32 / alpha), 255) as u8;
+                }
+                result.set(x, y, color);
+            }
+        }
+        result
     }
 
     pub fn to_premultiplied(&self) -> Bitmap {
-        todo!()
+        let mut result = self.clone();
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let mut color = self.get(x, y);
+                let alpha = color.a as f32 / 255.0;
+                color.r = math::roundi(color.r as f32 * alpha) as u8;
+                color.g = math::roundi(color.g as f32 * alpha) as u8;
+                color.b = math::roundi(color.b as f32 * alpha) as u8;
+                result.set(x, y, color);
+            }
+        }
+        result
     }
 
     pub fn create_from_png_file(png_filepath: &str) -> Bitmap {

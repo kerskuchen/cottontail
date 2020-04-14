@@ -1,7 +1,7 @@
 use super::{AssetAtlas, SpritePosition, Spritename, TextureIndex};
 
-use ct_lib::bitmap::*;
-use ct_lib::math::*;
+use ct_lib::bitmap::Bitmap;
+use ct_lib::math::Vec2i;
 use ct_lib::system;
 
 use indexmap::IndexMap;
@@ -32,8 +32,8 @@ impl AtlasPacker {
         }
     }
 
-    fn pack_bitmap(&mut self, sprite_name: &str, image: &Bitmap, trim_bottom_right: bool) {
-        if self.try_pack_bitmap(sprite_name, image, trim_bottom_right) {
+    fn pack_bitmap(&mut self, sprite_name: &str, image: &Bitmap) {
+        if self.try_pack_bitmap(sprite_name, image) {
             return;
         }
 
@@ -47,7 +47,7 @@ impl AtlasPacker {
             self.atlas_texture_size as u32,
             self.atlas_texture_size as u32,
         ));
-        if !self.try_pack_bitmap(sprite_name, image, trim_bottom_right) {
+        if !self.try_pack_bitmap(sprite_name, image) {
             panic!(
                 "Could not pack image with dimensions {}x{} into atlas with dimensions {}x{}",
                 image.width, image.height, self.atlas_texture_size, self.atlas_texture_size
@@ -60,12 +60,7 @@ impl AtlasPacker {
     }
 
     /// Returns true if found a spot to pack the given bitmap
-    fn try_pack_bitmap(
-        &mut self,
-        sprite_name: &str,
-        image: &Bitmap,
-        trim_bottom_right: bool,
-    ) -> bool {
+    fn try_pack_bitmap(&mut self, name: &str, image: &Bitmap) -> bool {
         for (atlas_index, (packer, texture)) in self
             .rect_packers
             .iter_mut()
@@ -74,17 +69,10 @@ impl AtlasPacker {
         {
             if let Some(rect) = packer.pack(image.width, image.height, false) {
                 let position = Vec2i::new(rect.x, rect.y);
-
-                if trim_bottom_right == true {
-                    image
-                        .trimmed(false, false, true, true, PixelRGBA::transparent())
-                        .blit_to(texture, position, None);
-                } else {
-                    image.blit_to(texture, position, None);
-                };
+                image.blit_to(texture, position, None);
 
                 self.sprite_positions.insert(
-                    sprite_name.to_owned(),
+                    name.to_owned(),
                     SpritePosition {
                         atlas_texture_index: atlas_index as TextureIndex,
                         atlas_texture_pixel_offset: position,
@@ -113,7 +101,7 @@ pub fn atlas_create_from_pngs(
             let image = Bitmap::create_from_png_file(&image_path);
             let sprite_name = system::path_without_extension(&image_path)
                 .replace(&format!("{}/", source_dir), "");
-            packer.pack_bitmap(&sprite_name, &image, true);
+            packer.pack_bitmap(&sprite_name, &image);
         }
         packer.finish()
     };

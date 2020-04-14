@@ -1,11 +1,7 @@
 ## Current:
 
 
-* fix trimming in atlas packer
-* add premultiplied colors to atlas packer
-* fix rendering issue with atlas packer
-
-* Make assetbaker not use external font and texture packer
+* Make assetbaker not use external font packer
 
 
 ## Next:

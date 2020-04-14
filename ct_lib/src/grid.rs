@@ -329,13 +329,13 @@ where
             self.height - 1
         };
 
-        let new_width = new_right - new_left;
-        let new_height = new_bottom - new_top;
+        let new_width = 1 + new_right - new_left;
+        let new_height = 1 + new_bottom - new_top;
 
         let mut trimmed_result = Grid::new(new_width as u32, new_height as u32);
         Grid::copy_region(
             &self,
-            Recti::from_xy_width_height(new_left, new_right, new_width, new_height),
+            Recti::from_xy_width_height(new_left, new_top, new_width, new_height),
             &mut trimmed_result,
             Recti::from_width_height(new_width, new_height),
             None,
