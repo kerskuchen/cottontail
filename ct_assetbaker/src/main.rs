@@ -159,27 +159,9 @@ fn bake_graphics_resources() {
         result_animations.extend(animations);
     }
 
-    // Create texture atlas
-    let mut result_atlas = atlas_create_from_pngs("assets_temp", "assets_temp", 1024);
-    for atlas_texture_path in &result_atlas.texture_imagepaths {
-        std::fs::rename(
-            atlas_texture_path,
-            system::path_join(
-                "assets_baked",
-                &system::path_to_filename(&atlas_texture_path),
-            ),
-        )
-        .unwrap();
-    }
-    // We assume that our atlas textures will be located at the root of our final destination, so
-    // we drop the prefix
-    result_atlas.texture_imagepaths = result_atlas
-        .texture_imagepaths
-        .iter_mut()
-        .map(|path| path.replace(&format!("{}/", "assets_temp"), ""))
-        .collect();
-
-    // Adjust positions of our sprites according to the final packed atlas positions
+    // Create texture atlas and Adjust positions of our sprites according to the final packed
+    // atlas positions
+    let result_atlas = atlas_create_from_pngs("assets_temp", "assets_baked", 1024);
     for (sprite_name, sprite_pos) in &result_atlas.sprite_positions {
         if result_sprites.contains_key(sprite_name) {
             // Atlas-sprite is a regular sprite
@@ -265,14 +247,14 @@ fn bake_audio_resources() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Asset conversion
+// Atlas packing
 
 pub fn atlas_create_from_pngs(
-    source_dir: &str,
+    png_search_dir: &str,
     output_dir: &str,
     atlas_texture_size: u32,
 ) -> AssetAtlas {
-    let sprite_imagepaths = system::collect_files_by_extension_recursive(source_dir, ".png");
+    let sprite_imagepaths = system::collect_files_by_extension_recursive(png_search_dir, ".png");
 
     // Pack sprites
     let (atlas_textures, result_sprite_positions) = {
@@ -280,7 +262,7 @@ pub fn atlas_create_from_pngs(
         for image_path in sprite_imagepaths.into_iter() {
             let image = Bitmap::create_from_png_file(&image_path);
             let sprite_name = system::path_without_extension(&image_path)
-                .replace(&format!("{}/", source_dir), "");
+                .replace(&format!("{}/", png_search_dir), "");
             packer.pack_bitmap(&sprite_name, &image);
         }
         packer.finish()
@@ -293,7 +275,11 @@ pub fn atlas_create_from_pngs(
         for (index, atlas_texture) in atlas_textures.iter().enumerate() {
             let texture_path = format!("{}-{}.png", atlas_path_without_extension, index);
             Bitmap::write_to_png_file(&atlas_texture.to_premultiplied(), &texture_path);
-            texture_imagepaths.push(texture_path);
+
+            // NOTE: We assume that our atlas textures will be located at the root of our final destination,
+            //       so we drop the prefix
+            let texture_path_shortened = texture_path.replace("assets_baked/", "");
+            texture_imagepaths.push(texture_path_shortened);
         }
         texture_imagepaths
     };
@@ -305,6 +291,7 @@ pub fn atlas_create_from_pngs(
         sprite_positions: result_sprite_positions,
     }
 }
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Asset conversion
 
