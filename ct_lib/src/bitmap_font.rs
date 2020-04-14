@@ -1,6 +1,8 @@
 use super::bitmap::*;
+use super::bitmap_atlas::BitmapAtlas;
 use super::color::*;
 use super::math::*;
+use super::IndexMap;
 
 pub const FONT_DEFAULT_TTF_TINY: &[u8] = include_bytes!("../resources/fonts/ProggyTiny.ttf");
 pub const FONT_DEFAULT_TTF_SMALL: &[u8] = include_bytes!("../resources/fonts/ProggySmall.ttf");
@@ -9,6 +11,8 @@ pub const FONT_DEFAULT_TTF_SQUARE: &[u8] = include_bytes!("../resources/fonts/Pr
 
 const FIRST_VISIBLE_ASCII_CODE_POINT: u8 = 32;
 const LAST_ASCII_CODE_POINT: u8 = 126;
+
+type Codepoint = i32;
 
 #[derive(Clone)]
 pub struct BitmapFont {
@@ -74,6 +78,25 @@ impl BitmapFont {
             baseline,
             glyphs,
         }
+    }
+
+    pub fn get_glyph_name(fontname: &str, codepoint: Codepoint) -> String {
+        format!("{}_codepoint_{}", fontname, codepoint)
+    }
+
+    pub fn create_atlas(&self, fontname: &str) -> (Bitmap, IndexMap<String, Vec2i>) {
+        let mut atlas = BitmapAtlas::new(64);
+        for glyph in &self.glyphs {
+            if let Some(bitmap) = &glyph.bitmap {
+                let spritename = BitmapFont::get_glyph_name(fontname, glyph.codepoint as Codepoint);
+                atlas.pack_bitmap_with_resize(&spritename, bitmap);
+            }
+        }
+        atlas
+            .atlas_texture
+            .trim(false, false, true, true, PixelRGBA::transparent());
+
+        (atlas.atlas_texture, atlas.sprite_positions)
     }
 
     /// Returns the width and height of a given utf8 text

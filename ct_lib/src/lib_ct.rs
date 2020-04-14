@@ -1,7 +1,7 @@
-pub mod atlas_packer;
 pub mod audio;
 pub mod bitmap;
-pub mod bitmapfont;
+pub mod bitmap_atlas;
+pub mod bitmap_font;
 pub mod color;
 pub mod draw;
 pub mod grid;

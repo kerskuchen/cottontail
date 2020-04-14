@@ -8,23 +8,23 @@ use super::IndexMap;
 use rect_packer;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Serialize)]
-pub struct AtlasPosition {
+pub struct BitmapAtlasPosition {
     pub atlas_texture_index: u32,
     pub atlas_texture_pixel_offset: Vec2i,
 }
 
 /// An atlaspacker that can grow in size
-pub struct AtlasPacker {
+pub struct BitmapAtlas {
     pub atlas_texture: Bitmap,
     pub rect_packer: rect_packer::DensePacker,
     pub sprite_positions: IndexMap<String, Vec2i>,
 }
 
-impl AtlasPacker {
-    pub fn new(atlas_texture_size_initial: i32) -> AtlasPacker {
+impl BitmapAtlas {
+    pub fn new(atlas_texture_size_initial: i32) -> BitmapAtlas {
         assert!(atlas_texture_size_initial > 0);
 
-        AtlasPacker {
+        BitmapAtlas {
             atlas_texture: Bitmap::new(
                 atlas_texture_size_initial as u32,
                 atlas_texture_size_initial as u32,
@@ -62,32 +62,34 @@ impl AtlasPacker {
         let texture_size = self.atlas_texture.width;
         self.atlas_texture
             .extend(0, 0, texture_size, texture_size, PixelRGBA::transparent());
+        self.rect_packer.resize(2 * texture_size, 2 * texture_size);
+
         self.pack_bitmap_with_resize(name, image)
     }
 }
 
-/// An atlaspacker that can have multiple fixed size atlas textures
-pub struct AtlasMultipacker {
+/// An BitmapAtlas that can have multiple fixed size atlas textures
+pub struct BitmapMultiAtlas {
     pub atlas_texture_size: i32,
-    pub atlas_packers: Vec<AtlasPacker>,
-    pub sprite_positions: IndexMap<String, AtlasPosition>,
+    pub atlas_packers: Vec<BitmapAtlas>,
+    pub sprite_positions: IndexMap<String, BitmapAtlasPosition>,
 }
 
-impl AtlasMultipacker {
-    pub fn new(atlas_texture_size: i32) -> AtlasMultipacker {
+impl BitmapMultiAtlas {
+    pub fn new(atlas_texture_size: i32) -> BitmapMultiAtlas {
         assert!(atlas_texture_size > 0);
 
-        AtlasMultipacker {
+        BitmapMultiAtlas {
             atlas_texture_size,
-            atlas_packers: vec![AtlasPacker::new(atlas_texture_size)],
+            atlas_packers: vec![BitmapAtlas::new(atlas_texture_size)],
             sprite_positions: IndexMap::new(),
         }
     }
 
-    pub fn pack_bitmap(&mut self, name: &str, image: &Bitmap) -> Option<AtlasPosition> {
+    pub fn pack_bitmap(&mut self, name: &str, image: &Bitmap) -> Option<BitmapAtlasPosition> {
         for (atlas_index, packer) in self.atlas_packers.iter_mut().enumerate() {
             if let Some(position) = packer.pack_bitmap(name, image) {
-                let atlas_position = AtlasPosition {
+                let atlas_position = BitmapAtlasPosition {
                     atlas_texture_index: atlas_index as u32,
                     atlas_texture_pixel_offset: position,
                 };
@@ -103,7 +105,7 @@ impl AtlasMultipacker {
         &mut self,
         sprite_name: &str,
         image: &Bitmap,
-    ) -> AtlasPosition {
+    ) -> BitmapAtlasPosition {
         if let Some(atlas_position) = self.pack_bitmap(sprite_name, image) {
             return atlas_position;
         }
@@ -111,7 +113,7 @@ impl AtlasMultipacker {
         // NOTE: At this point our image did not fit in any of the existing atlas textures, so we
         //       create a new atlas texture and try again
         self.atlas_packers
-            .push(AtlasPacker::new(self.atlas_texture_size));
+            .push(BitmapAtlas::new(self.atlas_texture_size));
         if let Some(atlas_position) = self.pack_bitmap(sprite_name, image) {
             atlas_position
         } else {
@@ -122,7 +124,7 @@ impl AtlasMultipacker {
         }
     }
 
-    pub fn finish(self) -> (Vec<Bitmap>, IndexMap<String, AtlasPosition>) {
+    pub fn finish(self) -> (Vec<Bitmap>, IndexMap<String, BitmapAtlasPosition>) {
         let atlas_textures = self
             .atlas_packers
             .into_iter()

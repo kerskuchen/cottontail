@@ -1,7 +1,7 @@
 mod aseprite;
 
-use ct_lib::atlas_packer::{AtlasMultipacker, AtlasPosition};
-use ct_lib::bitmapfont::*;
+use ct_lib::bitmap_atlas::{BitmapAtlasPosition, BitmapMultiAtlas};
+use ct_lib::bitmap_font::*;
 use ct_lib::color::*;
 use ct_lib::draw::*;
 use ct_lib::game::*;
@@ -68,14 +68,13 @@ pub struct AssetAtlas {
     pub texture_size: u32,
     pub texture_count: u32,
     pub texture_imagepaths: Vec<String>,
-    pub sprite_positions: IndexMap<Spritename, AtlasPosition>,
+    pub sprite_positions: IndexMap<Spritename, BitmapAtlasPosition>,
 }
 
 pub struct BitmapFontProperties {
     pub ttf_path: String,
     pub output_dir: String,
     pub fontsize_in_pixels: u32,
-    pub texture_size: u32,
     pub bordered: bool,
     pub color_glyph: PixelRGBA,
     pub color_border: PixelRGBA,
@@ -92,7 +91,6 @@ fn bake_graphics_resources() {
             ttf_path: "assets/fonts/Proggy/ProggyTiny.ttf".to_owned(),
             output_dir: "assets_temp".to_owned(),
             fontsize_in_pixels: 10,
-            texture_size: 128,
             bordered: false,
             color_glyph,
             color_border,
@@ -101,7 +99,6 @@ fn bake_graphics_resources() {
             ttf_path: "assets/fonts/Proggy/ProggyTiny.ttf".to_owned(),
             output_dir: "assets_temp".to_owned(),
             fontsize_in_pixels: 10,
-            texture_size: 128,
             bordered: true,
             color_glyph,
             color_border,
@@ -138,7 +135,6 @@ fn bake_graphics_resources() {
                 &property.ttf_path,
                 &property.output_dir,
                 property.fontsize_in_pixels,
-                property.texture_size,
                 property.bordered,
                 property.color_glyph,
                 property.color_border,
@@ -260,10 +256,6 @@ fn bake_audio_resources() {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Font packing
 
-fn sprite_name_for_codepoint(fontname: &str, codepoint: Codepoint) -> Spritename {
-    format!("{}_codepoint_{}", fontname, codepoint)
-}
-
 fn sprite_create_from_glyph_meta(
     sprite_name: &str,
     glyph: &BitmapFontGlyph,
@@ -316,7 +308,6 @@ pub fn bitmapfont_create_from_ttf(
     ttf_filepath: &str,
     output_dir: &str,
     fontsize_pixels: u32,
-    texture_size: u32,
     draw_border: bool,
     color_glyph: PixelRGBA,
     color_border: PixelRGBA,
@@ -325,7 +316,6 @@ pub fn bitmapfont_create_from_ttf(
         + if draw_border { "_bordered" } else { "" };
 
     let output_filepath_without_extension = system::path_join(output_dir, &fontname);
-    let output_filepath_meta = output_filepath_without_extension.to_owned() + ".fnt";
     let output_filepath_png = output_filepath_without_extension.to_owned() + ".png";
 
     let border_thickness = if draw_border { 1 } else { 0 };
@@ -345,28 +335,11 @@ pub fn bitmapfont_create_from_ttf(
     let sprite_names: Vec<Spritename> = font
         .glyphs
         .iter()
-        .map(|glyph| sprite_name_for_codepoint(&fontname, glyph.codepoint as Codepoint))
+        .map(|glyph| BitmapFont::get_glyph_name(&fontname, glyph.codepoint as Codepoint))
         .collect();
 
-    // Pack font atlas and write to file
-    let mut font_packer = AtlasMultipacker::new(texture_size as i32);
-    for (sprite_name, glyph) in sprite_names.iter().zip(font.glyphs.iter()) {
-        if let Some(bitmap) = &glyph.bitmap {
-            font_packer.pack_bitmap(sprite_name, bitmap);
-        }
-    }
-    assert!(
-        font_packer.atlas_packers.len() == 1,
-        "Font '{}' rendered in size '{}' is too big to fit into {}x{} texture",
-        ttf_filepath,
-        fontsize_pixels,
-        texture_size,
-        texture_size
-    );
-    Bitmap::write_to_png_file(
-        &font_packer.atlas_packers.first().unwrap().atlas_texture,
-        &output_filepath_png,
-    );
+    let (font_atlas_texture, font_atlas_glyph_positions) = font.create_atlas(&fontname);
+    Bitmap::write_to_png_file(&font_atlas_texture, &output_filepath_png);
 
     // Create glyphs
     let glyphs: IndexMap<Codepoint, AssetGlyph> = font
@@ -374,7 +347,7 @@ pub fn bitmapfont_create_from_ttf(
         .iter()
         .map(|glyph| {
             let codepoint = glyph.codepoint as Codepoint;
-            let sprite_name = sprite_name_for_codepoint(&fontname, codepoint);
+            let sprite_name = BitmapFont::get_glyph_name(&fontname, codepoint);
             let new_glyph = AssetGlyph {
                 codepoint,
                 sprite_name,
@@ -393,11 +366,8 @@ pub fn bitmapfont_create_from_ttf(
         .iter()
         .map(|glyph| {
             let codepoint = glyph.codepoint as Codepoint;
-            let sprite_name = sprite_name_for_codepoint(&fontname, codepoint);
-            let sprite_pos = font_packer
-                .sprite_positions
-                .get(&sprite_name)
-                .map(|atlas_pos| atlas_pos.atlas_texture_pixel_offset);
+            let sprite_name = BitmapFont::get_glyph_name(&fontname, codepoint);
+            let sprite_pos = font_atlas_glyph_positions.get(&sprite_name).cloned();
             let sprite = sprite_create_from_glyph_meta(&sprite_name, glyph, sprite_pos);
             (sprite_name, sprite)
         })
@@ -429,7 +399,7 @@ pub fn atlas_create_from_pngs(
 
     // Pack sprites
     let (atlas_textures, result_sprite_positions) = {
-        let mut packer = AtlasMultipacker::new(atlas_texture_size as i32);
+        let mut packer = BitmapMultiAtlas::new(atlas_texture_size as i32);
         for image_path in sprite_imagepaths.into_iter() {
             let image = Bitmap::create_from_png_file(&image_path);
             let sprite_name = system::path_without_extension(&image_path)

@@ -276,6 +276,17 @@ where
         None
     }
 
+    pub fn trim(
+        &mut self,
+        trim_left: bool,
+        trim_top: bool,
+        trim_right: bool,
+        trim_bottom: bool,
+        trim_value: CellType,
+    ) {
+        *self = self.trimmed(trim_left, trim_top, trim_right, trim_bottom, trim_value);
+    }
+
     pub fn trimmed(
         &self,
         trim_left: bool,
