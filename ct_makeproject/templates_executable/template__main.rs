@@ -117,7 +117,7 @@ impl GameStateInterface for GameState {
         // DEBUG GAMESPEED MANIPULATION
         //
         if !is_effectively_zero(self.debug_deltatime_factor - 1.0) {
-            draw.debug_log(format!("timefactor: {:.1}", self.debug_deltatime_factor));
+            draw.debug_log(format!("Timefactor: {:.1}", self.debug_deltatime_factor));
         }
         if input.keyboard.recently_pressed(Scancode::KpPlus) {
             self.debug_deltatime_factor += 0.1;
@@ -150,6 +150,19 @@ impl GameStateInterface for GameState {
 
         self.scene_debug
             .update_and_draw(draw, audio, assets, input, &mut self.globals);
+
+        let test_font = draw.get_font("Grand9K_Pixel_bordered");
+        draw.draw_text(
+            "Loaded font test",
+            &test_font,
+            1.0,
+            Vec2::new(5.0, CANVAS_HEIGHT - 30.0),
+            Vec2::zero(),
+            false,
+            20.0,
+            Color::magenta(),
+            ADDITIVITY_NONE,
+        );
 
         let deltatime = self.globals.deltatime;
         self.globals.camera.update(deltatime);

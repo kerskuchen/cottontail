@@ -1,10 +1,10 @@
 ## Done today
 
-* Assets baker needs to always generate default fonts
-* We need to abstract over the fact that some fonts are embedded and some are loaded at runtime
-* Remove the need to pass font filepath to drawstate on its creation
-* We need to make font assets (json files?) that are placed in the assets folder and contain info 
-  on how to render the given font
+* Assets baker always generates default fonts
+* Can use build-in and loaded fonts the same way
+* Removed the need to pass font filepath to drawstate on its creation
+* Added json font style file which contains info on how to render the given font
+* Added usage of a loaded font to main example
 
 ## Current:
 

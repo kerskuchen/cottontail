@@ -1,6 +1,3 @@
-// Copyright (c) 2019 Jakob Schwab
-// This code is licensed under MIT license (see LICENSE.txt in repository root for details)
-
 mod renderer_opengl;
 mod sdl_input;
 mod sdl_window;
