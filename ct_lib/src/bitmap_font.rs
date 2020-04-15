@@ -63,8 +63,6 @@ impl BitmapFont {
             let ascent = v_metrics.ascent + font_raster_offset.y;
             let descent = v_metrics.descent + font_raster_offset.y;
             let line_gap = v_metrics.line_gap;
-            let vertical_advance = ascent - descent + line_gap;
-            let baseline = ascent;
 
             // Check if our vertical metrics are whole numbered. If not then the raster offsets we were
             // given are wrong
@@ -82,6 +80,9 @@ impl BitmapFont {
                     font_raster_offset.y,
                 );
             }
+
+            let vertical_advance = ascent - descent + line_gap;
+            let baseline = ascent + border_thickness as f32;
 
             (roundi(descent), roundi(vertical_advance), roundi(baseline))
         };
