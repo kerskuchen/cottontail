@@ -211,7 +211,7 @@ fn bake_audio_resources() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Font configuration
+// Font properties and styles
 
 pub struct BitmapFontStyle {
     pub fontname: String,

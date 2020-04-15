@@ -109,7 +109,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
 
             let window_config = GameStateType::get_window_config();
             let atlas = game_load_atlas("assets_baked");
-            let mut draw = Drawstate::new(atlas, "ProggyTiny_bordered");
+            let mut draw = Drawstate::new(atlas);
             game_setup_window(
                 &mut draw,
                 &window_config,

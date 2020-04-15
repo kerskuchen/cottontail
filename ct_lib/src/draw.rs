@@ -2,6 +2,7 @@
 // This code is licensed under MIT license (see LICENSE.txt in repository root for details)
 
 pub use super::bitmap::*;
+use super::bitmap_font;
 pub use super::color::*;
 use super::math::*;
 
@@ -950,7 +951,7 @@ pub struct Drawstate {
 // Creation and configuration
 
 impl Drawstate {
-    pub fn new(mut atlas: SpriteAtlas, debug_log_font_name: &str) -> Drawstate {
+    pub fn new(mut atlas: SpriteAtlas) -> Drawstate {
         // Make sprites out of the atlas pages themselves for debug purposes
         for page_index in 0..atlas.textures.len() {
             let sprite_name = format!("debug_sprite_whole_page_{}", page_index);
@@ -980,6 +981,7 @@ impl Drawstate {
         let untextured_uv_center_coord = untextured_sprite.trimmed_uvs;
         let untextured_uv_center_atlas_page = untextured_sprite.atlas_texture_index;
 
+        let debug_log_font_name = bitmap_font::FONT_DEFAULT_TINY_NAME;
         let debug_log_font = atlas
             .fonts
             .get(debug_log_font_name)
