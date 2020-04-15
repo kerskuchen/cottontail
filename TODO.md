@@ -5,17 +5,19 @@
 * Removed the need to pass font filepath to drawstate on its creation
 * Added json font style file which contains info on how to render the given font
 * Added usage of a loaded font to main example
+* Fixed font metrics calculations via offsets
+
 
 ## Current:
 
+* Test all proggy fonts and set their correct offsets and sizes
+* Draw baseline in font test in main
 
 ## Next:
 
-* Investigate if we use Bitmapfonts correctly. Are the baseline, ascend, descend etc. really 
-  correctly calculated? Lets make some test renders and compare them to the outputs of 
-  i.e. https://fontdrop.info/ and https://angelcode.com/products/bmfont/
 * When calculating the dimensions of text we currently get back the lineheight even if we only 
   have glyphs like `'a'` in out text. When trying to center this text vertically we get the wrong results
+* How can we share the draw and measure algorithms of our `Font` and `BitmapFont` structs?
 
 ## Backlog:
 

@@ -7,25 +7,25 @@ use super::IndexMap;
 pub const FONT_DEFAULT_TINY_TTF: &[u8] = include_bytes!("../resources/fonts/ProggyTiny.ttf");
 pub const FONT_DEFAULT_TINY_NAME: &str = "default_tiny";
 // NOTE: These may be wrong
-pub const FONT_DEFAULT_TINY_SIZE: i32 = 10;
-pub const FONT_DEFAULT_TINY_RASTER_OFFSET: Vec2 = Vec2::zero();
+pub const FONT_DEFAULT_TINY_PIXEL_HEIGHT: i32 = 10;
+pub const FONT_DEFAULT_TINY_RASTER_OFFSET: Vec2 = Vec2::new(0.0, 0.5);
 
 pub const FONT_DEFAULT_SMALL_TTF: &[u8] = include_bytes!("../resources/fonts/ProggySmall.ttf");
 pub const FONT_DEFAULT_SMALL_NAME: &str = "default_small";
 // NOTE: These may be wrong
-pub const FONT_DEFAULT_SMALL_SIZE: i32 = 11;
+pub const FONT_DEFAULT_SMALL_PIXEL_HEIGHT: i32 = 11;
 pub const FONT_DEFAULT_SMALL_RASTER_OFFSET: Vec2 = Vec2::zero();
 
 pub const FONT_DEFAULT_REGULAR_TTF: &[u8] = include_bytes!("../resources/fonts/ProggyClean.ttf");
 pub const FONT_DEFAULT_REGULAR_NAME: &str = "default_regular";
 // NOTE: These may be wrong
-pub const FONT_DEFAULT_REGULAR_SIZE: i32 = 13;
+pub const FONT_DEFAULT_REGULAR_PIXEL_HEIGHT: i32 = 13;
 pub const FONT_DEFAULT_REGULAR_RASTER_OFFSET: Vec2 = Vec2::zero();
 
 pub const FONT_DEFAULT_SQUARE_TTF: &[u8] = include_bytes!("../resources/fonts/ProggySquare.ttf");
 pub const FONT_DEFAULT_SQUARE_NAME: &str = "default_square";
 // NOTE: These may be wrong
-pub const FONT_DEFAULT_SQUARE_SIZE: i32 = 13;
+pub const FONT_DEFAULT_SQUARE_PIXEL_HEIGHT: i32 = 13;
 pub const FONT_DEFAULT_SQUARE_RASTER_OFFSET: Vec2 = Vec2::zero();
 
 const FIRST_VISIBLE_ASCII_CODE_POINT: u8 = 32;
@@ -35,7 +35,8 @@ type Codepoint = i32;
 
 #[derive(Clone)]
 pub struct BitmapFont {
-    pub font_height: i32,
+    pub font_name: String,
+    pub font_height_in_pixels: i32,
     pub vertical_advance: i32,
     pub baseline: i32,
     pub glyphs: Vec<BitmapFontGlyph>,
@@ -43,9 +44,10 @@ pub struct BitmapFont {
 
 impl BitmapFont {
     pub fn new(
+        font_name: &str,
         font_ttf_bytes: &[u8],
         font_height: i32,
-        _font_renderoffset: Vec2,
+        font_raster_offset: Vec2,
         border_thickness: u32,
         atlas_padding: u32,
         color_glyph: PixelRGBA,
@@ -55,12 +57,34 @@ impl BitmapFont {
             .expect(&format!("Could not decode font from bytes"));
 
         // Font metrics
-        let scale = rusttype::Scale::uniform(font_height as f32);
-        let v_metrics = font.v_metrics(scale);
-        let vertical_advance =
-            (v_metrics.ascent - v_metrics.descent + v_metrics.line_gap).ceil() as i32;
-        let baseline = v_metrics.ascent.ceil() as i32;
-        let descent = v_metrics.descent.ceil() as i32;
+        let (descent, vertical_advance, baseline) = {
+            let scale = rusttype::Scale::uniform(font_height as f32);
+            let v_metrics = font.v_metrics(scale);
+            let ascent = v_metrics.ascent + font_raster_offset.y;
+            let descent = v_metrics.descent + font_raster_offset.y;
+            let line_gap = v_metrics.line_gap;
+            let vertical_advance = ascent - descent + line_gap;
+            let baseline = ascent;
+
+            // Check if our vertical metrics are whole numbered. If not then the raster offsets we were
+            // given are wrong
+            if !is_effectively_zero(ascent - ascent.round())
+                || !is_effectively_zero(descent - descent.round())
+                || !is_effectively_zero(line_gap - line_gap.round())
+            {
+                log::warn!(
+                    "Vertical metrics of pixelfont '{}' are not whole numbered\nascent: {}\ndescent: {}\nline_gap: {}\nThe given raster offset ({},{}) was not enough to correct this",
+                    font_name,
+                    v_metrics.ascent,
+                    v_metrics.descent,
+                    v_metrics.line_gap,
+                    font_raster_offset.x,
+                    font_raster_offset.y,
+                );
+            }
+
+            (roundi(descent), roundi(vertical_advance), roundi(baseline))
+        };
 
         // NOTE: We want to turn ASCII characters 0..127 into glyphs but want to treat the
         //       non-displayable characters 0..31 as just whitespace. So we repeat the whitespace
@@ -81,11 +105,12 @@ impl BitmapFont {
             .map(|&code_point| {
                 BitmapFontGlyph::new(
                     &font,
+                    font_name,
                     code_point,
                     font_height,
                     descent,
-                    border_thickness,
-                    atlas_padding,
+                    border_thickness as i32,
+                    atlas_padding as i32,
                     color_glyph,
                     color_border,
                 )
@@ -93,7 +118,8 @@ impl BitmapFont {
             .collect();
 
         BitmapFont {
-            font_height: font_height + 2 * border_thickness as i32,
+            font_name: font_name.to_owned(),
+            font_height_in_pixels: font_height + 2 * border_thickness as i32,
             vertical_advance: vertical_advance + 2 * border_thickness as i32,
             baseline,
             glyphs,
@@ -204,6 +230,7 @@ impl BitmapFont {
     }
 
     pub fn test_font_sizes(
+        font_name: &str,
         font_ttf_bytes: &[u8],
         font_height_min: i32,
         font_height_max: i32,
@@ -214,6 +241,7 @@ impl BitmapFont {
         let (mut bitmap, lineskip) = {
             let max_text = format!("{}: {}", font_height_max, test_text,);
             let max_font = BitmapFont::new(
+                font_name,
                 font_ttf_bytes,
                 font_height_max,
                 Vec2::zero(),
@@ -223,7 +251,7 @@ impl BitmapFont {
                 PixelRGBA::transparent(),
             );
             let max_text_width = max_font.get_text_dimensions(&max_text).x;
-            let max_text_height = max_font.font_height;
+            let max_text_height = max_font.font_height_in_pixels;
 
             let samplecount = 1 + font_height_max - font_height_min;
             (
@@ -239,6 +267,7 @@ impl BitmapFont {
         for (index, font_height) in (font_height_min..=font_height_max).rev().enumerate() {
             let text = format!("{}: {}", font_height, test_text);
             let font = BitmapFont::new(
+                font_name,
                 font_ttf_bytes,
                 font_height,
                 Vec2::zero(),
@@ -252,6 +281,15 @@ impl BitmapFont {
                 text_padding + index as i32 * (lineskip + text_padding),
             );
             font.draw_text(&mut bitmap, &text, pos, Vec2i::zero());
+
+            // Draw baseline
+            bitmap.draw_rect_filled(
+                pos.x,
+                pos.y + font.baseline,
+                bitmap.width,
+                1,
+                PixelRGBA::new(255, 0, 255, 255),
+            );
         }
 
         Bitmap::write_to_png_file(&bitmap, test_image_filepath);
@@ -269,11 +307,12 @@ pub struct BitmapFontGlyph {
 impl BitmapFontGlyph {
     pub fn new(
         font: &rusttype::Font,
+        font_name: &str,
         codepoint: char,
         font_height: i32,
         descent: i32,
-        border_thickness: u32,
-        atlas_padding: u32,
+        border_thickness: i32,
+        atlas_padding: i32,
         color_glyph: PixelRGBA,
         color_border: PixelRGBA,
     ) -> BitmapFontGlyph {
@@ -288,17 +327,33 @@ impl BitmapFontGlyph {
             .positioned(rusttype::point(0.0, (descent + font_height) as f32));
 
         // Glyph metrics
-        let metrics = glyph.unpositioned().h_metrics();
-        let horizontal_advance = metrics.advance_width.round() as i32 + border_thickness as i32;
+        let h_metrics = glyph.unpositioned().h_metrics();
+        let advance_width = h_metrics.advance_width.round() as i32;
+        let left_side_bearing = h_metrics.left_side_bearing.round() as i32;
+
+        // Check if our horizontal metrics are whole numbered. If not then the raster offsets we were
+        // given are wrong
+        if !is_effectively_zero(advance_width as f32 - h_metrics.advance_width)
+            || !is_effectively_zero(left_side_bearing as f32 - h_metrics.left_side_bearing)
+        {
+            log::warn!(
+                "Horizontal metrics of pixelfont glyph '{}' are not whole numbered\nadvance_width: {}\nleft_side_bearing: {}",
+                h_metrics.advance_width,
+                BitmapFont::get_glyph_name(font_name, codepoint as Codepoint),
+                h_metrics.left_side_bearing,
+            );
+        }
+
+        let horizontal_advance = advance_width + border_thickness;
         // NOTE: The offset determines how many pixels the glyph-sprite needs to be offset
         //       from its origin (top-left corner) when drawn to the screen
-        let offset_x = metrics.left_side_bearing.round() as i32 - atlas_padding as i32;
+        let offset_x = left_side_bearing - atlas_padding as i32;
         let mut offset_y = -(atlas_padding as i32);
 
         let maybe_image = create_glyph_image(
             &glyph,
-            border_thickness,
-            atlas_padding,
+            border_thickness as u32,
+            atlas_padding as u32,
             color_glyph,
             color_border,
         );

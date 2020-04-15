@@ -10,6 +10,8 @@ use ct_lib::math::*;
 use ct_lib::system;
 use ct_lib::IndexMap;
 
+use fern;
+use log;
 use rayon::prelude::*;
 use serde_derive::{Deserialize, Serialize};
 
@@ -260,16 +262,14 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
                 },
             );
         } else {
-            let test_png_filepath = system::path_join(
-                "assets_temp",
-                &(font_name.to_owned() + "_fontsize_test.png"),
-            );
+            let test_png_filepath =
+                system::path_join("assets_temp", &(font_name.clone() + "_fontsize_test.png"));
             println!(
                 "Font is missing its render parameters: '{}' - Created font size test image at '{}'",
                 &font_filepath,
                 &test_png_filepath
             );
-            BitmapFont::test_font_sizes(&ttf_data_bytes, 4, 32, &test_png_filepath);
+            BitmapFont::test_font_sizes(&font_name, &ttf_data_bytes, 4, 32, &test_png_filepath);
         }
     }
 
@@ -279,7 +279,7 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
         BitmapFontProperties {
             ttf_data_bytes: bitmap_font::FONT_DEFAULT_TINY_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
-                height_in_pixels: bitmap_font::FONT_DEFAULT_TINY_SIZE,
+                height_in_pixels: bitmap_font::FONT_DEFAULT_TINY_PIXEL_HEIGHT,
                 raster_offset: bitmap_font::FONT_DEFAULT_TINY_RASTER_OFFSET,
             },
         },
@@ -289,7 +289,7 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
         BitmapFontProperties {
             ttf_data_bytes: bitmap_font::FONT_DEFAULT_SMALL_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
-                height_in_pixels: bitmap_font::FONT_DEFAULT_SMALL_SIZE,
+                height_in_pixels: bitmap_font::FONT_DEFAULT_SMALL_PIXEL_HEIGHT,
                 raster_offset: bitmap_font::FONT_DEFAULT_SMALL_RASTER_OFFSET,
             },
         },
@@ -299,7 +299,7 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
         BitmapFontProperties {
             ttf_data_bytes: bitmap_font::FONT_DEFAULT_REGULAR_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
-                height_in_pixels: bitmap_font::FONT_DEFAULT_REGULAR_SIZE,
+                height_in_pixels: bitmap_font::FONT_DEFAULT_REGULAR_PIXEL_HEIGHT,
                 raster_offset: bitmap_font::FONT_DEFAULT_REGULAR_RASTER_OFFSET,
             },
         },
@@ -309,7 +309,7 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
         BitmapFontProperties {
             ttf_data_bytes: bitmap_font::FONT_DEFAULT_SQUARE_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
-                height_in_pixels: bitmap_font::FONT_DEFAULT_SQUARE_SIZE,
+                height_in_pixels: bitmap_font::FONT_DEFAULT_SQUARE_PIXEL_HEIGHT,
                 raster_offset: bitmap_font::FONT_DEFAULT_SQUARE_RASTER_OFFSET,
             },
         },
@@ -421,6 +421,7 @@ pub fn bitmapfont_create_from_ttf(
 
     // Create font and atlas
     let font = BitmapFont::new(
+        &font_name,
         &font_ttf_bytes,
         height_in_pixels,
         raster_offset,
@@ -699,6 +700,15 @@ fn create_credits_file(
 }
 
 fn main() {
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!("{}: {}\r", record.level(), message))
+        })
+        .level(log::LevelFilter::Trace)
+        .chain(std::io::stdout())
+        .apply()
+        .expect("Failed to start logger");
+
     std::panic::set_hook(Box::new(|panic_info| {
         let (message, location) = ct_lib::panic_message_split_to_message_and_location(panic_info);
         let final_message = format!("{}\n\nError occured at: {}", message, location);
