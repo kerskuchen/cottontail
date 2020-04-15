@@ -45,6 +45,14 @@ pub fn path_join(first: &str, second: &str) -> String {
 }
 
 /// NOTE: Result contains Unix-style file seperators only
+pub fn path_with_extension(filepath: &str, new_extension: &str) -> String {
+    Path::new(filepath)
+        .with_extension(new_extension)
+        .to_string_owned()
+        .replace("\\", "/")
+}
+
+/// NOTE: Result contains Unix-style file seperators only
 pub fn path_without_extension(filepath: &str) -> String {
     Path::new(filepath)
         .with_extension("")
