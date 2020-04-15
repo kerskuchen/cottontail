@@ -1,17 +1,11 @@
 ## Done today
 
-* premultiplied alpha + trimming of bitmaps
-* replaced external font tool with own font rendering and simplified code 
-* added resizable atlaspacker that got rid of atlas-size parameter for fonts
-* renamed pixel stitch to pixie stitch
-* added block_centered_in_* functions
-
 ## Current:
 
+* Assets baker needs to always generate default fonts
 
 ## Next:
 
-* Assets baker needs to always generate default fonts
 * We need to make font assets (json files?) that are placed in the assets folder and contain info 
   on how to render the given font
 * We need to abstract over the fact that some fonts are embedded and some are loaded at runtime
