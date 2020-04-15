@@ -1,9 +1,13 @@
 ## Done today
 
-## Current:
-
+* Assets baker needs to always generate default fonts
+* We need to abstract over the fact that some fonts are embedded and some are loaded at runtime
+* Remove the need to pass font filepath to drawstate on its creation
 * We need to make font assets (json files?) that are placed in the assets folder and contain info 
   on how to render the given font
+
+## Current:
+
 
 ## Next:
 

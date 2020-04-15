@@ -213,6 +213,7 @@ fn bake_audio_resources() {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Font properties and styles
 
+#[derive(Deserialize)]
 pub struct BitmapFontStyle {
     pub fontname: String,
     pub bordered: bool,
@@ -318,22 +319,20 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
 }
 
 fn load_font_styles() -> Vec<BitmapFontStyle> {
-    let mut result_styles = vec![
-        BitmapFontStyle {
-            fontname: "Grand9K_Pixel".to_owned(),
-            bordered: false,
-            color_glyph: PixelRGBA::white(),
-            color_border: PixelRGBA::black(),
-        },
-        BitmapFontStyle {
-            fontname: "Grand9K_Pixel".to_owned(),
-            bordered: true,
-            color_glyph: PixelRGBA::white(),
-            color_border: PixelRGBA::black(),
-        },
-    ];
+    // Load styles from styles file
+    let mut result_styles: Vec<BitmapFontStyle> = {
+        let font_styles_filepath = "assets/fonts/font_styles.json";
+        let font_styles_str = std::fs::read_to_string(font_styles_filepath).expect(&format!(
+            "Missing font styles file '{}'",
+            font_styles_filepath
+        ));
+        serde_json::from_str(&font_styles_str).expect(&format!(
+            "Cannot read font styles file '{}'",
+            font_styles_filepath
+        ))
+    };
 
-    // Add default fonts
+    // Add default fonts styles
     let default_color_glyph = PixelRGBA::new(255, 255, 255, 255);
     let default_color_border = PixelRGBA::new(0, 0, 0, 255);
     result_styles.push(BitmapFontStyle {

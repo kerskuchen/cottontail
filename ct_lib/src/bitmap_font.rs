@@ -5,25 +5,25 @@ use super::math::*;
 use super::IndexMap;
 
 pub const FONT_DEFAULT_TINY_TTF: &[u8] = include_bytes!("../resources/fonts/ProggyTiny.ttf");
-pub const FONT_DEFAULT_TINY_NAME: &str = "ProggyTiny";
+pub const FONT_DEFAULT_TINY_NAME: &str = "default_tiny";
 // NOTE: These may be wrong
 pub const FONT_DEFAULT_TINY_SIZE: i32 = 10;
 pub const FONT_DEFAULT_TINY_RASTER_OFFSET: Vec2 = Vec2::zero();
 
 pub const FONT_DEFAULT_SMALL_TTF: &[u8] = include_bytes!("../resources/fonts/ProggySmall.ttf");
-pub const FONT_DEFAULT_SMALL_NAME: &str = "ProggySmall";
+pub const FONT_DEFAULT_SMALL_NAME: &str = "default_small";
 // NOTE: These may be wrong
 pub const FONT_DEFAULT_SMALL_SIZE: i32 = 11;
 pub const FONT_DEFAULT_SMALL_RASTER_OFFSET: Vec2 = Vec2::zero();
 
 pub const FONT_DEFAULT_REGULAR_TTF: &[u8] = include_bytes!("../resources/fonts/ProggyClean.ttf");
-pub const FONT_DEFAULT_REGULAR_NAME: &str = "ProggyClean";
+pub const FONT_DEFAULT_REGULAR_NAME: &str = "default_regular";
 // NOTE: These may be wrong
 pub const FONT_DEFAULT_REGULAR_SIZE: i32 = 13;
 pub const FONT_DEFAULT_REGULAR_RASTER_OFFSET: Vec2 = Vec2::zero();
 
 pub const FONT_DEFAULT_SQUARE_TTF: &[u8] = include_bytes!("../resources/fonts/ProggySquare.ttf");
-pub const FONT_DEFAULT_SQUARE_NAME: &str = "ProggySquare";
+pub const FONT_DEFAULT_SQUARE_NAME: &str = "default_square";
 // NOTE: These may be wrong
 pub const FONT_DEFAULT_SQUARE_SIZE: i32 = 13;
 pub const FONT_DEFAULT_SQUARE_RASTER_OFFSET: Vec2 = Vec2::zero();

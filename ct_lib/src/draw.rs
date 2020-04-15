@@ -981,13 +981,13 @@ impl Drawstate {
         let untextured_uv_center_coord = untextured_sprite.trimmed_uvs;
         let untextured_uv_center_atlas_page = untextured_sprite.atlas_texture_index;
 
-        let debug_log_font_name = bitmap_font::FONT_DEFAULT_TINY_NAME;
+        let debug_log_font_name = bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
         let debug_log_font = atlas
             .fonts
-            .get(debug_log_font_name)
+            .get(&debug_log_font_name)
             .expect(&format!(
                 "Cannot find default debug log font '{}'",
-                debug_log_font_name,
+                &debug_log_font_name,
             ))
             .clone();
 
