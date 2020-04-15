@@ -82,9 +82,10 @@ fn bake_graphics_resources() {
     let sprites_and_fonts: Vec<(IndexMap<Spritename, AssetSprite>, AssetFont)> = font_styles
         .par_iter()
         .map(|style| {
-            let properties = font_properties
-                .get(&style.fontname)
-                .expect(&format!("No font found with name '{}'", &style.fontname));
+            let properties = font_properties.get(&style.fontname).expect(&format!(
+                "No font and/or render parameters found for font name '{}'",
+                &style.fontname
+            ));
             bitmapfont_create_from_ttf(
                 &style.fontname,
                 &properties.ttf_data_bytes,
@@ -235,7 +236,11 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
 
     let font_filepaths = system::collect_files_by_extension_recursive("assets/fonts", ".ttf");
     for font_filepath in font_filepaths {
+        let font_name = system::path_to_filename_without_extension(&font_filepath);
         let renderparams_filepath = system::path_with_extension(&font_filepath, "json");
+        let ttf_data_bytes = std::fs::read(&font_filepath)
+            .expect(&format!("Cannot read fontdata '{}'", &font_filepath));
+
         // NOTE: We only read the fontdata when the renderparams exist but don't throw an error when
         //       it does not exist. This helps us make test renders for a font before we have found
         //       out its correct render params.
@@ -245,10 +250,7 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
                     "Cannot read render parameters for font: '{}'",
                     &font_filepath
                 ));
-            let ttf_data_bytes = std::fs::read(&font_filepath)
-                .expect(&format!("Cannot read fontdata '{}'", &font_filepath));
 
-            let font_name = system::path_to_filename_without_extension(&font_filepath);
             result_properties.insert(
                 font_name,
                 BitmapFontProperties {
@@ -257,10 +259,16 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
                 },
             );
         } else {
-            println!(
-                "Font is missing its render parameters: '{}'",
-                &font_filepath
+            let test_png_filepath = system::path_join(
+                "assets_temp",
+                &(font_name.to_owned() + "_fontsize_test.png"),
             );
+            println!(
+                "Font is missing its render parameters: '{}' - Created font size test image at '{}'",
+                &font_filepath,
+                &test_png_filepath
+            );
+            BitmapFont::test_font_sizes(&ttf_data_bytes, 4, 32, &test_png_filepath);
         }
     }
 
@@ -692,6 +700,15 @@ fn create_credits_file(
 }
 
 fn main() {
+    std::panic::set_hook(Box::new(|panic_info| {
+        let (message, location) = ct_lib::panic_message_split_to_message_and_location(panic_info);
+        let final_message = format!("{}\n\nError occured at: {}", message, location);
+        println!("{}", final_message);
+
+        // NOTE: This forces the other threads to shutdown as well
+        std::process::abort();
+    }));
+
     let start_time = std::time::Instant::now();
 
     if system::path_exists("assets_temp") {
