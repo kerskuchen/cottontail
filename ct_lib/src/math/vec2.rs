@@ -100,42 +100,42 @@ impl Vec2 {
 
 impl Vec2 {
     #[inline]
-    pub fn new(x: f32, y: f32) -> Vec2 {
+    pub const fn new(x: f32, y: f32) -> Vec2 {
         Vec2 { x, y }
     }
 
     #[inline]
-    pub fn zero() -> Vec2 {
+    pub const fn zero() -> Vec2 {
         Vec2::new(0.0, 0.0)
     }
 
     #[inline]
-    pub fn ones() -> Vec2 {
+    pub const fn ones() -> Vec2 {
         Vec2::new(1.0, 1.0)
     }
 
     #[inline]
-    pub fn unit_x() -> Vec2 {
+    pub const fn unit_x() -> Vec2 {
         Vec2::new(1.0, 0.0)
     }
 
     #[inline]
-    pub fn unit_y() -> Vec2 {
+    pub const fn unit_y() -> Vec2 {
         Vec2::new(0.0, 1.0)
     }
 
     #[inline]
-    pub fn filled_x(x: f32) -> Vec2 {
+    pub const fn filled_x(x: f32) -> Vec2 {
         Vec2::new(x, 0.0)
     }
 
     #[inline]
-    pub fn filled_y(y: f32) -> Vec2 {
+    pub const fn filled_y(y: f32) -> Vec2 {
         Vec2::new(0.0, y)
     }
 
     #[inline]
-    pub fn filled(fill: f32) -> Vec2 {
+    pub const fn filled(fill: f32) -> Vec2 {
         Vec2::new(fill, fill)
     }
 }
