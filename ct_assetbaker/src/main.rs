@@ -77,23 +77,23 @@ fn bake_graphics_resources() {
     let mut result_animations: IndexMap<Animationname, AssetAnimation> = IndexMap::new();
 
     // Create fonts and its correspronding sprites
+    let font_styles = load_font_styles();
     let font_properties = load_font_properties();
-    let font_data = load_font_data();
-    let sprites_and_fonts: Vec<(IndexMap<Spritename, AssetSprite>, AssetFont)> = font_properties
+    let sprites_and_fonts: Vec<(IndexMap<Spritename, AssetSprite>, AssetFont)> = font_styles
         .par_iter()
-        .map(|property| {
-            let data = font_data
-                .get(&property.fontname)
-                .expect(&format!("No font found with name '{}'", &property.fontname));
+        .map(|style| {
+            let properties = font_properties
+                .get(&style.fontname)
+                .expect(&format!("No font found with name '{}'", &style.fontname));
             bitmapfont_create_from_ttf(
-                &property.fontname,
-                &data.ttf_data_bytes,
+                &style.fontname,
+                &properties.ttf_data_bytes,
                 "assets_temp",
-                data.render_params.height_in_pixels,
-                data.render_params.raster_offset,
-                property.bordered,
-                property.color_glyph,
-                property.color_border,
+                properties.render_params.height_in_pixels,
+                properties.render_params.raster_offset,
+                style.bordered,
+                style.color_glyph,
+                style.color_border,
             )
         })
         .collect();
@@ -212,32 +212,30 @@ fn bake_audio_resources() {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Font configuration
 
-pub struct BitmapFontProperties {
+pub struct BitmapFontStyle {
     pub fontname: String,
     pub bordered: bool,
     pub color_glyph: PixelRGBA,
     pub color_border: PixelRGBA,
 }
 
-#[derive(Copy, Clone, Deserialize, Serialize)]
+#[derive(Deserialize)]
 pub struct BitmapFontRenderParams {
     pub height_in_pixels: i32,
     pub raster_offset: Vec2,
 }
 
-pub struct BitmapFontDataSet {
+pub struct BitmapFontProperties {
     pub ttf_data_bytes: Vec<u8>,
     pub render_params: BitmapFontRenderParams,
 }
 
-fn load_font_data() -> IndexMap<Fontname, BitmapFontDataSet> {
-    let mut result_font_data = IndexMap::new();
+fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
+    let mut result_properties = IndexMap::new();
 
     let font_filepaths = system::collect_files_by_extension_recursive("assets/fonts", ".ttf");
     for font_filepath in font_filepaths {
-        let font_name = system::path_to_filename_without_extension(&font_filepath);
         let renderparams_filepath = system::path_with_extension(&font_filepath, "json");
-
         // NOTE: We only read the fontdata when the renderparams exist but don't throw an error when
         //       it does not exist. This helps us make test renders for a font before we have found
         //       out its correct render params.
@@ -250,9 +248,10 @@ fn load_font_data() -> IndexMap<Fontname, BitmapFontDataSet> {
             let ttf_data_bytes = std::fs::read(&font_filepath)
                 .expect(&format!("Cannot read fontdata '{}'", &font_filepath));
 
-            result_font_data.insert(
+            let font_name = system::path_to_filename_without_extension(&font_filepath);
+            result_properties.insert(
                 font_name,
-                BitmapFontDataSet {
+                BitmapFontProperties {
                     ttf_data_bytes,
                     render_params,
                 },
@@ -266,9 +265,9 @@ fn load_font_data() -> IndexMap<Fontname, BitmapFontDataSet> {
     }
 
     // Add default fonts
-    result_font_data.insert(
+    result_properties.insert(
         bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned(),
-        BitmapFontDataSet {
+        BitmapFontProperties {
             ttf_data_bytes: bitmap_font::FONT_DEFAULT_TINY_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
                 height_in_pixels: bitmap_font::FONT_DEFAULT_TINY_SIZE,
@@ -276,9 +275,9 @@ fn load_font_data() -> IndexMap<Fontname, BitmapFontDataSet> {
             },
         },
     );
-    result_font_data.insert(
+    result_properties.insert(
         bitmap_font::FONT_DEFAULT_SMALL_NAME.to_owned(),
-        BitmapFontDataSet {
+        BitmapFontProperties {
             ttf_data_bytes: bitmap_font::FONT_DEFAULT_SMALL_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
                 height_in_pixels: bitmap_font::FONT_DEFAULT_SMALL_SIZE,
@@ -286,9 +285,9 @@ fn load_font_data() -> IndexMap<Fontname, BitmapFontDataSet> {
             },
         },
     );
-    result_font_data.insert(
+    result_properties.insert(
         bitmap_font::FONT_DEFAULT_REGULAR_NAME.to_owned(),
-        BitmapFontDataSet {
+        BitmapFontProperties {
             ttf_data_bytes: bitmap_font::FONT_DEFAULT_REGULAR_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
                 height_in_pixels: bitmap_font::FONT_DEFAULT_REGULAR_SIZE,
@@ -296,9 +295,9 @@ fn load_font_data() -> IndexMap<Fontname, BitmapFontDataSet> {
             },
         },
     );
-    result_font_data.insert(
+    result_properties.insert(
         bitmap_font::FONT_DEFAULT_SQUARE_NAME.to_owned(),
-        BitmapFontDataSet {
+        BitmapFontProperties {
             ttf_data_bytes: bitmap_font::FONT_DEFAULT_SQUARE_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
                 height_in_pixels: bitmap_font::FONT_DEFAULT_SQUARE_SIZE,
@@ -307,18 +306,18 @@ fn load_font_data() -> IndexMap<Fontname, BitmapFontDataSet> {
         },
     );
 
-    result_font_data
+    result_properties
 }
 
-fn load_font_properties() -> Vec<BitmapFontProperties> {
-    let mut result_font_properties = vec![
-        BitmapFontProperties {
+fn load_font_styles() -> Vec<BitmapFontStyle> {
+    let mut result_styles = vec![
+        BitmapFontStyle {
             fontname: "Grand9K_Pixel".to_owned(),
             bordered: false,
             color_glyph: PixelRGBA::white(),
             color_border: PixelRGBA::black(),
         },
-        BitmapFontProperties {
+        BitmapFontStyle {
             fontname: "Grand9K_Pixel".to_owned(),
             bordered: true,
             color_glyph: PixelRGBA::white(),
@@ -329,20 +328,20 @@ fn load_font_properties() -> Vec<BitmapFontProperties> {
     // Add default fonts
     let default_color_glyph = PixelRGBA::new(255, 255, 255, 255);
     let default_color_border = PixelRGBA::new(0, 0, 0, 255);
-    result_font_properties.push(BitmapFontProperties {
+    result_styles.push(BitmapFontStyle {
         fontname: bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned(),
         bordered: false,
         color_glyph: default_color_glyph,
         color_border: default_color_border,
     });
-    result_font_properties.push(BitmapFontProperties {
+    result_styles.push(BitmapFontStyle {
         fontname: bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned(),
         bordered: true,
         color_glyph: default_color_glyph,
         color_border: default_color_border,
     });
 
-    result_font_properties
+    result_styles
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
