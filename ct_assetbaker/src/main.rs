@@ -1,6 +1,7 @@
 mod aseprite;
 
 use ct_lib::bitmap_atlas::{BitmapAtlasPosition, BitmapMultiAtlas};
+use ct_lib::bitmap_font;
 use ct_lib::bitmap_font::*;
 use ct_lib::color::*;
 use ct_lib::draw::*;
@@ -10,7 +11,7 @@ use ct_lib::system;
 use ct_lib::IndexMap;
 
 use rayon::prelude::*;
-use serde_derive::Serialize;
+use serde_derive::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 
@@ -70,70 +71,26 @@ pub struct AssetAtlas {
     pub sprite_positions: IndexMap<Spritename, BitmapAtlasPosition>,
 }
 
-pub struct BitmapFontProperties {
-    pub ttf_path: String,
-    pub output_dir: String,
-    pub fontsize_in_pixels: u32,
-    pub bordered: bool,
-    pub color_glyph: PixelRGBA,
-    pub color_border: PixelRGBA,
-}
-
 fn bake_graphics_resources() {
-    // bitmapfont::test_font_sizes( "assets/fonts/Proggy/ProggyTiny.ttf", "assets_temp", 5, 24,);
-
-    let color_glyph = PixelRGBA::new(255, 255, 255, 255);
-    let color_border = PixelRGBA::new(0, 0, 0, 255);
-
-    let font_properties = vec![
-        BitmapFontProperties {
-            ttf_path: "assets/fonts/Proggy/ProggyTiny.ttf".to_owned(),
-            output_dir: "assets_temp".to_owned(),
-            fontsize_in_pixels: 10,
-            bordered: false,
-            color_glyph,
-            color_border,
-        },
-        BitmapFontProperties {
-            ttf_path: "assets/fonts/Proggy/ProggyTiny.ttf".to_owned(),
-            output_dir: "assets_temp".to_owned(),
-            fontsize_in_pixels: 10,
-            bordered: true,
-            color_glyph,
-            color_border,
-        },
-        // bitmapfont::BitmapFontProperties {
-        //     ttf_path: "assets/fonts/EnterCommand/EnterCommand.ttf".to_owned(),
-        //     output_dir: "assets_temp".to_owned(),
-        //     fontsize_in_pixels: 16,
-        //     texture_size: 160,
-        //     bordered: false,
-        //     color_glyph,
-        //     color_border,
-        // },
-        // bitmapfont::BitmapFontProperties {
-        //     ttf_path: "assets/fonts/EnterCommand/EnterCommand.ttf".to_owned(),
-        //     output_dir: "assets_temp".to_owned(),
-        //     fontsize_in_pixels: 16,
-        //     texture_size: 200,
-        //     bordered: true,
-        //     color_glyph,
-        //     color_border,
-        // },
-    ];
-
     let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
     let mut result_fonts: IndexMap<Fontname, AssetFont> = IndexMap::new();
     let mut result_animations: IndexMap<Animationname, AssetAnimation> = IndexMap::new();
 
-    // Collect fonts and corresponding sprites
+    // Create fonts and its correspronding sprites
+    let font_properties = load_font_properties();
+    let font_data = load_font_data();
     let sprites_and_fonts: Vec<(IndexMap<Spritename, AssetSprite>, AssetFont)> = font_properties
         .par_iter()
         .map(|property| {
+            let data = font_data
+                .get(&property.fontname)
+                .expect(&format!("No font found with name '{}'", &property.fontname));
             bitmapfont_create_from_ttf(
-                &property.ttf_path,
-                &property.output_dir,
-                property.fontsize_in_pixels,
+                &property.fontname,
+                &data.ttf_data_bytes,
+                "assets_temp",
+                data.render_params.height_in_pixels,
+                data.render_params.raster_offset,
                 property.bordered,
                 property.color_glyph,
                 property.color_border,
@@ -253,6 +210,142 @@ fn bake_audio_resources() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Font configuration
+
+pub struct BitmapFontProperties {
+    pub fontname: String,
+    pub bordered: bool,
+    pub color_glyph: PixelRGBA,
+    pub color_border: PixelRGBA,
+}
+
+#[derive(Copy, Clone, Deserialize, Serialize)]
+pub struct BitmapFontRenderParams {
+    pub height_in_pixels: i32,
+    pub raster_offset: Vec2,
+}
+
+pub struct BitmapFontDataSet {
+    pub ttf_data_bytes: Vec<u8>,
+    pub render_params: BitmapFontRenderParams,
+}
+
+fn load_font_data() -> IndexMap<Fontname, BitmapFontDataSet> {
+    let mut result_font_data = IndexMap::new();
+
+    let font_filepaths = system::collect_files_by_extension_recursive("assets/fonts", ".ttf");
+    for font_filepath in font_filepaths {
+        let font_name = system::path_to_filename_without_extension(&font_filepath);
+        let renderparams_filepath = system::path_with_extension(&font_filepath, "json");
+
+        // NOTE: We only read the fontdata when the renderparams exist but don't throw an error when
+        //       it does not exist. This helps us make test renders for a font before we have found
+        //       out its correct render params.
+        if let Some(params_string) = std::fs::read_to_string(&renderparams_filepath).ok() {
+            let render_params: BitmapFontRenderParams = serde_json::from_str(&params_string)
+                .expect(&format!(
+                    "Cannot read render parameters for font: '{}'",
+                    &font_filepath
+                ));
+            let ttf_data_bytes = std::fs::read(&font_filepath)
+                .expect(&format!("Cannot read fontdata '{}'", &font_filepath));
+
+            result_font_data.insert(
+                font_name,
+                BitmapFontDataSet {
+                    ttf_data_bytes,
+                    render_params,
+                },
+            );
+        } else {
+            println!(
+                "Font is missing its render parameters: '{}'",
+                &font_filepath
+            );
+        }
+    }
+
+    // Add default fonts
+    result_font_data.insert(
+        bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned(),
+        BitmapFontDataSet {
+            ttf_data_bytes: bitmap_font::FONT_DEFAULT_TINY_TTF.to_vec(),
+            render_params: BitmapFontRenderParams {
+                height_in_pixels: bitmap_font::FONT_DEFAULT_TINY_SIZE,
+                raster_offset: bitmap_font::FONT_DEFAULT_TINY_RASTER_OFFSET,
+            },
+        },
+    );
+    result_font_data.insert(
+        bitmap_font::FONT_DEFAULT_SMALL_NAME.to_owned(),
+        BitmapFontDataSet {
+            ttf_data_bytes: bitmap_font::FONT_DEFAULT_SMALL_TTF.to_vec(),
+            render_params: BitmapFontRenderParams {
+                height_in_pixels: bitmap_font::FONT_DEFAULT_SMALL_SIZE,
+                raster_offset: bitmap_font::FONT_DEFAULT_SMALL_RASTER_OFFSET,
+            },
+        },
+    );
+    result_font_data.insert(
+        bitmap_font::FONT_DEFAULT_REGULAR_NAME.to_owned(),
+        BitmapFontDataSet {
+            ttf_data_bytes: bitmap_font::FONT_DEFAULT_REGULAR_TTF.to_vec(),
+            render_params: BitmapFontRenderParams {
+                height_in_pixels: bitmap_font::FONT_DEFAULT_REGULAR_SIZE,
+                raster_offset: bitmap_font::FONT_DEFAULT_REGULAR_RASTER_OFFSET,
+            },
+        },
+    );
+    result_font_data.insert(
+        bitmap_font::FONT_DEFAULT_SQUARE_NAME.to_owned(),
+        BitmapFontDataSet {
+            ttf_data_bytes: bitmap_font::FONT_DEFAULT_SQUARE_TTF.to_vec(),
+            render_params: BitmapFontRenderParams {
+                height_in_pixels: bitmap_font::FONT_DEFAULT_SQUARE_SIZE,
+                raster_offset: bitmap_font::FONT_DEFAULT_SQUARE_RASTER_OFFSET,
+            },
+        },
+    );
+
+    result_font_data
+}
+
+fn load_font_properties() -> Vec<BitmapFontProperties> {
+    let mut result_font_properties = vec![
+        BitmapFontProperties {
+            fontname: "Grand9K_Pixel".to_owned(),
+            bordered: false,
+            color_glyph: PixelRGBA::white(),
+            color_border: PixelRGBA::black(),
+        },
+        BitmapFontProperties {
+            fontname: "Grand9K_Pixel".to_owned(),
+            bordered: true,
+            color_glyph: PixelRGBA::white(),
+            color_border: PixelRGBA::black(),
+        },
+    ];
+
+    // Add default fonts
+    let default_color_glyph = PixelRGBA::new(255, 255, 255, 255);
+    let default_color_border = PixelRGBA::new(0, 0, 0, 255);
+    result_font_properties.push(BitmapFontProperties {
+        fontname: bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned(),
+        bordered: false,
+        color_glyph: default_color_glyph,
+        color_border: default_color_border,
+    });
+    result_font_properties.push(BitmapFontProperties {
+        fontname: bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned(),
+        bordered: true,
+        color_glyph: default_color_glyph,
+        color_border: default_color_border,
+    });
+
+    result_font_properties
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Font packing
 
 fn sprite_create_from_glyph(
@@ -304,33 +397,33 @@ fn sprite_create_from_glyph(
 }
 
 pub fn bitmapfont_create_from_ttf(
-    ttf_filepath: &str,
+    font_name: &str,
+    font_ttf_bytes: &[u8],
     output_dir: &str,
-    fontsize_pixels: u32,
+    height_in_pixels: i32,
+    raster_offset: Vec2,
     draw_border: bool,
     color_glyph: PixelRGBA,
     color_border: PixelRGBA,
 ) -> (IndexMap<Spritename, AssetSprite>, AssetFont) {
-    let fontname = system::path_to_filename_without_extension(ttf_filepath)
-        + if draw_border { "_bordered" } else { "" };
+    let font_name = font_name.to_owned() + if draw_border { "_bordered" } else { "" };
 
-    let output_filepath_without_extension = system::path_join(output_dir, &fontname);
+    let output_filepath_without_extension = system::path_join(output_dir, &font_name);
     let output_filepath_png = output_filepath_without_extension.to_owned() + ".png";
 
     let border_thickness = if draw_border { 1 } else { 0 };
 
     // Create font and atlas
-    let ttf_bytes =
-        std::fs::read(ttf_filepath).expect(&format!("Cannot read fontdata '{}'", ttf_filepath));
     let font = BitmapFont::new(
-        &ttf_bytes,
-        fontsize_pixels as i32,
+        &font_ttf_bytes,
+        height_in_pixels,
+        raster_offset,
         border_thickness,
         0,
         color_glyph,
         color_border,
     );
-    let (font_atlas_texture, font_atlas_glyph_positions) = font.create_atlas(&fontname);
+    let (font_atlas_texture, font_atlas_glyph_positions) = font.create_atlas(&font_name);
     Bitmap::write_to_png_file(&font_atlas_texture, &output_filepath_png);
 
     // Create sprites and glyphs
@@ -338,7 +431,7 @@ pub fn bitmapfont_create_from_ttf(
     let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
     for glyph in &font.glyphs {
         let codepoint = glyph.codepoint as Codepoint;
-        let sprite_name = BitmapFont::get_glyph_name(&fontname, glyph.codepoint as Codepoint);
+        let sprite_name = BitmapFont::get_glyph_name(&font_name, glyph.codepoint as Codepoint);
 
         let asset_glyph = AssetGlyph {
             codepoint,
@@ -357,8 +450,8 @@ pub fn bitmapfont_create_from_ttf(
 
     // Create Font
     let result_font = AssetFont {
-        name: fontname.clone(),
-        name_hash: ct_lib::hash_string_64(&fontname),
+        name: font_name.clone(),
+        name_hash: ct_lib::hash_string_64(&font_name),
         baseline: font.baseline,
         vertical_advance: font.vertical_advance,
         glyphcount: result_glyphs.len() as u32,

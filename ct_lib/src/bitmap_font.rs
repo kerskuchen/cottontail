@@ -4,10 +4,29 @@ use super::color::*;
 use super::math::*;
 use super::IndexMap;
 
-pub const FONT_DEFAULT_TTF_TINY: &[u8] = include_bytes!("../resources/fonts/ProggyTiny.ttf");
-pub const FONT_DEFAULT_TTF_SMALL: &[u8] = include_bytes!("../resources/fonts/ProggySmall.ttf");
-pub const FONT_DEFAULT_TTF_REGULAR: &[u8] = include_bytes!("../resources/fonts/ProggyClean.ttf");
-pub const FONT_DEFAULT_TTF_SQUARE: &[u8] = include_bytes!("../resources/fonts/ProggySquare.ttf");
+pub const FONT_DEFAULT_TINY_TTF: &[u8] = include_bytes!("../resources/fonts/ProggyTiny.ttf");
+pub const FONT_DEFAULT_TINY_NAME: &str = "ProggyTiny";
+// NOTE: These may be wrong
+pub const FONT_DEFAULT_TINY_SIZE: i32 = 10;
+pub const FONT_DEFAULT_TINY_RASTER_OFFSET: Vec2 = Vec2::zero();
+
+pub const FONT_DEFAULT_SMALL_TTF: &[u8] = include_bytes!("../resources/fonts/ProggySmall.ttf");
+pub const FONT_DEFAULT_SMALL_NAME: &str = "ProggySmall";
+// NOTE: These may be wrong
+pub const FONT_DEFAULT_SMALL_SIZE: i32 = 11;
+pub const FONT_DEFAULT_SMALL_RASTER_OFFSET: Vec2 = Vec2::zero();
+
+pub const FONT_DEFAULT_REGULAR_TTF: &[u8] = include_bytes!("../resources/fonts/ProggyClean.ttf");
+pub const FONT_DEFAULT_REGULAR_NAME: &str = "ProggyClean";
+// NOTE: These may be wrong
+pub const FONT_DEFAULT_REGULAR_SIZE: i32 = 13;
+pub const FONT_DEFAULT_REGULAR_RASTER_OFFSET: Vec2 = Vec2::zero();
+
+pub const FONT_DEFAULT_SQUARE_TTF: &[u8] = include_bytes!("../resources/fonts/ProggySquare.ttf");
+pub const FONT_DEFAULT_SQUARE_NAME: &str = "ProggySquare";
+// NOTE: These may be wrong
+pub const FONT_DEFAULT_SQUARE_SIZE: i32 = 13;
+pub const FONT_DEFAULT_SQUARE_RASTER_OFFSET: Vec2 = Vec2::zero();
 
 const FIRST_VISIBLE_ASCII_CODE_POINT: u8 = 32;
 const LAST_ASCII_CODE_POINT: u8 = 126;
@@ -26,6 +45,7 @@ impl BitmapFont {
     pub fn new(
         font_ttf_bytes: &[u8],
         font_height: i32,
+        _font_renderoffset: Vec2,
         border_thickness: u32,
         atlas_padding: u32,
         color_glyph: PixelRGBA,
@@ -196,6 +216,7 @@ impl BitmapFont {
             let max_font = BitmapFont::new(
                 font_ttf_bytes,
                 font_height_max,
+                Vec2::zero(),
                 0,
                 0,
                 PixelRGBA::black(),
@@ -220,6 +241,7 @@ impl BitmapFont {
             let font = BitmapFont::new(
                 font_ttf_bytes,
                 font_height,
+                Vec2::zero(),
                 0,
                 0,
                 PixelRGBA::black(),
