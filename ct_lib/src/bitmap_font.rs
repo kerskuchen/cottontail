@@ -6,27 +6,23 @@ use super::IndexMap;
 
 pub const FONT_DEFAULT_TINY_TTF: &[u8] = include_bytes!("../resources/fonts/ProggyTiny.ttf");
 pub const FONT_DEFAULT_TINY_NAME: &str = "default_tiny";
-// NOTE: These may be wrong
 pub const FONT_DEFAULT_TINY_PIXEL_HEIGHT: i32 = 10;
 pub const FONT_DEFAULT_TINY_RASTER_OFFSET: Vec2 = Vec2::new(0.0, 0.5);
 
 pub const FONT_DEFAULT_SMALL_TTF: &[u8] = include_bytes!("../resources/fonts/ProggySmall.ttf");
 pub const FONT_DEFAULT_SMALL_NAME: &str = "default_small";
-// NOTE: These may be wrong
-pub const FONT_DEFAULT_SMALL_PIXEL_HEIGHT: i32 = 11;
-pub const FONT_DEFAULT_SMALL_RASTER_OFFSET: Vec2 = Vec2::zero();
+pub const FONT_DEFAULT_SMALL_PIXEL_HEIGHT: i32 = 10;
+pub const FONT_DEFAULT_SMALL_RASTER_OFFSET: Vec2 = Vec2::new(0.0, 0.5);
 
 pub const FONT_DEFAULT_REGULAR_TTF: &[u8] = include_bytes!("../resources/fonts/ProggyClean.ttf");
 pub const FONT_DEFAULT_REGULAR_NAME: &str = "default_regular";
-// NOTE: These may be wrong
 pub const FONT_DEFAULT_REGULAR_PIXEL_HEIGHT: i32 = 13;
-pub const FONT_DEFAULT_REGULAR_RASTER_OFFSET: Vec2 = Vec2::zero();
+pub const FONT_DEFAULT_REGULAR_RASTER_OFFSET: Vec2 = Vec2::new(0.0, 0.5);
 
 pub const FONT_DEFAULT_SQUARE_TTF: &[u8] = include_bytes!("../resources/fonts/ProggySquare.ttf");
 pub const FONT_DEFAULT_SQUARE_NAME: &str = "default_square";
-// NOTE: These may be wrong
-pub const FONT_DEFAULT_SQUARE_PIXEL_HEIGHT: i32 = 13;
-pub const FONT_DEFAULT_SQUARE_RASTER_OFFSET: Vec2 = Vec2::zero();
+pub const FONT_DEFAULT_SQUARE_PIXEL_HEIGHT: i32 = 11;
+pub const FONT_DEFAULT_SQUARE_RASTER_OFFSET: Vec2 = Vec2::new(0.0, 0.5);
 
 const FIRST_VISIBLE_ASCII_CODE_POINT: u8 = 32;
 const LAST_ASCII_CODE_POINT: u8 = 126;
@@ -282,15 +278,6 @@ impl BitmapFont {
                 text_padding + index as i32 * (lineskip + text_padding),
             );
             font.draw_text(&mut bitmap, &text, pos, Vec2i::zero());
-
-            // Draw baseline
-            bitmap.draw_rect_filled(
-                pos.x,
-                pos.y + font.baseline,
-                bitmap.width,
-                1,
-                PixelRGBA::new(255, 0, 255, 255),
-            );
         }
 
         Bitmap::write_to_png_file(&bitmap, test_image_filepath);

@@ -7,11 +7,11 @@
 * Added usage of a loaded font to main example
 * Fixed font metrics calculations via offsets
 * Draw baseline in font test in main
+* Tested all proggy fonts and set their correct offsets and sizes
 
 
 ## Current:
 
-* Test all proggy fonts and set their correct offsets and sizes
 
 ## Next:
 
