@@ -1618,7 +1618,7 @@ impl Drawstate {
             if codepoint != '\n' {
                 let glyph = self
                     .debug_log_font
-                    .get_glyph_for_codepoint(codepoint as Codepoint);
+                    .get_glyph_for_codepoint_copy(codepoint as Codepoint);
 
                 self.draw_sprite_pixel_snapped(
                     SpriteBy::Index(glyph.sprite_index),

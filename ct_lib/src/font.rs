@@ -34,7 +34,7 @@ pub const FONT_MAX_NUM_FASTPATH_CODEPOINTS: usize = 256;
 const FIRST_VISIBLE_ASCII_CODE_POINT: Codepoint = 32;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Font
+// Font and Glyph traits
 
 pub trait Glyph {
     fn get_trimmed_rect(&self) -> Recti;
@@ -45,7 +45,107 @@ pub trait Font<GlyphType: Glyph> {
     fn baseline(&self) -> i32;
     fn vertical_advance(&self) -> i32;
     fn font_height_in_pixels(&self) -> i32;
-    fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> GlyphType;
+    fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> &GlyphType;
+    fn get_glyph_for_codepoint_copy(&self, codepoint: Codepoint) -> GlyphType;
+
+    fn get_glyph_name(fontname: &str, codepoint: Codepoint) -> String {
+        format!("{}_codepoint_{}", fontname, codepoint)
+    }
+
+    fn get_text_width(&self, text: &str, font_scale: i32) -> i32 {
+        let mut text_width = 0;
+        for codepoint in text.chars() {
+            let glyph = self.get_glyph_for_codepoint(codepoint as i32);
+            text_width += font_scale * glyph.horizontal_advance();
+        }
+        text_width
+    }
+
+    fn get_text_height(&self, font_scale: i32, linecount: usize) -> i32 {
+        assert!(linecount > 0);
+        (font_scale * self.baseline())
+            + (linecount - 1) as i32 * font_scale * self.vertical_advance()
+    }
+
+    /// Returns width and height of a given utf8 text for a given scale.
+    fn get_text_dimensions(&self, text: &str, font_scale: i32) -> Vec2i {
+        if text.len() == 0 {
+            return Vec2i::zero();
+        }
+
+        let mut dimensions = Vec2i::new(0, font_scale * self.vertical_advance());
+
+        let mut next_glyph_pos = Vec2i::new(0, 0);
+        for codepoint in text.chars() {
+            if codepoint != '\n' {
+                let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
+                next_glyph_pos.x += font_scale * glyph.horizontal_advance();
+            } else {
+                dimensions.x = i32::max(dimensions.x, next_glyph_pos.x);
+                dimensions.y += font_scale * self.vertical_advance();
+
+                next_glyph_pos.x = 0;
+                next_glyph_pos.y += font_scale * self.vertical_advance();
+            }
+        }
+
+        // In case we did not find a newline character
+        dimensions.x = i32::max(dimensions.x, next_glyph_pos.x);
+
+        dimensions
+    }
+
+    /// Returns the bounding rect of a given utf8 text for a given scale. This ignores whitespace
+    /// and tries to wrap the glyphs of the given text as tight as possible.
+    fn get_text_bounding_rect_exact(&self, text: &str, font_scale: i32) -> Recti {
+        if text.len() == 0 {
+            return Recti::zero();
+        }
+
+        let mut left = std::i32::MAX;
+        let mut top = std::i32::MAX;
+        let mut right = 0;
+        let mut bottom = 0;
+
+        let mut next_glyph_pos = Vec2i::zero();
+        for codepoint in text.chars() {
+            if codepoint != '\n' {
+                let glyph = &self.get_glyph_for_codepoint(codepoint as Codepoint);
+                let glyph_rect = {
+                    let rect = glyph.get_trimmed_rect();
+                    Recti::from_point_dimensions(
+                        next_glyph_pos + font_scale * rect.pos,
+                        font_scale * rect.dim,
+                    )
+                };
+                if glyph_rect != Recti::zero() {
+                    if glyph_rect.left() < left {
+                        left = glyph_rect.left();
+                    }
+                    if glyph_rect.top() < top {
+                        top = glyph_rect.top();
+                    }
+                    if glyph_rect.right() > right {
+                        right = glyph_rect.right();
+                    }
+                    if glyph_rect.bottom() > bottom {
+                        bottom = glyph_rect.bottom();
+                    }
+                }
+
+                next_glyph_pos.x += font_scale * glyph.horizontal_advance();
+            } else {
+                next_glyph_pos.x = 0;
+                next_glyph_pos.y += font_scale * self.vertical_advance();
+            }
+        }
+
+        if left >= right || top >= bottom {
+            Recti::zero()
+        } else {
+            Recti::from_bounds_left_top_right_bottom(left, top, right, bottom)
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -58,6 +158,28 @@ pub struct BitmapFont {
     pub vertical_advance: i32,
     pub baseline: i32,
     pub glyphs: IndexMap<Codepoint, BitmapGlyph>,
+}
+
+impl Font<BitmapGlyph> for BitmapFont {
+    fn baseline(&self) -> i32 {
+        self.baseline
+    }
+    fn vertical_advance(&self) -> i32 {
+        self.vertical_advance
+    }
+    fn font_height_in_pixels(&self) -> i32 {
+        self.font_height_in_pixels
+    }
+    fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> &BitmapGlyph {
+        self.glyphs
+            .get(&codepoint)
+            .or_else(|| self.glyphs.get(&0))
+            .or_else(|| self.glyphs.get(&('?' as Codepoint)))
+            .unwrap()
+    }
+    fn get_glyph_for_codepoint_copy(&self, _codepoint: Codepoint) -> BitmapGlyph {
+        unimplemented!("Use the `get_glyph_for_codepoint_ref` instead")
+    }
 }
 
 impl BitmapFont {
@@ -158,19 +280,6 @@ impl BitmapFont {
         }
     }
 
-    #[inline]
-    pub fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> &BitmapGlyph {
-        self.glyphs
-            .get(&codepoint)
-            .or_else(|| self.glyphs.get(&0))
-            .or_else(|| self.glyphs.get(&('?' as Codepoint)))
-            .unwrap()
-    }
-
-    pub fn get_glyph_name(fontname: &str, codepoint: Codepoint) -> String {
-        format!("{}_codepoint_{}", fontname, codepoint)
-    }
-
     pub fn create_atlas(&self, fontname: &str) -> (Bitmap, IndexMap<String, Vec2i>) {
         let mut atlas = BitmapAtlas::new(64);
         for glyph in self.glyphs.values() {
@@ -188,81 +297,8 @@ impl BitmapFont {
         (atlas.atlas_texture, atlas.sprite_positions)
     }
 
-    /// Returns the width and height of a given utf8 text
-    pub fn get_text_dimensions(&self, text: &str) -> Vec2i {
-        if text.len() == 0 {
-            return Vec2i::zero();
-        }
-
-        let mut dimensions = Vec2i::new(0, self.vertical_advance);
-        let mut pos = Vec2i::new(0, self.baseline);
-
-        for codepoint in text.chars() {
-            if codepoint != '\n' {
-                let glyph = &self.get_glyph_for_codepoint(codepoint as Codepoint);
-                pos.x += glyph.horizontal_advance;
-            } else {
-                dimensions.x = i32::max(dimensions.x, pos.x);
-                dimensions.y += self.vertical_advance;
-
-                pos.x = 0;
-                pos.y += self.vertical_advance;
-            }
-        }
-
-        // In case we did not find a newline character
-        dimensions.x = i32::max(dimensions.x, pos.x);
-
-        dimensions
-    }
-
-    /// Returns the bounding rect of a given utf8 text. This ignores whitespace and tries to
-    /// wrap the glyphs of the given text as tight as possible.
-    pub fn get_text_bounding_rect_exact(&self, text: &str) -> Recti {
-        if text.len() == 0 {
-            return Recti::zero();
-        }
-
-        let mut left = std::i32::MAX;
-        let mut top = std::i32::MAX;
-        let mut right = 0;
-        let mut bottom = 0;
-
-        let mut next_glyph_pos = Vec2i::zero();
-        for codepoint in text.chars() {
-            if codepoint != '\n' {
-                let glyph = &self.get_glyph_for_codepoint(codepoint as Codepoint);
-                if let Some(bitmap) = &glyph.bitmap {
-                    let glyph_rect = bitmap.rect().translated_by(next_glyph_pos + glyph.offset);
-                    if glyph_rect.left() < left {
-                        left = glyph_rect.left();
-                    }
-                    if glyph_rect.top() < top {
-                        top = glyph_rect.top();
-                    }
-                    if glyph_rect.right() > right {
-                        right = glyph_rect.right();
-                    }
-                    if glyph_rect.bottom() > bottom {
-                        bottom = glyph_rect.bottom();
-                    }
-                }
-                next_glyph_pos.x += glyph.horizontal_advance;
-            } else {
-                next_glyph_pos.x = 0;
-                next_glyph_pos.y += self.vertical_advance;
-            }
-        }
-
-        if left >= right || top >= bottom {
-            Recti::zero()
-        } else {
-            Recti::from_bounds_left_top_right_bottom(left, top, right, bottom)
-        }
-    }
-
     pub fn create_text_bitmap(&self, text: &str, background_color: PixelRGBA) -> Bitmap {
-        let dim = self.get_text_dimensions(text);
+        let dim = self.get_text_dimensions(text, 1);
         let mut result = Bitmap::new_filled(dim.x as u32, dim.y as u32, background_color);
         self.draw_text(&mut result, text, Vec2i::zero(), Vec2i::zero());
         result
@@ -277,7 +313,7 @@ impl BitmapFont {
         alignment_x: AlignmentHorizontal,
         alignment_y: AlignmentVertical,
     ) -> Vec2i {
-        let text_dim = self.get_text_dimensions(text);
+        let text_dim = self.get_text_dimensions(text, 1);
         let origin_aligned = Vec2i::new(
             block_aligned_in_point(text_dim.x, origin.x, alignment_x),
             block_aligned_in_point(text_dim.y, origin.y, alignment_y),
@@ -296,7 +332,7 @@ impl BitmapFont {
         alignment_x: AlignmentHorizontal,
         alignment_y: AlignmentVertical,
     ) -> Vec2i {
-        let text_rect = self.get_text_bounding_rect_exact(text);
+        let text_rect = self.get_text_bounding_rect_exact(text, 1);
         let text_dim = text_rect.dim;
         let origin_aligned = Vec2i::new(
             block_aligned_in_point(text_dim.x, origin.x, alignment_x),
@@ -318,7 +354,7 @@ impl BitmapFont {
         let mut pos = starting_offset;
         for codepoint in text.chars() {
             if codepoint != '\n' {
-                let glyph = &self.get_glyph_for_codepoint(codepoint as Codepoint);
+                let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
 
                 if let Some(glyph_bitmap) = &glyph.bitmap {
                     glyph_bitmap.blit_to(
@@ -359,7 +395,7 @@ impl BitmapFont {
                 PixelRGBA::black(),
                 PixelRGBA::transparent(),
             );
-            let max_text_width = max_font.get_text_dimensions(&max_text).x;
+            let max_text_width = max_font.get_text_dimensions(&max_text, 1).x;
             let max_text_height = max_font.font_height_in_pixels;
 
             let samplecount = 1 + font_height_max - font_height_min;
@@ -762,9 +798,17 @@ pub struct SpriteFont {
     pub unicode_glyphs: HashMap<Codepoint, SpriteGlyph>,
 }
 
-impl SpriteFont {
-    #[inline]
-    pub fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> SpriteGlyph {
+impl Font<SpriteGlyph> for SpriteFont {
+    fn baseline(&self) -> i32 {
+        self.baseline
+    }
+    fn vertical_advance(&self) -> i32 {
+        self.vertical_advance
+    }
+    fn font_height_in_pixels(&self) -> i32 {
+        self.font_height_in_pixels
+    }
+    fn get_glyph_for_codepoint_copy(&self, codepoint: Codepoint) -> SpriteGlyph {
         if codepoint < FONT_MAX_NUM_FASTPATH_CODEPOINTS as i32 {
             self.ascii_glyphs[codepoint as usize]
         } else {
@@ -779,97 +823,24 @@ impl SpriteFont {
             }
         }
     }
-
-    pub fn get_text_width(&self, font_scale: i32, text: &str) -> i32 {
-        let mut text_width = 0;
-        for codepoint in text.chars() {
-            let glyph = self.get_glyph_for_codepoint(codepoint as i32);
-            text_width += font_scale * glyph.horizontal_advance;
-        }
-        text_width
-    }
-
-    pub fn get_text_height(font: &SpriteFont, font_scale: i32, linecount: usize) -> i32 {
-        assert!(linecount > 0);
-        (font_scale * font.baseline) + (linecount - 1) as i32 * font_scale * font.vertical_advance
-    }
-
-    /// Returns width and height of a given utf8 text for a given scale.
-    pub fn get_text_dimensions(&self, font_scale: i32, text: &str) -> Vec2i {
-        if text.len() == 0 {
-            return Vec2i::zero();
-        }
-
-        let mut dimensions = Vec2i::new(0, font_scale * self.vertical_advance);
-
-        let mut next_glyph_pos = Vec2i::new(0, 0);
-        for codepoint in text.chars() {
-            if codepoint != '\n' {
-                let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
-                next_glyph_pos.x += font_scale * glyph.horizontal_advance;
-            } else {
-                dimensions.x = i32::max(dimensions.x, next_glyph_pos.x);
-                dimensions.y += font_scale * self.vertical_advance;
-
-                next_glyph_pos.x = 0;
-                next_glyph_pos.y += font_scale * self.vertical_advance;
-            }
-        }
-
-        // In case we did not find a newline character
-        dimensions.x = i32::max(dimensions.x, next_glyph_pos.x);
-
-        dimensions
-    }
-
-    /// Returns the bounding rect of a given utf8 text for a given scale. This ignores whitespace
-    /// and tries to wrap the glyphs of the given text as tight as possible.
-    pub fn get_text_bounding_rect_exact(&self, text: &str, font_scale: i32) -> Recti {
-        if text.len() == 0 {
-            return Recti::zero();
-        }
-
-        let mut left = std::i32::MAX;
-        let mut top = std::i32::MAX;
-        let mut right = 0;
-        let mut bottom = 0;
-
-        let mut next_glyph_pos = Vec2i::zero();
-        for codepoint in text.chars() {
-            if codepoint != '\n' {
-                let glyph = &self.get_glyph_for_codepoint(codepoint as Codepoint);
-                if glyph.sprite_index != 0 {
-                    let glyph_rect = Recti::from_point_dimensions(
-                        next_glyph_pos + font_scale * glyph.sprite_draw_offset,
-                        font_scale * glyph.sprite_dimensions,
-                    );
-                    if glyph_rect.left() < left {
-                        left = glyph_rect.left();
-                    }
-                    if glyph_rect.top() < top {
-                        top = glyph_rect.top();
-                    }
-                    if glyph_rect.right() > right {
-                        right = glyph_rect.right();
-                    }
-                    if glyph_rect.bottom() > bottom {
-                        bottom = glyph_rect.bottom();
-                    }
-                }
-                next_glyph_pos.x += font_scale * glyph.horizontal_advance;
-            } else {
-                next_glyph_pos.x = 0;
-                next_glyph_pos.y += font_scale * self.vertical_advance;
-            }
-        }
-
-        if left >= right || top >= bottom {
-            Recti::zero()
+    fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> &SpriteGlyph {
+        if codepoint < FONT_MAX_NUM_FASTPATH_CODEPOINTS as i32 {
+            &self.ascii_glyphs[codepoint as usize]
         } else {
-            Recti::from_bounds_left_top_right_bottom(left, top, right, bottom)
+            let result = self
+                .unicode_glyphs
+                .get(&codepoint)
+                .unwrap_or(&self.ascii_glyphs[0usize]);
+            if result.sprite_index != 0 {
+                result
+            } else {
+                &self.ascii_glyphs['?' as usize]
+            }
         }
     }
+}
 
+impl SpriteFont {
     /// Iterates a given utf8 text and runs a given operation on each glyph.
     /// Returns the starting_offset for the next `iter_text_glyphs` call
     pub fn iter_text_glyphs<Operation: core::ops::FnMut(&SpriteGlyph, Vec2, f32) -> ()>(

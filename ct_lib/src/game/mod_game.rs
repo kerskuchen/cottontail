@@ -2451,7 +2451,7 @@ impl Scene for SceneDebug {
         // Text drawing test
         let test_font = draw.get_font(&self.loaded_font_name);
         let text = "Loaded font test gorgeous!|\u{08A8}";
-        let text_width = test_font.get_text_width(1, text);
+        let text_width = test_font.get_text_width(text, 1);
         // Draw origin is top-left
         let draw_pos = Vec2::new(5.0, globals.canvas_height - 40.0);
         draw.draw_text(
