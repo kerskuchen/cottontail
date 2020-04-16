@@ -2451,7 +2451,7 @@ impl Scene for SceneDebug {
         // Text drawing test
         let test_font = draw.get_font(&self.loaded_font_name);
         let text = "Loaded font test gorgeous!|\u{08A8}";
-        let text_width = test_font.get_text_width(1.0, text);
+        let text_width = test_font.get_text_width(1, text);
         // Draw origin is top-left
         let draw_pos = Vec2::new(5.0, globals.canvas_height - 40.0);
         draw.draw_text(
@@ -2466,8 +2466,8 @@ impl Scene for SceneDebug {
             ADDITIVITY_NONE,
         );
         draw.draw_line_bresenham(
-            draw_pos + Vec2::new(0.0, test_font.baseline),
-            draw_pos + Vec2::new(text_width, test_font.baseline),
+            draw_pos + Vec2::new(0.0, test_font.baseline as f32),
+            draw_pos + Vec2::new(text_width as f32, test_font.baseline as f32),
             20.0,
             0.3 * Color::yellow(),
             ADDITIVITY_NONE,
@@ -2487,7 +2487,7 @@ impl Scene for SceneDebug {
         );
         draw.draw_line_bresenham(
             draw_pos,
-            draw_pos + Vec2::new(text_width, 0.0),
+            draw_pos + Vec2::new(text_width as f32, 0.0),
             20.0,
             0.3 * Color::yellow(),
             ADDITIVITY_NONE,

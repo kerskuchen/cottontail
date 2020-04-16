@@ -558,7 +558,7 @@ fn convert_sprite(
 
 fn convert_glyph(glyph: &AssetGlyph) -> SpriteGlyph {
     SpriteGlyph {
-        horizontal_advance: glyph.horizontal_advance as f32,
+        horizontal_advance: glyph.horizontal_advance,
         sprite_index: glyph.sprite_index,
         sprite_dimensions: glyph.sprite_dimensions,
         sprite_draw_offset: glyph.sprite_draw_offset,
@@ -582,8 +582,8 @@ fn convert_font(font: &AssetFont) -> SpriteFont {
 
     SpriteFont {
         name: font.name.clone(),
-        baseline: font.baseline as f32,
-        vertical_advance: font.vertical_advance as f32,
+        baseline: font.baseline,
+        vertical_advance: font.vertical_advance,
         font_height_in_pixels: font.font_height_in_pixels,
         ascii_glyphs,
         unicode_glyphs,

@@ -697,7 +697,7 @@ mod tests {
 ///       to borrow the glyphs sprite and draw it at the same time
 #[derive(Default, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct SpriteGlyph {
-    pub horizontal_advance: f32,
+    pub horizontal_advance: i32,
     pub sprite_index: SpriteIndex,
 
     /// This is mainly used for text dimension calculations
@@ -710,8 +710,8 @@ pub struct SpriteGlyph {
 pub struct SpriteFont {
     pub name: String,
 
-    pub baseline: f32,
-    pub vertical_advance: f32,
+    pub baseline: i32,
+    pub vertical_advance: i32,
     pub font_height_in_pixels: i32,
 
     /// Fastpath glyphs for quick access (mainly latin glyphs)
@@ -738,36 +738,8 @@ impl SpriteFont {
         }
     }
 
-    /// Returns width and height of a given utf8 text for a given font and font scale.
-    pub fn get_text_dimensions(&self, font_scale: f32, text: &str) -> Vec2 {
-        if text.len() == 0 {
-            return Vec2::zero();
-        }
-
-        let mut dimensions = Vec2::new(0.0, font_scale * self.vertical_advance);
-        let mut pos = Vec2::new(0.0, font_scale * self.baseline);
-
-        for codepoint in text.chars() {
-            if codepoint != '\n' {
-                let glyph = self.get_glyph_for_codepoint(codepoint as i32);
-                pos.x += font_scale * glyph.horizontal_advance;
-            } else {
-                dimensions.x = f32::max(dimensions.x, pos.x);
-                dimensions.y += font_scale * self.vertical_advance;
-
-                pos.x = 0.0;
-                pos.y += font_scale * self.vertical_advance;
-            }
-        }
-
-        // In case we did not find a newline character
-        dimensions.x = f32::max(dimensions.x, pos.x);
-
-        dimensions
-    }
-
-    pub fn get_text_width(&self, font_scale: f32, text: &str) -> f32 {
-        let mut text_width = 0.0;
+    pub fn get_text_width(&self, font_scale: i32, text: &str) -> i32 {
+        let mut text_width = 0;
         for codepoint in text.chars() {
             let glyph = self.get_glyph_for_codepoint(codepoint as i32);
             text_width += font_scale * glyph.horizontal_advance;
@@ -775,9 +747,85 @@ impl SpriteFont {
         text_width
     }
 
-    pub fn get_text_height(font: &SpriteFont, font_scale: f32, linecount: usize) -> f32 {
+    pub fn get_text_height(font: &SpriteFont, font_scale: i32, linecount: usize) -> i32 {
         assert!(linecount > 0);
-        (font_scale * font.baseline) + (linecount - 1) as f32 * font_scale * font.vertical_advance
+        (font_scale * font.baseline) + (linecount - 1) as i32 * font_scale * font.vertical_advance
+    }
+
+    /// Returns width and height of a given utf8 text for a given scale.
+    pub fn get_text_dimensions(&self, font_scale: i32, text: &str) -> Vec2i {
+        if text.len() == 0 {
+            return Vec2i::zero();
+        }
+
+        let mut dimensions = Vec2i::new(0, font_scale * self.vertical_advance);
+
+        let mut next_glyph_pos = Vec2i::new(0, 0);
+        for codepoint in text.chars() {
+            if codepoint != '\n' {
+                let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
+                next_glyph_pos.x += font_scale * glyph.horizontal_advance;
+            } else {
+                dimensions.x = i32::max(dimensions.x, next_glyph_pos.x);
+                dimensions.y += font_scale * self.vertical_advance;
+
+                next_glyph_pos.x = 0;
+                next_glyph_pos.y += font_scale * self.vertical_advance;
+            }
+        }
+
+        // In case we did not find a newline character
+        dimensions.x = i32::max(dimensions.x, next_glyph_pos.x);
+
+        dimensions
+    }
+
+    /// Returns the bounding rect of a given utf8 text for a given scale. This ignores whitespace
+    /// and tries to wrap the glyphs of the given text as tight as possible.
+    pub fn get_text_bounding_rect_exact(&self, text: &str, font_scale: i32) -> Recti {
+        if text.len() == 0 {
+            return Recti::zero();
+        }
+
+        let mut left = std::i32::MAX;
+        let mut top = std::i32::MAX;
+        let mut right = 0;
+        let mut bottom = 0;
+
+        let mut next_glyph_pos = Vec2i::zero();
+        for codepoint in text.chars() {
+            if codepoint != '\n' {
+                let glyph = &self.get_glyph_for_codepoint(codepoint as Codepoint);
+                if glyph.sprite_index != 0 {
+                    let glyph_rect = Recti::from_point_dimensions(
+                        next_glyph_pos + font_scale * glyph.sprite_draw_offset,
+                        font_scale * glyph.sprite_dimensions,
+                    );
+                    if glyph_rect.left() < left {
+                        left = glyph_rect.left();
+                    }
+                    if glyph_rect.top() < top {
+                        top = glyph_rect.top();
+                    }
+                    if glyph_rect.right() > right {
+                        right = glyph_rect.right();
+                    }
+                    if glyph_rect.bottom() > bottom {
+                        bottom = glyph_rect.bottom();
+                    }
+                }
+                next_glyph_pos.x += font_scale * glyph.horizontal_advance;
+            } else {
+                next_glyph_pos.x = 0;
+                next_glyph_pos.y += font_scale * self.vertical_advance;
+            }
+        }
+
+        if left >= right || top >= bottom {
+            Recti::zero()
+        } else {
+            Recti::from_bounds_left_top_right_bottom(left, top, right, bottom)
+        }
     }
 }
 
@@ -786,36 +834,6 @@ impl SpriteFont {
 //--------------------------------------------------------------------------------------------------
 // Text drawing
 
-/// Returns width and height of a given utf8 text for a given font and font scale.
-/// NOTE: This returns a more accurate dimension than `font_get_text_dimensions` which calculates
-///       the text-width based on the horizontal advance. This function on the other hand calculates
-///       the text width based on the actual glyph bitmap widths.
-pub fn get_text_dimensions(&mut self, font: &SpriteFont, font_scale: f32, text: &str) -> Vec2 {
-    if text.len() == 0 {
-        return Vec2::zero();
-    }
-
-    let mut dimensions = Vec2::new(0.0, font_scale * font.vertical_advance);
-    let mut pos = Vec2::new(0.0, font_scale * font.baseline);
-
-    for codepoint in text.chars() {
-        if codepoint != '\n' {
-            let glyph = font.get_glyph_for_codepoint(codepoint as Codepoint);
-
-            let sprite = self.get_sprite_by_index(glyph.sprite_index);
-            let sprite_width = sprite.trimmed_rect.width() * font_scale;
-            dimensions.x = f32::max(dimensions.x, pos.x + sprite_width);
-
-            pos.x += font_scale * glyph.horizontal_advance;
-        } else {
-            pos.x = 0.0;
-            pos.y += font_scale * font.vertical_advance;
-            dimensions.y += font_scale * font.vertical_advance;
-        }
-    }
-
-    dimensions
-}
 
 /// Draws a given utf8 text with a given font
 /// Returns the starting_offset for the next `text` or `text_formatted` call

@@ -1400,37 +1400,6 @@ impl Drawstate {
     //--------------------------------------------------------------------------------------------------
     // Text drawing
 
-    /// Returns width and height of a given utf8 text for a given font and font scale.
-    /// NOTE: This returns a more accurate dimension than `font_get_text_dimensions` which calculates
-    ///       the text-width based on the horizontal advance. This function on the other hand calculates
-    ///       the text width based on the actual glyph bitmap widths.
-    pub fn get_text_dimensions(&mut self, font: &SpriteFont, font_scale: f32, text: &str) -> Vec2 {
-        if text.len() == 0 {
-            return Vec2::zero();
-        }
-
-        let mut dimensions = Vec2::new(0.0, font_scale * font.vertical_advance);
-        let mut pos = Vec2::new(0.0, font_scale * font.baseline);
-
-        for codepoint in text.chars() {
-            if codepoint != '\n' {
-                let glyph = font.get_glyph_for_codepoint(codepoint as Codepoint);
-
-                let sprite = self.get_sprite_by_index(glyph.sprite_index);
-                let sprite_width = sprite.trimmed_rect.width() * font_scale;
-                dimensions.x = f32::max(dimensions.x, pos.x + sprite_width);
-
-                pos.x += font_scale * glyph.horizontal_advance;
-            } else {
-                pos.x = 0.0;
-                pos.y += font_scale * font.vertical_advance;
-                dimensions.y += font_scale * font.vertical_advance;
-            }
-        }
-
-        dimensions
-    }
-
     /// Draws a given utf8 text with a given font
     /// Returns the starting_offset for the next `text` or `text_formatted` call
     pub fn draw_text(
@@ -1448,7 +1417,7 @@ impl Drawstate {
         let mut origin = worldpoint_pixel_snapped(starting_origin);
         if origin_is_baseline {
             // NOTE: Ascent will be drawn above the origin and descent below the origin
-            origin.y -= font_scale * font.baseline;
+            origin.y -= font_scale * font.baseline as f32;
         } else {
             // NOTE: Everything is drawn below the origin
         }
@@ -1470,10 +1439,10 @@ impl Drawstate {
                     additivity,
                 );
 
-                pos.x += font_scale * glyph.horizontal_advance;
+                pos.x += font_scale * glyph.horizontal_advance as f32;
             } else {
                 pos.x = 0.0;
-                pos.y += font_scale * font.vertical_advance;
+                pos.y += font_scale * font.vertical_advance as f32;
             }
         }
 
@@ -1498,14 +1467,14 @@ impl Drawstate {
         let mut origin = worldpoint_pixel_snapped(starting_origin);
         if origin_is_baseline {
             // NOTE: Ascent will be drawn above the origin and descent below the origin
-            origin.y -= font_scale * font.baseline;
+            origin.y -= font_scale * font.baseline as f32;
         } else {
             // NOTE: Everything is drawn below the origin
         }
 
         // Check if we would begin drawing below our clipping rectangle
-        let mut current_line_top = origin.y - font_scale * font.baseline;
-        let mut current_line_bottom = current_line_top + font.vertical_advance;
+        let mut current_line_top = origin.y - font_scale * font.baseline as f32;
+        let mut current_line_bottom = current_line_top + font.vertical_advance as f32;
         current_line_top += starting_offset.y;
         current_line_bottom += starting_offset.y;
         if current_line_top > clipping_rect.bottom() {
@@ -1531,16 +1500,16 @@ impl Drawstate {
                         additivity,
                     );
 
-                    pos.x += font_scale * glyph.horizontal_advance;
+                    pos.x += font_scale * glyph.horizontal_advance as f32;
                 }
             }
 
             // We finished a line and need advance to the next line
             pos.x = 0.0;
-            pos.y += font_scale * font.vertical_advance;
+            pos.y += font_scale * font.vertical_advance as f32;
 
-            current_line_top += font_scale * font.vertical_advance;
-            current_line_bottom += font_scale * font.vertical_advance;
+            current_line_top += font_scale * font.vertical_advance as f32;
+            current_line_bottom += font_scale * font.vertical_advance as f32;
             if clipping_rect.bottom() <= current_line_top {
                 // NOTE: We skipped past the lower border of the bounding rect and all following
                 //       lines will not be visible anymore
@@ -1681,11 +1650,11 @@ impl Drawstate {
         });
     }
 
-    pub fn debug_log<S: Into<String>>(&mut self, text: S) {
+    pub fn debug_log<StringType: Into<String>>(&mut self, text: StringType) {
         self.debug_log_color(Color::white(), text)
     }
 
-    pub fn debug_log_color<S: Into<String>>(&mut self, color: Color, text: S) {
+    pub fn debug_log_color<StringType: Into<String>>(&mut self, color: Color, text: StringType) {
         // NOTE: We needed to re-implement this because the borrow-checker does not let us borrow
         //       `self.debug_log_font` to use in `self.text(...)`
         let origin = worldpoint_pixel_snapped(self.debug_log_origin);
@@ -1708,15 +1677,15 @@ impl Drawstate {
                     ADDITIVITY_NONE,
                 );
 
-                pos.x += self.debug_log_font_scale * glyph.horizontal_advance;
+                pos.x += self.debug_log_font_scale * glyph.horizontal_advance as f32;
             } else {
                 pos.x = 0.0;
-                pos.y += self.debug_log_font_scale * self.debug_log_font.vertical_advance;
+                pos.y += self.debug_log_font_scale * self.debug_log_font.vertical_advance as f32;
             }
         }
         // Add final '\n'
         pos.x = 0.0;
-        pos.y += self.debug_log_font_scale * self.debug_log_font.vertical_advance;
+        pos.y += self.debug_log_font_scale * self.debug_log_font.vertical_advance as f32;
 
         self.debug_log_offset = pos;
     }
