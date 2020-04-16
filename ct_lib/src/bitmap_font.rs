@@ -139,6 +139,8 @@ impl BitmapFont {
             .atlas_texture
             .trim(false, false, true, true, PixelRGBA::transparent());
 
+        // NOTE: We don't return the atlas itself because we trimmed the atlas texture so that it
+        //       may not be in sync with our atlas rectangle packer anymore
         (atlas.atlas_texture, atlas.sprite_positions)
     }
 

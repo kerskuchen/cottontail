@@ -78,11 +78,14 @@ pub struct Sprite {
     pub index: SpriteIndex,
     pub atlas_texture_index: TextureIndex,
 
+    /// Determines if the sprite contains pixels that have alpha that is not 0 and not 1.
+    /// This is important for the sorting of sprites before drawing.
     pub has_translucency: bool,
 
     /// The amount by which the sprite is offsetted when drawn (must be marked in the image
-    /// file in special `pivot` layer)
+    /// file in special `pivot` layer). This is useful to i.e. have a sprite always drawn centered.
     pub pivot_offset: Vec2,
+
     /// Optional special points useful for attaching other game objects to a sprite
     /// (must be marked in the image file in special `attachment_0`, `attachment_1` .. layers)
     pub attachment_points: [Vec2; SPRITE_ATTACHMENT_POINTS_MAX_COUNT],
@@ -90,9 +93,12 @@ pub struct Sprite {
     /// Contains the width and height of the original untrimmed sprite image. Usually only used for
     /// querying the size of the sprite
     pub untrimmed_dimensions: Vec2,
+
     /// Contains the trimmed dimensions of the sprite as it is stored in the atlas. This thightly
-    /// surrounds every non-transparent pixel of the sprite.
+    /// surrounds every non-transparent pixel of the sprite. It also implicitly encodes the draw
+    /// offset of the sprite by `trimmed_rect.pos` (not to be confused with `pivot_offset`)
     pub trimmed_rect: Rect,
+
     /// Texture coordinates of the trimmed sprite
     /// NOTE: We use an AAQuad instead of a Rect to allow us to mirror the texture horizontally
     ///       or vertically
@@ -1206,10 +1212,12 @@ impl Drawstate {
 //--------------------------------------------------------------------------------------------------
 // Drawing
 
+/// NOTE: SpriteBy::Ref should be preferred as it is the fastest to use. SpriteBy::Index /
+///       SpriteBy::Name require array / hashmap lookup
 pub enum SpriteBy<'a> {
+    Ref(&'a Sprite),
     Index(SpriteIndex),
     Name(&'a str),
-    Ref(&'a Sprite),
 }
 
 impl Drawstate {
@@ -1679,6 +1687,7 @@ impl Drawstate {
         }
     }
 
+    /// WARNING: This can be slow if used often
     pub fn draw_pixel(&mut self, pos: Vec2, depth: Depth, color: Color, additivity: Additivity) {
         self.draw_rect(
             Rect::from_point_dimensions(worldpoint_pixel_snapped(pos), Vec2::ones()),
