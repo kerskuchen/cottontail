@@ -208,6 +208,7 @@ pub fn round_up_to_nearest_multiple_of_target(value: f32, target: f32) -> f32 {
 //--------------------------------------------------------------------------------------------------
 // Centering / alignment of blocks, mirroring
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Alignment {
     /// Also Left or Top
     Begin,
@@ -216,12 +217,14 @@ pub enum Alignment {
     End,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AlignmentHorizontal {
     Left,
     Center,
     Right,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AlignmentVertical {
     Top,
     Center,

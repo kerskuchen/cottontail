@@ -1,6 +1,7 @@
 pub use super::color::{Color, PixelRGBA};
 pub use super::grid::GluePosition;
 pub use super::math;
+pub use super::system;
 
 pub type Bitmap = super::grid::Grid<PixelRGBA>;
 
@@ -52,6 +53,10 @@ impl Bitmap {
     }
 
     pub fn write_to_png_file(bitmap: &Bitmap, png_filepath: &str) {
+        std::fs::create_dir_all(system::path_without_filename(png_filepath)).expect(&format!(
+            "Could not create necessary directories to write to '{}'",
+            png_filepath
+        ));
         lodepng::encode32_file(
             png_filepath,
             &bitmap.data,

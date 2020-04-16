@@ -197,7 +197,7 @@ impl BitmapFont {
                     if glyph_rect.right() > right {
                         right = glyph_rect.right();
                     }
-                    if glyph_rect.bottom() < bottom {
+                    if glyph_rect.bottom() > bottom {
                         bottom = glyph_rect.bottom();
                     }
                 }
@@ -222,7 +222,7 @@ impl BitmapFont {
         result
     }
 
-    pub fn draw_text_aligned(
+    pub fn draw_text_aligned_in_point(
         &self,
         image: &mut Bitmap,
         text: &str,
@@ -236,6 +236,27 @@ impl BitmapFont {
             block_aligned_in_point(text_dim.x, origin.x, alignment_x),
             block_aligned_in_point(text_dim.y, origin.y, alignment_y),
         );
+        self.draw_text(image, text, origin_aligned, starting_offset)
+    }
+
+    /// Same as draw_text_aligned_in_point but ignoring whitespace and aligning glyphs as tight
+    /// as possible
+    pub fn draw_text_aligned_in_point_exact(
+        &self,
+        image: &mut Bitmap,
+        text: &str,
+        origin: Vec2i,
+        starting_offset: Vec2i,
+        alignment_x: AlignmentHorizontal,
+        alignment_y: AlignmentVertical,
+    ) -> Vec2i {
+        let text_rect = self.get_text_bounding_rect_exact(text);
+        let text_dim = text_rect.dim;
+        let origin_aligned = Vec2i::new(
+            block_aligned_in_point(text_dim.x, origin.x, alignment_x),
+            block_aligned_in_point(text_dim.y, origin.y, alignment_y),
+        ) - text_rect.pos;
+
         self.draw_text(image, text, origin_aligned, starting_offset)
     }
 
@@ -467,5 +488,176 @@ fn draw_glyph_border(image: &mut Bitmap, color_glyph: PixelRGBA, color_border: P
                 }
             }
         }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Tests
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn get_default_font() -> BitmapFont {
+        BitmapFont::new(
+            FONT_DEFAULT_TINY_NAME,
+            FONT_DEFAULT_TINY_TTF,
+            FONT_DEFAULT_TINY_PIXEL_HEIGHT,
+            FONT_DEFAULT_TINY_RASTER_OFFSET,
+            0,
+            0,
+            PixelRGBA::black(),
+            PixelRGBA::transparent(),
+        )
+    }
+
+    #[test]
+    fn aligned_text_drawing_in_point() {
+        let font = get_default_font();
+        let text = "hello, good day!";
+        let bitmap_width = 256;
+        let bitmap_height = 256;
+        let bitmap_center = Vec2i::new(bitmap_width, bitmap_height) / 2;
+
+        let mut bitmaps = Vec::new();
+        for alignment_x in &[
+            AlignmentHorizontal::Left,
+            AlignmentHorizontal::Center,
+            AlignmentHorizontal::Right,
+        ] {
+            for alignment_y in &[
+                AlignmentVertical::Top,
+                AlignmentVertical::Center,
+                AlignmentVertical::Bottom,
+            ] {
+                let mut bitmap = Bitmap::new(bitmap_width as u32, bitmap_height as u32);
+                font.draw_text_aligned_in_point(
+                    &mut bitmap,
+                    &format!("{:?} - {:?}", alignment_x, alignment_y),
+                    Vec2i::new(bitmap_width / 2, 0),
+                    Vec2i::zero(),
+                    AlignmentHorizontal::Center,
+                    AlignmentVertical::Top,
+                );
+                font.draw_text_aligned_in_point(
+                    &mut bitmap,
+                    text,
+                    bitmap_center,
+                    Vec2i::zero(),
+                    *alignment_x,
+                    *alignment_y,
+                );
+                bitmap.set(bitmap_center.x, bitmap_center.y, PixelRGBA::magenta());
+                bitmaps.push(bitmap);
+            }
+        }
+
+        let final_bitmap =
+            Bitmap::glue_together_multiple(&bitmaps, GluePosition::RightTop, 1, PixelRGBA::black());
+        Bitmap::write_to_png_file(&final_bitmap, "tests/bitmapfont_aligned_text_drawing.png");
+    }
+
+    #[test]
+    fn aligned_text_drawing_in_point_tight() {
+        let font = get_default_font();
+        let text = "
+                   
+            aaaa   
+            gggg   
+            gggg   
+                   
+        ";
+        let bitmap_width = 128;
+        let bitmap_height = 128;
+        let bitmap_center = Vec2i::new(bitmap_width, bitmap_height) / 2;
+
+        let mut bitmaps = Vec::new();
+        for alignment_x in &[
+            AlignmentHorizontal::Left,
+            AlignmentHorizontal::Center,
+            AlignmentHorizontal::Right,
+        ] {
+            for alignment_y in &[
+                AlignmentVertical::Top,
+                AlignmentVertical::Center,
+                AlignmentVertical::Bottom,
+            ] {
+                let mut bitmap = Bitmap::new(bitmap_width as u32, bitmap_height as u32);
+                font.draw_text_aligned_in_point(
+                    &mut bitmap,
+                    &format!("{:?} - {:?}", alignment_x, alignment_y),
+                    Vec2i::new(bitmap_width / 2, 0),
+                    Vec2i::zero(),
+                    AlignmentHorizontal::Center,
+                    AlignmentVertical::Top,
+                );
+                font.draw_text_aligned_in_point_exact(
+                    &mut bitmap,
+                    text,
+                    bitmap_center,
+                    Vec2i::zero(),
+                    *alignment_x,
+                    *alignment_y,
+                );
+                bitmap.set(bitmap_center.x, bitmap_center.y, PixelRGBA::magenta());
+                bitmaps.push(bitmap);
+            }
+        }
+
+        let final_bitmap =
+            Bitmap::glue_together_multiple(&bitmaps, GluePosition::RightTop, 1, PixelRGBA::black());
+        Bitmap::write_to_png_file(
+            &final_bitmap,
+            "tests/bitmapfont_aligned_text_drawing_exact.png",
+        );
+    }
+
+    #[test]
+    fn aligned_text_drawing_in_point_tight_single_glyph() {
+        let font = get_default_font();
+        let text = "a";
+        let bitmap_width = 128;
+        let bitmap_height = 128;
+        let bitmap_center = Vec2i::new(bitmap_width, bitmap_height) / 2;
+
+        let mut bitmaps = Vec::new();
+        for alignment_x in &[
+            AlignmentHorizontal::Left,
+            AlignmentHorizontal::Center,
+            AlignmentHorizontal::Right,
+        ] {
+            for alignment_y in &[
+                AlignmentVertical::Top,
+                AlignmentVertical::Center,
+                AlignmentVertical::Bottom,
+            ] {
+                let mut bitmap = Bitmap::new(bitmap_width as u32, bitmap_height as u32);
+                font.draw_text_aligned_in_point(
+                    &mut bitmap,
+                    &format!("{:?} - {:?}", alignment_x, alignment_y),
+                    Vec2i::new(bitmap_width / 2, 0),
+                    Vec2i::zero(),
+                    AlignmentHorizontal::Center,
+                    AlignmentVertical::Top,
+                );
+                font.draw_text_aligned_in_point_exact(
+                    &mut bitmap,
+                    text,
+                    bitmap_center,
+                    Vec2i::zero(),
+                    *alignment_x,
+                    *alignment_y,
+                );
+                bitmap.set(bitmap_center.x, bitmap_center.y, PixelRGBA::magenta());
+                bitmaps.push(bitmap);
+            }
+        }
+
+        let final_bitmap =
+            Bitmap::glue_together_multiple(&bitmaps, GluePosition::RightTop, 1, PixelRGBA::black());
+        Bitmap::write_to_png_file(
+            &final_bitmap,
+            "tests/bitmapfont_aligned_text_drawing_exact_single_glyph.png",
+        );
     }
 }
