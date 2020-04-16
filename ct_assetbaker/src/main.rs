@@ -53,6 +53,11 @@ pub struct AssetGlyph {
     pub sprite_name: Spritename,
     pub sprite_index: SpriteIndex,
     pub horizontal_advance: i32,
+
+    /// This is mainly used for text dimension calculations
+    pub sprite_dimensions: Vec2i,
+    /// This is mainly used for text dimension calculations
+    pub sprite_draw_offset: Vec2i,
 }
 
 #[derive(Default, Debug, Clone, Serialize)]
@@ -439,6 +444,8 @@ pub fn bitmapfont_create_from_ttf(
     for glyph in &font.glyphs {
         let codepoint = glyph.codepoint as Codepoint;
         let sprite_name = BitmapFont::get_glyph_name(&font_name, glyph.codepoint as Codepoint);
+        let sprite_pos = font_atlas_glyph_positions.get(&sprite_name).cloned();
+        let sprite = sprite_create_from_glyph(&sprite_name, glyph, sprite_pos);
 
         let asset_glyph = AssetGlyph {
             codepoint,
@@ -447,9 +454,9 @@ pub fn bitmapfont_create_from_ttf(
             //       our the sprites
             sprite_index: std::u32::MAX,
             horizontal_advance: glyph.horizontal_advance,
+            sprite_dimensions: sprite.trimmed_rect.dim,
+            sprite_draw_offset: sprite.trimmed_rect.pos,
         };
-        let sprite_pos = font_atlas_glyph_positions.get(&sprite_name).cloned();
-        let sprite = sprite_create_from_glyph(&sprite_name, glyph, sprite_pos);
 
         result_glyphs.insert(codepoint, asset_glyph);
         result_sprites.insert(sprite_name, sprite);
@@ -551,6 +558,8 @@ fn convert_glyph(glyph: &AssetGlyph) -> SpriteGlyph {
     SpriteGlyph {
         horizontal_advance: glyph.horizontal_advance as f32,
         sprite_index: glyph.sprite_index,
+        sprite_dimensions: glyph.sprite_dimensions,
+        sprite_draw_offset: glyph.sprite_draw_offset,
     }
 }
 

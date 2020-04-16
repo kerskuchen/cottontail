@@ -3,8 +3,8 @@
 * Move font rendering tests in main to debugscene and pass a loaded fontname 
 * Adds exact text measurement and drawing and with alignment to `BitmapFont`
 * Adds test for text drawing with aligment to `BitmapFont`
-
 * Move font rendering tests in main to debugscene and pass a loaded fontname 
+* Refactored stuff out of draw module
 
 ## Current:
 

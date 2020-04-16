@@ -671,10 +671,17 @@ mod tests {
 //--------------------------------------------------------------------------------------------------
 // SpriteFont
 
+/// NOTE: We cannot store the Sprite here directly because the borrowchecker won't allow the `Drawstate`
+///       to borrow the glyphs sprite and draw it at the same time
 #[derive(Default, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct SpriteGlyph {
     pub horizontal_advance: f32,
     pub sprite_index: SpriteIndex,
+
+    /// This is mainly used for text dimension calculations
+    pub sprite_dimensions: Vec2i,
+    /// This is mainly used for text dimension calculations
+    pub sprite_draw_offset: Vec2i,
 }
 
 pub const FONT_MAX_NUM_FASTPATH_CODEPOINTS: usize = 256;
