@@ -170,6 +170,51 @@ impl BitmapFont {
         dimensions
     }
 
+    /// Returns the bounding rect of a given utf8 text. This ignores whitespace and tries to
+    /// wrap the glyphs of the given text as tight as possible.
+    pub fn get_text_bounding_rect_exact(&self, text: &str) -> Recti {
+        if text.len() == 0 {
+            return Recti::zero();
+        }
+
+        let mut left = std::i32::MAX;
+        let mut top = std::i32::MAX;
+        let mut right = 0;
+        let mut bottom = 0;
+
+        let mut next_glyph_pos = Vec2i::zero();
+        for codepoint in text.chars() {
+            if codepoint != '\n' {
+                let glyph = &self.glyphs[codepoint as usize];
+                if let Some(bitmap) = &glyph.bitmap {
+                    let glyph_rect = bitmap.rect().translated_by(next_glyph_pos + glyph.offset);
+                    if glyph_rect.left() < left {
+                        left = glyph_rect.left();
+                    }
+                    if glyph_rect.top() < top {
+                        top = glyph_rect.top();
+                    }
+                    if glyph_rect.right() > right {
+                        right = glyph_rect.right();
+                    }
+                    if glyph_rect.bottom() < bottom {
+                        bottom = glyph_rect.bottom();
+                    }
+                }
+                next_glyph_pos.x += glyph.horizontal_advance;
+            } else {
+                next_glyph_pos.x = 0;
+                next_glyph_pos.y += self.vertical_advance;
+            }
+        }
+
+        if left >= right || top >= bottom {
+            Recti::zero()
+        } else {
+            Recti::from_bounds_left_top_right_bottom(left, top, right, bottom)
+        }
+    }
+
     pub fn create_text_bitmap(&self, text: &str, background_color: PixelRGBA) -> Bitmap {
         let dim = self.get_text_dimensions(text);
         let mut result = Bitmap::new_filled(dim.x as u32, dim.y as u32, background_color);
