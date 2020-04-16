@@ -36,6 +36,18 @@ const FIRST_VISIBLE_ASCII_CODE_POINT: Codepoint = 32;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Font
 
+pub trait Glyph {
+    fn get_trimmed_rect(&self) -> Recti;
+    fn horizontal_advance(&self) -> i32;
+}
+
+pub trait Font<GlyphType: Glyph> {
+    fn baseline(&self) -> i32;
+    fn vertical_advance(&self) -> i32;
+    fn font_height_in_pixels(&self) -> i32;
+    fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> GlyphType;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // SpriteFont
 
@@ -392,6 +404,20 @@ pub struct BitmapGlyph {
     pub bitmap: Option<Bitmap>,
 }
 
+impl Glyph for BitmapGlyph {
+    fn get_trimmed_rect(&self) -> Recti {
+        if let Some(bitmap) = &self.bitmap {
+            bitmap.rect().translated_by(self.offset)
+        } else {
+            Recti::zero()
+        }
+    }
+
+    fn horizontal_advance(&self) -> i32 {
+        self.horizontal_advance
+    }
+}
+
 impl BitmapGlyph {
     pub fn new(
         font: &rusttype::Font,
@@ -710,6 +736,16 @@ pub struct SpriteGlyph {
     pub sprite_dimensions: Vec2i,
     /// This is mainly used for text dimension calculations
     pub sprite_draw_offset: Vec2i,
+}
+
+impl Glyph for SpriteGlyph {
+    fn get_trimmed_rect(&self) -> Recti {
+        Recti::from_point_dimensions(self.sprite_draw_offset, self.sprite_dimensions)
+    }
+
+    fn horizontal_advance(&self) -> i32 {
+        self.horizontal_advance
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]

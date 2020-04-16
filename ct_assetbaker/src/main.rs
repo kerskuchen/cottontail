@@ -365,11 +365,7 @@ fn sprite_create_from_glyph(
     glyph: &BitmapGlyph,
     position_in_font_atlas: Option<Vec2i>,
 ) -> AssetSprite {
-    let (glyph_width, glyph_height, glyph_offset) = if let Some(bitmap) = &glyph.bitmap {
-        (bitmap.width, bitmap.height, glyph.offset)
-    } else {
-        (0, 0, Vec2i::zero())
-    };
+    let glyph_rect = glyph.get_trimmed_rect();
     let glyph_atlas_pos = if let Some(pos) = position_in_font_atlas {
         pos
     } else {
@@ -390,20 +386,15 @@ fn sprite_create_from_glyph(
 
         attachment_points: [Vec2i::zero(); SPRITE_ATTACHMENT_POINTS_MAX_COUNT],
 
-        untrimmed_dimensions: Vec2i::new(glyph_width, glyph_height),
+        untrimmed_dimensions: glyph_rect.dim,
 
-        trimmed_rect: Recti::from_xy_width_height(
-            glyph_offset.x,
-            glyph_offset.y,
-            glyph_width,
-            glyph_height,
-        ),
+        trimmed_rect: glyph_rect,
 
         trimmed_uvs: Recti::from_xy_width_height(
             glyph_atlas_pos.x,
             glyph_atlas_pos.y,
-            glyph_width,
-            glyph_height,
+            glyph_rect.width(),
+            glyph_rect.height(),
         ),
     }
 }
