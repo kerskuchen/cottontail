@@ -39,7 +39,7 @@ pub struct BitmapFont {
     pub font_height_in_pixels: i32,
     pub vertical_advance: i32,
     pub baseline: i32,
-    pub glyphs: IndexMap<Codepoint, BitmapFontGlyph>,
+    pub glyphs: IndexMap<Codepoint, BitmapGlyph>,
 }
 
 impl BitmapFont {
@@ -88,7 +88,7 @@ impl BitmapFont {
         };
 
         // Create glyphs
-        let mut glyphs: IndexMap<Codepoint, BitmapFontGlyph> = IndexMap::new();
+        let mut glyphs: IndexMap<Codepoint, BitmapGlyph> = IndexMap::new();
         for index in 0..std::u16::MAX as Codepoint {
             let codepoint = if index < 0 && index < FIRST_VISIBLE_ASCII_CODE_POINT {
                 // NOTE: We want to turn ASCII characters 0..65535 into glyphs but want to treat the
@@ -117,7 +117,7 @@ impl BitmapFont {
                 continue;
             }
 
-            let glyph = BitmapFontGlyph::new(
+            let glyph = BitmapGlyph::new(
                 &font,
                 font_name,
                 character,
@@ -141,7 +141,7 @@ impl BitmapFont {
     }
 
     #[inline]
-    pub fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> &BitmapFontGlyph {
+    pub fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> &BitmapGlyph {
         self.glyphs
             .get(&codepoint)
             .or_else(|| self.glyphs.get(&0))
@@ -379,14 +379,14 @@ impl BitmapFont {
 }
 
 #[derive(Clone)]
-pub struct BitmapFontGlyph {
+pub struct BitmapGlyph {
     pub codepoint: char,
     pub horizontal_advance: i32,
     pub offset: Vec2i,
     pub bitmap: Option<Bitmap>,
 }
 
-impl BitmapFontGlyph {
+impl BitmapGlyph {
     pub fn new(
         font: &rusttype::Font,
         font_name: &str,
@@ -397,7 +397,7 @@ impl BitmapFontGlyph {
         atlas_padding: i32,
         color_glyph: PixelRGBA,
         color_border: PixelRGBA,
-    ) -> BitmapFontGlyph {
+    ) -> BitmapGlyph {
         let glyph = font
             .glyph(codepoint)
             .standalone()
@@ -447,7 +447,7 @@ impl BitmapFontGlyph {
             offset_y += bounding_box.min.y;
         }
 
-        BitmapFontGlyph {
+        BitmapGlyph {
             codepoint: codepoint,
             horizontal_advance,
             offset: Vec2i::new(offset_x, offset_y),

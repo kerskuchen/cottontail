@@ -362,7 +362,7 @@ fn load_font_styles() -> Vec<BitmapFontStyle> {
 
 fn sprite_create_from_glyph(
     sprite_name: &str,
-    glyph: &BitmapFontGlyph,
+    glyph: &BitmapGlyph,
     position_in_font_atlas: Option<Vec2i>,
 ) -> AssetSprite {
     let (glyph_width, glyph_height, glyph_offset) = if let Some(bitmap) = &glyph.bitmap {
