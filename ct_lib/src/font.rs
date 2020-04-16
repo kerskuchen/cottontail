@@ -28,10 +28,10 @@ pub const FONT_DEFAULT_SQUARE_NAME: &str = "default_square";
 pub const FONT_DEFAULT_SQUARE_PIXEL_HEIGHT: i32 = 11;
 pub const FONT_DEFAULT_SQUARE_RASTER_OFFSET: Vec2 = Vec2::new(0.0, 0.5);
 
-const FIRST_VISIBLE_ASCII_CODE_POINT: u8 = 32;
-const LAST_ASCII_CODE_POINT: u8 = 126;
-
 pub type Codepoint = i32;
+
+pub const FONT_MAX_NUM_FASTPATH_CODEPOINTS: usize = 256;
+const FIRST_VISIBLE_ASCII_CODE_POINT: Codepoint = 32;
 
 #[derive(Clone)]
 pub struct BitmapFont {
@@ -39,7 +39,7 @@ pub struct BitmapFont {
     pub font_height_in_pixels: i32,
     pub vertical_advance: i32,
     pub baseline: i32,
-    pub glyphs: Vec<BitmapFontGlyph>,
+    pub glyphs: IndexMap<Codepoint, BitmapFontGlyph>,
 }
 
 impl BitmapFont {
@@ -87,36 +87,49 @@ impl BitmapFont {
             (roundi(descent), roundi(vertical_advance), roundi(baseline))
         };
 
-        // NOTE: We want to turn ASCII characters 0..127 into glyphs but want to treat the
-        //       non-displayable characters 0..31 as just whitespace. So we repeat the whitespace
-        //       character 32 times and chain it to the remaining ASCII characters.
-        //       The reason we want to treat the non-displayable characters as whitespace is that
-        //       if we just use their corresponding codepoints, the glyph will draw unwanted
-        //       '▯' symbols instead.
-        let code_points: Vec<char> = std::iter::repeat(' ')
-            .take(FIRST_VISIBLE_ASCII_CODE_POINT as usize)
-            .chain(
-                (FIRST_VISIBLE_ASCII_CODE_POINT..=LAST_ASCII_CODE_POINT).map(|byte| byte as char),
-            )
-            .collect();
-
         // Create glyphs
-        let glyphs: Vec<BitmapFontGlyph> = code_points
-            .iter()
-            .map(|&code_point| {
-                BitmapFontGlyph::new(
-                    &font,
-                    font_name,
-                    code_point,
-                    font_height,
-                    descent,
-                    border_thickness as i32,
-                    atlas_padding as i32,
-                    color_glyph,
-                    color_border,
-                )
-            })
-            .collect();
+        let mut glyphs: IndexMap<Codepoint, BitmapFontGlyph> = IndexMap::new();
+        for index in 0..std::u16::MAX as Codepoint {
+            let codepoint = if index < 0 && index < FIRST_VISIBLE_ASCII_CODE_POINT {
+                // NOTE: We want to turn ASCII characters 0..65535 into glyphs but want to treat the
+                //       non-displayable characters 1..31 as just whitespace. So we repeat the whitespace
+                //       character 32 times and chain it to the remaining ASCII characters.
+                //       The reason we want to treat the non-displayable characters as whitespace is that
+                //       if we just use their corresponding codepoints, the glyph will draw unwanted
+                //       '▯' symbols instead.
+                ' ' as Codepoint
+            } else {
+                index
+            };
+
+            let character = {
+                let maybe_char = std::char::from_u32(codepoint as u32);
+                if maybe_char.is_none() {
+                    continue;
+                } else {
+                    maybe_char.unwrap()
+                }
+            };
+
+            let glyph = font.glyph(character);
+            if glyph.id() == rusttype::GlyphId(0) {
+                // This glyph does not exist in the given font
+                continue;
+            }
+
+            let glyph = BitmapFontGlyph::new(
+                &font,
+                font_name,
+                character,
+                font_height,
+                descent,
+                border_thickness as i32,
+                atlas_padding as i32,
+                color_glyph,
+                color_border,
+            );
+            glyphs.insert(codepoint as Codepoint, glyph);
+        }
 
         BitmapFont {
             font_name: font_name.to_owned(),
@@ -127,13 +140,22 @@ impl BitmapFont {
         }
     }
 
+    #[inline]
+    pub fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> &BitmapFontGlyph {
+        self.glyphs
+            .get(&codepoint)
+            .or_else(|| self.glyphs.get(&0))
+            .or_else(|| self.glyphs.get(&('?' as Codepoint)))
+            .unwrap()
+    }
+
     pub fn get_glyph_name(fontname: &str, codepoint: Codepoint) -> String {
         format!("{}_codepoint_{}", fontname, codepoint)
     }
 
     pub fn create_atlas(&self, fontname: &str) -> (Bitmap, IndexMap<String, Vec2i>) {
         let mut atlas = BitmapAtlas::new(64);
-        for glyph in &self.glyphs {
+        for glyph in self.glyphs.values() {
             if let Some(bitmap) = &glyph.bitmap {
                 let spritename = BitmapFont::get_glyph_name(fontname, glyph.codepoint as Codepoint);
                 atlas.pack_bitmap_with_resize(&spritename, bitmap);
@@ -159,7 +181,7 @@ impl BitmapFont {
 
         for codepoint in text.chars() {
             if codepoint != '\n' {
-                let glyph = &self.glyphs[codepoint as usize];
+                let glyph = &self.get_glyph_for_codepoint(codepoint as Codepoint);
                 pos.x += glyph.horizontal_advance;
             } else {
                 dimensions.x = i32::max(dimensions.x, pos.x);
@@ -191,7 +213,7 @@ impl BitmapFont {
         let mut next_glyph_pos = Vec2i::zero();
         for codepoint in text.chars() {
             if codepoint != '\n' {
-                let glyph = &self.glyphs[codepoint as usize];
+                let glyph = &self.get_glyph_for_codepoint(codepoint as Codepoint);
                 if let Some(bitmap) = &glyph.bitmap {
                     let glyph_rect = bitmap.rect().translated_by(next_glyph_pos + glyph.offset);
                     if glyph_rect.left() < left {
@@ -278,7 +300,7 @@ impl BitmapFont {
         let mut pos = starting_offset;
         for codepoint in text.chars() {
             if codepoint != '\n' {
-                let glyph = &self.glyphs[codepoint as usize];
+                let glyph = &self.get_glyph_for_codepoint(codepoint as Codepoint);
 
                 if let Some(glyph_bitmap) = &glyph.bitmap {
                     glyph_bitmap.blit_to(
@@ -684,14 +706,13 @@ pub struct SpriteGlyph {
     pub sprite_draw_offset: Vec2i,
 }
 
-pub const FONT_MAX_NUM_FASTPATH_CODEPOINTS: usize = 256;
-
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SpriteFont {
     pub name: String,
 
     pub baseline: f32,
     pub vertical_advance: f32,
+    pub font_height_in_pixels: i32,
 
     /// Fastpath glyphs for quick access (mainly latin glyphs)
     pub ascii_glyphs: Vec<SpriteGlyph>,
@@ -705,10 +726,15 @@ impl SpriteFont {
         if codepoint < FONT_MAX_NUM_FASTPATH_CODEPOINTS as i32 {
             self.ascii_glyphs[codepoint as usize]
         } else {
-            *self
+            let result = *self
                 .unicode_glyphs
                 .get(&codepoint)
-                .unwrap_or(&self.ascii_glyphs['?' as usize])
+                .unwrap_or(&self.ascii_glyphs[0usize]);
+            if result.sprite_index != 0 {
+                result
+            } else {
+                self.ascii_glyphs['?' as usize]
+            }
         }
     }
 

@@ -66,6 +66,7 @@ pub struct AssetFont {
     pub name_hash: u64,
     pub baseline: i32,
     pub vertical_advance: i32,
+    pub font_height_in_pixels: i32,
     pub glyphcount: u32,
     pub glyphs: IndexMap<Codepoint, AssetGlyph>,
 }
@@ -441,7 +442,7 @@ pub fn bitmapfont_create_from_ttf(
     // Create sprites and glyphs
     let mut result_glyphs: IndexMap<Codepoint, AssetGlyph> = IndexMap::new();
     let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
-    for glyph in &font.glyphs {
+    for glyph in font.glyphs.values() {
         let codepoint = glyph.codepoint as Codepoint;
         let sprite_name = BitmapFont::get_glyph_name(&font_name, glyph.codepoint as Codepoint);
         let sprite_pos = font_atlas_glyph_positions.get(&sprite_name).cloned();
@@ -468,6 +469,7 @@ pub fn bitmapfont_create_from_ttf(
         name_hash: ct_lib::hash_string_64(&font_name),
         baseline: font.baseline,
         vertical_advance: font.vertical_advance,
+        font_height_in_pixels: font.font_height_in_pixels,
         glyphcount: result_glyphs.len() as u32,
         glyphs: result_glyphs,
     };
@@ -582,6 +584,7 @@ fn convert_font(font: &AssetFont) -> SpriteFont {
         name: font.name.clone(),
         baseline: font.baseline as f32,
         vertical_advance: font.vertical_advance as f32,
+        font_height_in_pixels: font.font_height_in_pixels,
         ascii_glyphs,
         unicode_glyphs,
     }
