@@ -25,7 +25,6 @@ impl PixelRGBA {
             a: 255,
         }
     }
-
     #[inline]
     pub const fn black() -> PixelRGBA {
         PixelRGBA {
@@ -35,7 +34,60 @@ impl PixelRGBA {
             a: 255,
         }
     }
-
+    #[inline]
+    pub const fn red() -> PixelRGBA {
+        PixelRGBA {
+            r: 255,
+            g: 0,
+            b: 0,
+            a: 255,
+        }
+    }
+    #[inline]
+    pub const fn green() -> PixelRGBA {
+        PixelRGBA {
+            r: 0,
+            g: 255,
+            b: 0,
+            a: 255,
+        }
+    }
+    #[inline]
+    pub const fn blue() -> PixelRGBA {
+        PixelRGBA {
+            r: 0,
+            g: 0,
+            b: 255,
+            a: 255,
+        }
+    }
+    #[inline]
+    pub const fn yellow() -> PixelRGBA {
+        PixelRGBA {
+            r: 255,
+            g: 255,
+            b: 0,
+            a: 255,
+        }
+    }
+    #[inline]
+    pub const fn magenta() -> PixelRGBA {
+        PixelRGBA {
+            r: 255,
+            g: 0,
+            b: 255,
+            a: 255,
+        }
+    }
+    #[inline]
+    pub const fn cyan() -> PixelRGBA {
+        PixelRGBA {
+            r: 0,
+            g: 255,
+            b: 255,
+            a: 255,
+        }
+    }
     #[inline]
     pub const fn transparent() -> PixelRGBA {
         PixelRGBA {

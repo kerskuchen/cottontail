@@ -1,11 +1,18 @@
 ## Done today
 
 * Move font rendering tests in main to debugscene and pass a loaded fontname 
+* Adds exact text measurement and drawing and with alignment to `BitmapFont`
+* Adds test for text drawing with aligment to `BitmapFont`
+
+* Move font rendering tests in main to debugscene and pass a loaded fontname 
 
 ## Current:
 
-* When calculating the dimensions of text we currently get back the lineheight even if we only 
-  have glyphs like `'a'` in out text. When trying to center this text vertically we get the wrong results
+## Next:
+
+* We need to figure out a way to share the functionality between `Font` and `Bitmapfont` especially 
+  drawing and aligning. This should be simple (API complexity) and fast (runtime and compiletime) 
+* Port functionality from `BitmapFont` to `Font`
 
 ## Next:
 
