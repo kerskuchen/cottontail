@@ -2038,8 +2038,8 @@ pub struct Globals {
     pub canvas_width: f32,
     pub canvas_height: f32,
 
-    pub font_default: Font,
-    pub font_default_no_border: Font,
+    pub font_default: SpriteFont,
+    pub font_default_no_border: SpriteFont,
 }
 
 pub trait Scene: Clone {

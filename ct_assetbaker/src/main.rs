@@ -547,16 +547,17 @@ fn convert_sprite(
     }
 }
 
-fn convert_glyph(glyph: &AssetGlyph) -> Glyph {
-    Glyph {
+fn convert_glyph(glyph: &AssetGlyph) -> SpriteGlyph {
+    SpriteGlyph {
         horizontal_advance: glyph.horizontal_advance as f32,
         sprite_index: glyph.sprite_index,
     }
 }
 
-fn convert_font(font: &AssetFont) -> Font {
-    let mut ascii_glyphs: Vec<Glyph> = vec![Glyph::default(); FONT_MAX_NUM_FASTPATH_CODEPOINTS];
-    let mut unicode_glyphs: HashMap<Codepoint, Glyph> = HashMap::new();
+fn convert_font(font: &AssetFont) -> SpriteFont {
+    let mut ascii_glyphs: Vec<SpriteGlyph> =
+        vec![SpriteGlyph::default(); FONT_MAX_NUM_FASTPATH_CODEPOINTS];
+    let mut unicode_glyphs: HashMap<Codepoint, SpriteGlyph> = HashMap::new();
 
     for glyph in font.glyphs.values() {
         let codepoint = glyph.codepoint;
@@ -568,7 +569,7 @@ fn convert_font(font: &AssetFont) -> Font {
         }
     }
 
-    Font {
+    SpriteFont {
         name: font.name.clone(),
         baseline: font.baseline as f32,
         vertical_advance: font.vertical_advance as f32,
@@ -621,7 +622,7 @@ fn serialize_fonts(font_map: &IndexMap<Fontname, AssetFont>) {
     )
     .unwrap();
 
-    let binary: HashMap<String, Font> = font_map
+    let binary: HashMap<String, SpriteFont> = font_map
         .iter()
         .map(|(name, font)| (name.clone(), convert_font(font)))
         .collect();

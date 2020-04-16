@@ -146,7 +146,7 @@ pub struct SpriteAtlas {
     pub sprites_by_name: HashMap<String, Sprite>,
     pub sprites_indices: HashMap<String, SpriteIndex>,
 
-    pub fonts: HashMap<String, Font>,
+    pub fonts: HashMap<String, SpriteFont>,
 }
 
 impl SpriteAtlas {
@@ -154,7 +154,7 @@ impl SpriteAtlas {
     pub fn new(
         textures: Vec<Bitmap>,
         sprites: Vec<Sprite>,
-        fonts: HashMap<String, Font>,
+        fonts: HashMap<String, SpriteFont>,
     ) -> SpriteAtlas {
         // Double check bitmap dimensions
         let textures_size = {
@@ -266,7 +266,7 @@ impl SpriteAtlas {
 pub type Codepoint = i32;
 
 #[derive(Default, Debug, Copy, Clone, Serialize, Deserialize)]
-pub struct Glyph {
+pub struct SpriteGlyph {
     pub horizontal_advance: f32,
     pub sprite_index: SpriteIndex,
 }
@@ -274,21 +274,21 @@ pub struct Glyph {
 pub const FONT_MAX_NUM_FASTPATH_CODEPOINTS: usize = 256;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct Font {
+pub struct SpriteFont {
     pub name: String,
 
     pub baseline: f32,
     pub vertical_advance: f32,
 
     /// Fastpath glyphs for quick access (mainly latin glyphs)
-    pub ascii_glyphs: Vec<Glyph>,
+    pub ascii_glyphs: Vec<SpriteGlyph>,
     /// Non-fastpath unicode glyphs for codepoints > FONT_MAX_NUM_FASTPATH_CODEPOINTS
-    pub unicode_glyphs: HashMap<Codepoint, Glyph>,
+    pub unicode_glyphs: HashMap<Codepoint, SpriteGlyph>,
 }
 
-impl Font {
+impl SpriteFont {
     #[inline]
-    pub fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> Glyph {
+    pub fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> SpriteGlyph {
         if codepoint < FONT_MAX_NUM_FASTPATH_CODEPOINTS as i32 {
             self.ascii_glyphs[codepoint as usize]
         } else {
@@ -336,7 +336,7 @@ impl Font {
         text_width
     }
 
-    pub fn get_text_height(font: &Font, font_scale: f32, linecount: usize) -> f32 {
+    pub fn get_text_height(font: &SpriteFont, font_scale: f32, linecount: usize) -> f32 {
         assert!(linecount > 0);
         (font_scale * font.baseline) + (linecount - 1) as f32 * font_scale * font.vertical_advance
     }
@@ -943,7 +943,7 @@ pub struct Drawstate {
     pub drawcommands: Vec<Drawcommand>,
 
     debug_use_flat_color_mode: bool,
-    debug_log_font: Font,
+    debug_log_font: SpriteFont,
     debug_log_font_scale: f32,
     debug_log_origin: Vec2,
     debug_log_offset: Vec2,
@@ -1024,7 +1024,7 @@ impl Drawstate {
         }
     }
 
-    pub fn get_font(&self, font_name: &str) -> Font {
+    pub fn get_font(&self, font_name: &str) -> SpriteFont {
         self.atlas
             .fonts
             .get(font_name)
@@ -1087,7 +1087,7 @@ impl Drawstate {
         self.canvas_framebuffer_target = FramebufferTarget::Offscreen(new_canvas_framebuffer_info);
     }
 
-    pub fn debug_init_logging(&mut self, font: Option<Font>, origin: Vec2, depth: Depth) {
+    pub fn debug_init_logging(&mut self, font: Option<SpriteFont>, origin: Vec2, depth: Depth) {
         if let Some(font) = font {
             self.debug_log_font = font;
         }
@@ -1896,7 +1896,7 @@ impl Drawstate {
     /// NOTE: This returns a more accurate dimension than `font_get_text_dimensions` which calculates
     ///       the text-width based on the horizontal advance. This function on the other hand calculates
     ///       the text width based on the actual glyph bitmap widths.
-    pub fn get_text_dimensions(&mut self, font: &Font, font_scale: f32, text: &str) -> Vec2 {
+    pub fn get_text_dimensions(&mut self, font: &SpriteFont, font_scale: f32, text: &str) -> Vec2 {
         if text.len() == 0 {
             return Vec2::zero();
         }
@@ -1928,7 +1928,7 @@ impl Drawstate {
     pub fn draw_text(
         &mut self,
         text: &str,
-        font: &Font,
+        font: &SpriteFont,
         font_scale: f32,
         starting_origin: Vec2,
         starting_offset: Vec2,
@@ -1977,7 +1977,7 @@ impl Drawstate {
     pub fn draw_text_clipped(
         &mut self,
         text: &str,
-        font: &Font,
+        font: &SpriteFont,
         font_scale: f32,
         starting_origin: Vec2,
         starting_offset: Vec2,
