@@ -1,519 +1,13 @@
 pub use super::bitmap::*;
-use super::bitmap_font;
 pub use super::color::*;
+use super::draw_common::*;
+pub use super::font::*;
 use super::math::*;
+use super::sprite::*;
 
 pub use hsl;
-use serde_derive::{Deserialize, Serialize};
 
 use std::collections::HashMap;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Coordinates
-
-/// A point in world-coordinate-space. One 1x1 unit-square in world-space equals to a pixel on the
-/// canvas on a default zoom level
-pub type Worldpoint = Point;
-
-/// Same as Worldpoint only as vector
-pub type Worldvec = Vec2;
-
-/// A point in canvas-coordinate-space. Given in the range
-/// [0, CANVAS_WIDTH - 1]x[0, CANVAS_HEIGHT - 1]
-/// where (0,0) is the top-left corner
-pub type Canvaspoint = Point;
-
-/// Same as Canvaspoint only as vector
-pub type Canvasvec = Vec2;
-
-/// For a given Worldpoint returns the nearest Worldpoint that is aligned to the
-/// canvas's pixel grid when drawn.
-///
-/// For example pixel-snapping the cameras position before drawing prevents pixel-jittering
-/// artifacts on visible objects if the camera is moving at sub-pixel distances.
-pub fn worldpoint_pixel_snapped(point: Worldpoint) -> Worldpoint {
-    Worldpoint {
-        x: f32::floor(point.x),
-        y: f32::floor(point.y),
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Sprites and SpriteAtlas
-
-// NOTE: We used u32 here instead of usize for safer serialization / deserialization between
-//       32Bit and 64Bit platforms
-pub type SpriteIndex = u32;
-pub type TextureIndex = u32;
-pub type FramebufferIndex = u32;
-
-pub const SPRITE_ATTACHMENT_POINTS_MAX_COUNT: usize = 4;
-
-/// This is similar to a Rect but allows mirroring horizontally/vertically
-#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
-pub struct AAQuad {
-    pub left: f32,
-    pub top: f32,
-    pub right: f32,
-    pub bottom: f32,
-}
-
-impl AAQuad {
-    pub fn to_rect(self) -> Rect {
-        Rect::from_bounds_left_top_right_bottom(self.left, self.top, self.right, self.bottom)
-    }
-    pub fn from_rect(rect: Rect) -> Self {
-        AAQuad {
-            left: rect.left(),
-            top: rect.top(),
-            right: rect.right(),
-            bottom: rect.bottom(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Sprite {
-    pub name: String,
-    pub index: SpriteIndex,
-    pub atlas_texture_index: TextureIndex,
-
-    /// Determines if the sprite contains pixels that have alpha that is not 0 and not 1.
-    /// This is important for the sorting of sprites before drawing.
-    pub has_translucency: bool,
-
-    /// The amount by which the sprite is offsetted when drawn (must be marked in the image
-    /// file in special `pivot` layer). This is useful to i.e. have a sprite always drawn centered.
-    pub pivot_offset: Vec2,
-
-    /// Optional special points useful for attaching other game objects to a sprite
-    /// (must be marked in the image file in special `attachment_0`, `attachment_1` .. layers)
-    pub attachment_points: [Vec2; SPRITE_ATTACHMENT_POINTS_MAX_COUNT],
-
-    /// Contains the width and height of the original untrimmed sprite image. Usually only used for
-    /// querying the size of the sprite
-    pub untrimmed_dimensions: Vec2,
-
-    /// Contains the trimmed dimensions of the sprite as it is stored in the atlas. This thightly
-    /// surrounds every non-transparent pixel of the sprite. It also implicitly encodes the draw
-    /// offset of the sprite by `trimmed_rect.pos` (not to be confused with `pivot_offset`)
-    pub trimmed_rect: Rect,
-
-    /// Texture coordinates of the trimmed sprite
-    /// NOTE: We use an AAQuad instead of a Rect to allow us to mirror the texture horizontally
-    ///       or vertically
-    pub trimmed_uvs: AAQuad,
-}
-
-impl Sprite {
-    #[inline]
-    pub fn get_attachment_point_transformed(
-        &self,
-        attachment_index: usize,
-        pos: Vec2,
-        scale: Vec2,
-        rotation_dir: Vec2,
-    ) -> Vec2 {
-        // NOTE: The `sprite.pivot_offset` is relative to the left top corner of the untrimmed sprite.
-        //       But we need the offset relative to the trimmed sprite which may have its own offset.
-        let sprite_pivot = self.pivot_offset - self.trimmed_rect.pos;
-        let attachment_point = self.attachment_points[attachment_index] - self.trimmed_rect.pos;
-        attachment_point.transformed(sprite_pivot, pos, scale, rotation_dir)
-    }
-
-    #[inline]
-    pub fn get_quad_transformed(&self, pos: Vec2, scale: Vec2, rotation_dir: Vec2) -> Quad {
-        let sprite_dim = self.trimmed_rect.dim;
-        // NOTE: The `sprite.pivot_offset` is relative to the left top corner of the untrimmed sprite.
-        //       But we need the offset relative to the trimmed sprite which may have its own offset.
-        let sprite_pivot = self.pivot_offset - self.trimmed_rect.pos;
-        Quad::from_rect_transformed(
-            sprite_dim,
-            sprite_pivot,
-            worldpoint_pixel_snapped(pos),
-            scale,
-            rotation_dir,
-        )
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpriteAtlas {
-    pub textures: Vec<Bitmap>,
-    pub textures_size: u32,
-
-    pub sprites: Vec<Sprite>,
-    pub sprites_by_name: HashMap<String, Sprite>,
-    pub sprites_indices: HashMap<String, SpriteIndex>,
-
-    pub fonts: HashMap<String, SpriteFont>,
-}
-
-impl SpriteAtlas {
-    /// NOTE: This expects all bitmaps to be powers-of-two sized rectangles with the same size
-    pub fn new(
-        textures: Vec<Bitmap>,
-        sprites: Vec<Sprite>,
-        fonts: HashMap<String, SpriteFont>,
-    ) -> SpriteAtlas {
-        // Double check bitmap dimensions
-        let textures_size = {
-            assert!(textures.len() > 0);
-            let textures_size = textures[0].width as u32;
-            assert!(textures_size > 0);
-            assert!(textures_size.is_power_of_two());
-            for texture in &textures {
-                assert!(texture.width == textures_size as i32);
-                assert!(texture.height == textures_size as i32);
-            }
-            textures_size
-        };
-
-        // Create indexing hashmaps
-        let mut sprites_by_name = HashMap::<String, Sprite>::new();
-        let mut sprites_indices = HashMap::<String, SpriteIndex>::new();
-        for (index, sprite) in sprites.iter().enumerate() {
-            sprites_by_name.insert(sprite.name.clone(), sprite.clone());
-            sprites_indices.insert(sprite.name.clone(), index as SpriteIndex);
-        }
-
-        SpriteAtlas {
-            textures_size,
-            textures,
-            sprites,
-            sprites_by_name,
-            sprites_indices,
-            fonts,
-        }
-    }
-
-    /// This does not change the atlas bitmap
-    pub fn add_sprite_for_region(
-        &mut self,
-        sprite_name: String,
-        atlas_texture_index: TextureIndex,
-        sprite_rect: Recti,
-        draw_offset: Vec2i,
-        has_translucency: bool,
-    ) -> SpriteIndex {
-        debug_assert!(!self.sprites_by_name.contains_key(&sprite_name));
-
-        let sprite_rect = Rect::from(sprite_rect);
-        let draw_offset = Vec2::from(draw_offset);
-        let uv_scale = 1.0 / self.textures_size as f32;
-        let index = self.sprites.len() as SpriteIndex;
-        let sprite = Sprite {
-            index: 0,
-            name: sprite_name.clone(),
-
-            atlas_texture_index: atlas_texture_index,
-            has_translucency,
-            pivot_offset: Vec2::zero(),
-            attachment_points: [Vec2::zero(); SPRITE_ATTACHMENT_POINTS_MAX_COUNT],
-            untrimmed_dimensions: sprite_rect.dim,
-            trimmed_rect: sprite_rect.translated_by(draw_offset),
-            trimmed_uvs: AAQuad::from_rect(sprite_rect.scaled_from_origin(Vec2::filled(uv_scale))),
-        };
-
-        self.sprites.push(sprite.clone());
-        self.sprites_by_name.insert(sprite_name.clone(), sprite);
-        self.sprites_indices.insert(sprite_name, index);
-
-        index
-    }
-
-    pub fn debug_get_bitmap_for_sprite(&self, sprite_index: SpriteIndex) -> Bitmap {
-        let sprite = &self.sprites[sprite_index as usize];
-        let dim = Vec2i::from_vec2_rounded(sprite.trimmed_rect.dim);
-        let texture_coordinates = AAQuad::from_rect(
-            sprite
-                .trimmed_uvs
-                .to_rect()
-                .scaled_from_origin(Vec2::filled(self.textures_size as f32)),
-        );
-
-        let source_rect = Recti::from_rect_rounded(texture_coordinates.to_rect());
-        let source_bitmap = &self.textures[sprite.atlas_texture_index as usize];
-
-        let mut result_bitmap = Bitmap::new(dim.x as u32, dim.y as u32);
-        let result_rect = result_bitmap.rect();
-
-        Bitmap::copy_region(
-            source_bitmap,
-            source_rect,
-            &mut result_bitmap,
-            result_rect,
-            None,
-        );
-
-        result_bitmap
-    }
-
-    pub fn textureinfo_for_page(&self, page_index: TextureIndex) -> TextureInfo {
-        assert!((page_index as usize) < self.textures.len());
-        TextureInfo {
-            name: format!("atlas_page_{}", page_index),
-            index: page_index,
-            width: self.textures_size,
-            height: self.textures_size,
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Font
-
-pub type Codepoint = i32;
-
-#[derive(Default, Debug, Copy, Clone, Serialize, Deserialize)]
-pub struct SpriteGlyph {
-    pub horizontal_advance: f32,
-    pub sprite_index: SpriteIndex,
-}
-
-pub const FONT_MAX_NUM_FASTPATH_CODEPOINTS: usize = 256;
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct SpriteFont {
-    pub name: String,
-
-    pub baseline: f32,
-    pub vertical_advance: f32,
-
-    /// Fastpath glyphs for quick access (mainly latin glyphs)
-    pub ascii_glyphs: Vec<SpriteGlyph>,
-    /// Non-fastpath unicode glyphs for codepoints > FONT_MAX_NUM_FASTPATH_CODEPOINTS
-    pub unicode_glyphs: HashMap<Codepoint, SpriteGlyph>,
-}
-
-impl SpriteFont {
-    #[inline]
-    pub fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> SpriteGlyph {
-        if codepoint < FONT_MAX_NUM_FASTPATH_CODEPOINTS as i32 {
-            self.ascii_glyphs[codepoint as usize]
-        } else {
-            *self
-                .unicode_glyphs
-                .get(&codepoint)
-                .unwrap_or(&self.ascii_glyphs['?' as usize])
-        }
-    }
-
-    /// Returns width and height of a given utf8 text for a given font and font scale.
-    pub fn get_text_dimensions(&self, font_scale: f32, text: &str) -> Vec2 {
-        if text.len() == 0 {
-            return Vec2::zero();
-        }
-
-        let mut dimensions = Vec2::new(0.0, font_scale * self.vertical_advance);
-        let mut pos = Vec2::new(0.0, font_scale * self.baseline);
-
-        for codepoint in text.chars() {
-            if codepoint != '\n' {
-                let glyph = self.get_glyph_for_codepoint(codepoint as i32);
-                pos.x += font_scale * glyph.horizontal_advance;
-            } else {
-                dimensions.x = f32::max(dimensions.x, pos.x);
-                dimensions.y += font_scale * self.vertical_advance;
-
-                pos.x = 0.0;
-                pos.y += font_scale * self.vertical_advance;
-            }
-        }
-
-        // In case we did not find a newline character
-        dimensions.x = f32::max(dimensions.x, pos.x);
-
-        dimensions
-    }
-
-    pub fn get_text_width(&self, font_scale: f32, text: &str) -> f32 {
-        let mut text_width = 0.0;
-        for codepoint in text.chars() {
-            let glyph = self.get_glyph_for_codepoint(codepoint as i32);
-            text_width += font_scale * glyph.horizontal_advance;
-        }
-        text_width
-    }
-
-    pub fn get_text_height(font: &SpriteFont, font_scale: f32, linecount: usize) -> f32 {
-        assert!(linecount > 0);
-        (font_scale * font.baseline) + (linecount - 1) as f32 * font_scale * font.vertical_advance
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Canvas and screen blitting and transformations
-
-/// Returns the `blit_rectangle` of for given canvas and screen dimensions.
-/// The `blit-rectange` is the area of the screen where the content of the canvas is drawn onto.
-/// It is as big as the canvas proportionally stretched and centered to fill the whole
-/// screen.
-///
-/// It may or may not be smaller than the full screen size depending on the aspect
-/// ratio of both the screen and the canvas. The `blit_rectange` is guaranteed to either have
-/// the same width a as the screen (with letterboxing if needed) or the same height as the
-/// screen (with columnboxing if needed) or completely fill the screen.
-///
-/// # Examples
-/// ```
-/// // +------+  +--------------+  +---------------+
-/// // |canvas|  |   screen     |  |               | <- screen
-/// // | 8x4  |  |    16x12     |  +---------------+
-/// // +------+  |              |  |   blit-rect   |
-/// //           |              |  |     16x10     |
-/// //           |              |  |               |
-/// //           |              |  |               |
-/// //           |              |  |               |
-/// //           |              |  |               |
-/// //           |              |  +---------------+
-/// //           |              |  |               |
-/// //           +--------------+  +---------------+
-/// //
-/// // +------+  +----------------+  +-+-------------+-+
-/// // |canvas|  |     screen     |  | |             | |
-/// // | 8x4  |  |      18x8      |  | |             | |
-/// // +------+  |                |  | |  blit-rect  | |
-/// //           |                |  | |    16x8     | |
-/// //           |                |  | |             | |
-/// //           |                |  | |             | |
-/// //           +----------------+  +-+-------------+-+
-/// //                                                ^---- screen
-/// //
-/// // +------+  +----------------+  +-----------------+
-/// // |canvas|  |     screen     |  |                 |
-/// // | 8x4  |  |      16x8      |  |                 |
-/// // +------+  |                |  |    blit-rect    |
-/// //           |                |  |      16x8       |
-/// //           |                |  |                 |
-/// //           |                |  |                 |
-/// //           +----------------+  +-----------------+
-/// //                                                ^---- blit-rect == screen
-/// ```
-#[derive(Debug, Default, Clone, Copy)]
-pub struct BlitRect {
-    pub offset_x: i32,
-    pub offset_y: i32,
-    pub width: i32,
-    pub height: i32,
-}
-
-impl BlitRect {
-    #[inline]
-    pub fn new_from_dimensions(width: u32, height: u32) -> BlitRect {
-        BlitRect {
-            offset_x: 0,
-            offset_y: 0,
-            width: width as i32,
-            height: height as i32,
-        }
-    }
-
-    /// Creates a canvas of fixed size that is stretched to the screen with aspect ratio correction
-    #[inline]
-    pub fn new_for_fixed_canvas_size(
-        screen_width: u32,
-        screen_height: u32,
-        canvas_width: u32,
-        canvas_height: u32,
-    ) -> BlitRect {
-        let aspect_ratio = canvas_height as f32 / canvas_width as f32;
-        let mut blit_width = screen_width as f32;
-        let mut blit_height = blit_width * aspect_ratio;
-
-        if blit_height > screen_height as f32 {
-            blit_height = screen_height as f32;
-            blit_width = blit_height / aspect_ratio;
-        }
-
-        BlitRect {
-            offset_x: f32::round((screen_width as f32 / 2.0) - (blit_width / 2.0)) as i32,
-            offset_y: f32::round((screen_height as f32 / 2.0) - (blit_height / 2.0)) as i32,
-            width: f32::round(blit_width) as i32,
-            height: f32::round(blit_height) as i32,
-        }
-    }
-}
-
-/// Converts a screen point to coordinates respecting the canvas
-/// dimensions and its offsets
-///
-/// screen_pos_x in [0, screen_width - 1] (left to right)
-/// screen_pos_y in [0, screen_height - 1] (top to bottom)
-/// result in [0, canvas_width - 1]x[0, canvas_height - 1] (relative to clamped canvas area,
-///                                                         top-left to bottom-right)
-///
-/// WARNING: This does not work optimally if the pixel-scale-factor
-/// (which is screen_width / canvas_width) is not an integer value
-///
-#[inline]
-pub fn screen_point_to_canvas_point(
-    screen_width: u32,
-    screen_height: u32,
-    canvas_width: u32,
-    canvas_height: u32,
-    screen_pos_x: i32,
-    screen_pos_y: i32,
-) -> Pointi {
-    let blit_rect = BlitRect::new_for_fixed_canvas_size(
-        screen_width,
-        screen_height,
-        canvas_width,
-        canvas_height,
-    );
-
-    let pos_blitrect_x = clampi(screen_pos_x - blit_rect.offset_x, 0, blit_rect.width - 1);
-    let pos_blitrect_y = clampi(screen_pos_y - blit_rect.offset_y, 0, blit_rect.height - 1);
-
-    let pos_canvas_x = canvas_width as f32 * (pos_blitrect_x as f32 / blit_rect.width as f32);
-    let pos_canvas_y = canvas_height as f32 * (pos_blitrect_y as f32 / blit_rect.height as f32);
-
-    Pointi::new(floori(pos_canvas_x), floori(pos_canvas_y))
-}
-
-pub fn letterbox_rects_create(
-    center_width: i32,
-    center_height: i32,
-    canvas_width: i32,
-    canvas_height: i32,
-) -> (Recti, [Recti; 4]) {
-    let pos_x = floori(block_centered_in_point(
-        center_width as f32,
-        canvas_width as f32 / 2.0,
-    ));
-    let pos_y = floori(block_centered_in_point(
-        center_height as f32,
-        canvas_height as f32 / 2.0,
-    ));
-    let center_rect = Recti::from_xy_width_height(pos_x, pos_y, center_width, center_height);
-
-    let letterbox_rects = [
-        // Top
-        Recti::from_bounds_left_top_right_bottom(0, 0, canvas_width, center_rect.top()),
-        // Left
-        Recti::from_bounds_left_top_right_bottom(
-            0,
-            center_rect.top(),
-            center_rect.left(),
-            center_rect.bottom(),
-        ),
-        // Right
-        Recti::from_bounds_left_top_right_bottom(
-            center_rect.right(),
-            center_rect.top(),
-            canvas_width,
-            center_rect.bottom(),
-        ),
-        // Bottom
-        Recti::from_bounds_left_top_right_bottom(
-            0,
-            center_rect.bottom(),
-            canvas_width,
-            canvas_height,
-        ),
-    ];
-    (center_rect, letterbox_rects)
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Vertex format
@@ -917,6 +411,7 @@ impl std::fmt::Debug for Drawcommand {
         }
     }
 }
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Drawstate
 
@@ -927,6 +422,7 @@ pub struct Drawstate {
     is_first_run: bool,
 
     atlas: SpriteAtlas,
+    fonts: HashMap<String, SpriteFont>,
     textures_dirty: Vec<bool>,
 
     untextured_uv_center_coord: AAQuad,
@@ -954,7 +450,7 @@ pub struct Drawstate {
 // Creation and configuration
 
 impl Drawstate {
-    pub fn new(mut atlas: SpriteAtlas) -> Drawstate {
+    pub fn new(mut atlas: SpriteAtlas, fonts: HashMap<String, SpriteFont>) -> Drawstate {
         // Make sprites out of the atlas pages themselves for debug purposes
         for page_index in 0..atlas.textures.len() {
             let sprite_name = format!("debug_sprite_whole_page_{}", page_index);
@@ -970,7 +466,7 @@ impl Drawstate {
         // Allocate textures for atlas pages
         let mut drawcommands = Vec::<Drawcommand>::new();
         for page_index in 0..atlas.textures.len() {
-            let texture_info = atlas.textureinfo_for_page(page_index as TextureIndex);
+            let texture_info = Drawstate::textureinfo_for_page(&atlas, page_index as TextureIndex);
             drawcommands.push(Drawcommand::TextureCreate(texture_info));
         }
 
@@ -984,9 +480,8 @@ impl Drawstate {
         let untextured_uv_center_coord = untextured_sprite.trimmed_uvs;
         let untextured_uv_center_atlas_page = untextured_sprite.atlas_texture_index;
 
-        let debug_log_font_name = bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-        let debug_log_font = atlas
-            .fonts
+        let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
+        let debug_log_font = fonts
             .get(&debug_log_font_name)
             .expect(&format!(
                 "Cannot find default debug log font '{}'",
@@ -1000,6 +495,7 @@ impl Drawstate {
             is_first_run: true,
 
             atlas,
+            fonts,
             textures_dirty,
 
             untextured_uv_center_coord,
@@ -1024,9 +520,18 @@ impl Drawstate {
         }
     }
 
+    pub fn textureinfo_for_page(atlas: &SpriteAtlas, page_index: TextureIndex) -> TextureInfo {
+        assert!((page_index as usize) < atlas.textures.len());
+        TextureInfo {
+            name: format!("atlas_page_{}", page_index),
+            index: page_index,
+            width: atlas.textures_size,
+            height: atlas.textures_size,
+        }
+    }
+
     pub fn get_font(&self, font_name: &str) -> SpriteFont {
-        self.atlas
-            .fonts
+        self.fonts
             .get(font_name)
             .expect(&format!("Could not find font '{}'", font_name))
             .clone()
@@ -1134,7 +639,10 @@ impl Drawstate {
 
                 let atlas_page_bitmap = self.atlas.textures[atlas_page].clone();
                 self.drawcommands.push(Drawcommand::TextureUpdate {
-                    texture_info: self.atlas.textureinfo_for_page(atlas_page as TextureIndex),
+                    texture_info: Drawstate::textureinfo_for_page(
+                        &self.atlas,
+                        atlas_page as TextureIndex,
+                    ),
                     offset_x: 0,
                     offset_y: 0,
                     bitmap: atlas_page_bitmap,
@@ -1178,7 +686,7 @@ impl Drawstate {
             for batch in batches.into_iter() {
                 self.drawcommands.push(Drawcommand::Draw {
                     framebuffer_target: self.canvas_framebuffer_target.clone(),
-                    texture_info: self.atlas.textureinfo_for_page(batch.texture_index),
+                    texture_info: Drawstate::textureinfo_for_page(&self.atlas, batch.texture_index),
                     shader_params: ShaderParams::Simple(self.simple_shaderparams),
                     vertexbuffer: batch,
                 });

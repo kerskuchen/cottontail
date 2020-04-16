@@ -1,12 +1,12 @@
 mod aseprite;
 
 use ct_lib::bitmap_atlas::{BitmapAtlasPosition, BitmapMultiAtlas};
-use ct_lib::bitmap_font;
-use ct_lib::bitmap_font::*;
 use ct_lib::color::*;
 use ct_lib::draw::*;
+use ct_lib::font;
 use ct_lib::game::*;
 use ct_lib::math::*;
+use ct_lib::sprite::*;
 use ct_lib::system;
 use ct_lib::IndexMap;
 
@@ -275,42 +275,42 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
 
     // Add default fonts
     result_properties.insert(
-        bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned(),
+        font::FONT_DEFAULT_TINY_NAME.to_owned(),
         BitmapFontProperties {
-            ttf_data_bytes: bitmap_font::FONT_DEFAULT_TINY_TTF.to_vec(),
+            ttf_data_bytes: font::FONT_DEFAULT_TINY_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
-                height_in_pixels: bitmap_font::FONT_DEFAULT_TINY_PIXEL_HEIGHT,
-                raster_offset: bitmap_font::FONT_DEFAULT_TINY_RASTER_OFFSET,
+                height_in_pixels: font::FONT_DEFAULT_TINY_PIXEL_HEIGHT,
+                raster_offset: font::FONT_DEFAULT_TINY_RASTER_OFFSET,
             },
         },
     );
     result_properties.insert(
-        bitmap_font::FONT_DEFAULT_SMALL_NAME.to_owned(),
+        font::FONT_DEFAULT_SMALL_NAME.to_owned(),
         BitmapFontProperties {
-            ttf_data_bytes: bitmap_font::FONT_DEFAULT_SMALL_TTF.to_vec(),
+            ttf_data_bytes: font::FONT_DEFAULT_SMALL_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
-                height_in_pixels: bitmap_font::FONT_DEFAULT_SMALL_PIXEL_HEIGHT,
-                raster_offset: bitmap_font::FONT_DEFAULT_SMALL_RASTER_OFFSET,
+                height_in_pixels: font::FONT_DEFAULT_SMALL_PIXEL_HEIGHT,
+                raster_offset: font::FONT_DEFAULT_SMALL_RASTER_OFFSET,
             },
         },
     );
     result_properties.insert(
-        bitmap_font::FONT_DEFAULT_REGULAR_NAME.to_owned(),
+        font::FONT_DEFAULT_REGULAR_NAME.to_owned(),
         BitmapFontProperties {
-            ttf_data_bytes: bitmap_font::FONT_DEFAULT_REGULAR_TTF.to_vec(),
+            ttf_data_bytes: font::FONT_DEFAULT_REGULAR_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
-                height_in_pixels: bitmap_font::FONT_DEFAULT_REGULAR_PIXEL_HEIGHT,
-                raster_offset: bitmap_font::FONT_DEFAULT_REGULAR_RASTER_OFFSET,
+                height_in_pixels: font::FONT_DEFAULT_REGULAR_PIXEL_HEIGHT,
+                raster_offset: font::FONT_DEFAULT_REGULAR_RASTER_OFFSET,
             },
         },
     );
     result_properties.insert(
-        bitmap_font::FONT_DEFAULT_SQUARE_NAME.to_owned(),
+        font::FONT_DEFAULT_SQUARE_NAME.to_owned(),
         BitmapFontProperties {
-            ttf_data_bytes: bitmap_font::FONT_DEFAULT_SQUARE_TTF.to_vec(),
+            ttf_data_bytes: font::FONT_DEFAULT_SQUARE_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
-                height_in_pixels: bitmap_font::FONT_DEFAULT_SQUARE_PIXEL_HEIGHT,
-                raster_offset: bitmap_font::FONT_DEFAULT_SQUARE_RASTER_OFFSET,
+                height_in_pixels: font::FONT_DEFAULT_SQUARE_PIXEL_HEIGHT,
+                raster_offset: font::FONT_DEFAULT_SQUARE_RASTER_OFFSET,
             },
         },
     );
@@ -336,13 +336,13 @@ fn load_font_styles() -> Vec<BitmapFontStyle> {
     let default_color_glyph = PixelRGBA::new(255, 255, 255, 255);
     let default_color_border = PixelRGBA::new(0, 0, 0, 255);
     result_styles.push(BitmapFontStyle {
-        fontname: bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned(),
+        fontname: font::FONT_DEFAULT_TINY_NAME.to_owned(),
         bordered: false,
         color_glyph: default_color_glyph,
         color_border: default_color_border,
     });
     result_styles.push(BitmapFontStyle {
-        fontname: bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned(),
+        fontname: font::FONT_DEFAULT_TINY_NAME.to_owned(),
         bordered: true,
         color_glyph: default_color_glyph,
         color_border: default_color_border,

@@ -9,6 +9,7 @@ use super::bitmap::*;
 use super::draw::*;
 use super::math::*;
 use super::random::*;
+use super::sprite::*;
 use super::system;
 use super::*;
 
@@ -109,7 +110,8 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
 
             let window_config = GameStateType::get_window_config();
             let atlas = game_load_atlas("assets_baked");
-            let mut draw = Drawstate::new(atlas);
+            let fonts = game_load_fonts("assets_baked");
+            let mut draw = Drawstate::new(atlas, fonts);
             game_setup_window(
                 &mut draw,
                 &window_config,
@@ -1979,6 +1981,10 @@ pub fn game_load_atlas(assets_folder: &str) -> SpriteAtlas {
         sprites_filepath
     ));
 
+    SpriteAtlas::new(textures, sprites)
+}
+
+pub fn game_load_fonts(assets_folder: &str) -> HashMap<String, SpriteFont> {
     let fonts_filepath = system::path_join(assets_folder, "fonts.data");
     let fonts = bincode::deserialize(&std::fs::read(&fonts_filepath).expect(&format!(
         "Could not read '{}' - Gamedata corrupt?",
@@ -1989,7 +1995,7 @@ pub fn game_load_atlas(assets_folder: &str) -> SpriteAtlas {
         fonts_filepath
     ));
 
-    SpriteAtlas::new(textures, sprites, fonts)
+    fonts
 }
 
 pub fn game_load_animations(assets_folder: &str) -> HashMap<String, Animation> {

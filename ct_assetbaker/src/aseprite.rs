@@ -1,8 +1,8 @@
 use super::{Animationname, AssetAnimation, AssetSprite, Spritename};
 
 use ct_lib::bitmap::*;
-use ct_lib::draw::*;
 use ct_lib::math::*;
+use ct_lib::sprite::*;
 use ct_lib::system;
 
 use ct_lib::IndexMap;
