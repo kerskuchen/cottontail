@@ -8,11 +8,12 @@
 
 ## Current:
 
-## Next:
-
 * We need to figure out a way to share the functionality between `Font` and `Bitmapfont` especially 
   drawing and aligning. This should be simple (API complexity) and fast (runtime and compiletime) 
 * Port functionality from `BitmapFont` to `Font`
+
+## Next:
+
 
 ## Next:
 

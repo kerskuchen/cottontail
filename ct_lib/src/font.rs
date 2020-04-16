@@ -834,8 +834,8 @@ impl SpriteFont {
         }
     }
 
-    /// Draws a given utf8 text with a given font
-    /// Returns the starting_offset for the next `text` or `text_formatted` call
+    /// Iterates a given utf8 text and runs a given operation on each glyph.
+    /// Returns the starting_offset for the next `iter_text_glyphs` call
     pub fn iter_text_glyphs<Operation: core::ops::FnMut(&SpriteGlyph, Vec2, f32) -> ()>(
         &self,
         text: &str,
@@ -870,5 +870,82 @@ impl SpriteFont {
         }
 
         pos
+    }
+
+    /// Iterates a given utf8 text and runs a given operation on each glyph if it would be visible
+    /// in the given clipping rect
+    pub fn iter_text_glyphs_clipped<Operation: core::ops::FnMut(&SpriteGlyph, Vec2, f32) -> ()>(
+        &self,
+        text: &str,
+        font_scale: f32,
+        starting_origin: Vec2,
+        starting_offset: Vec2,
+        origin_is_baseline: bool,
+        clipping_rect: Rect,
+        operation: &mut Operation,
+    ) {
+        let mut origin = worldpoint_pixel_snapped(starting_origin);
+        if origin_is_baseline {
+            // NOTE: Ascent will be drawn above the origin and descent below the origin
+            origin.y -= font_scale * self.baseline as f32;
+        } else {
+            // NOTE: Everything is drawn below the origin
+        }
+
+        // Check if we would begin drawing below our clipping rectangle
+        let mut current_line_top = origin.y - font_scale * self.baseline as f32;
+        let mut current_line_bottom = current_line_top + self.vertical_advance as f32;
+        current_line_top += starting_offset.y;
+        current_line_bottom += starting_offset.y;
+        if current_line_top > clipping_rect.bottom() {
+            // NOTE: Our text begins past the lower border of the bounding rect and all following
+            //       lines would not be visible anymore
+            return;
+        }
+
+        let mut pos = starting_offset;
+        for codepoint in text.chars() {
+            if codepoint != '\n' {
+                let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
+                let draw_pos = origin + pos;
+                let scale = font_scale;
+
+                operation(&glyph, draw_pos, scale);
+
+                pos.x += font_scale * glyph.horizontal_advance as f32;
+            } else {
+                pos.x = 0.0;
+                pos.y += font_scale * self.vertical_advance as f32;
+            }
+        }
+
+        let mut pos = starting_offset;
+        for line in text.lines() {
+            // Skip lines until we are within our bounding rectangle
+            //
+            if current_line_bottom >= clipping_rect.top() {
+                for codepoint in line.chars() {
+                    let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
+                    let draw_pos = origin + pos;
+                    let scale = font_scale;
+
+                    operation(&glyph, draw_pos, scale);
+
+                    pos.x += font_scale * glyph.horizontal_advance as f32;
+                }
+            }
+
+            // We finished a line and need advance to the next line
+            pos.x = 0.0;
+            pos.y += font_scale * self.vertical_advance as f32;
+
+            current_line_top += font_scale * self.vertical_advance as f32;
+            current_line_bottom += font_scale * self.vertical_advance as f32;
+            if clipping_rect.bottom() <= current_line_top {
+                // NOTE: We skipped past the lower border of the bounding rect and all following
+                //       lines will not be visible anymore
+                return;
+            }
+        }
     }
 }

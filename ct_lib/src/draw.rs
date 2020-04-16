@@ -1401,7 +1401,7 @@ impl Drawstate {
     // Text drawing
 
     /// Draws a given utf8 text with a given font
-    /// Returns the starting_offset for the next `text` or `text_formatted` call
+    /// Returns the starting_offset for the next `draw_text`
     pub fn draw_text(
         &mut self,
         text: &str,
@@ -1437,7 +1437,8 @@ impl Drawstate {
     }
 
     /// Draws a given utf8 text in a given font using a clipping rectangle
-    /// NOTE: The given text should be already pre-wrapped for a good result
+    /// NOTE: This does not do any word wrapping - the given text should be already pre-wrapped
+    ///       for a good result
     pub fn draw_text_clipped(
         &mut self,
         text: &str,
@@ -1451,58 +1452,25 @@ impl Drawstate {
         color_modulate: Color,
         additivity: Additivity,
     ) {
-        let mut origin = worldpoint_pixel_snapped(starting_origin);
-        if origin_is_baseline {
-            // NOTE: Ascent will be drawn above the origin and descent below the origin
-            origin.y -= font_scale * font.baseline as f32;
-        } else {
-            // NOTE: Everything is drawn below the origin
-        }
-
-        // Check if we would begin drawing below our clipping rectangle
-        let mut current_line_top = origin.y - font_scale * font.baseline as f32;
-        let mut current_line_bottom = current_line_top + font.vertical_advance as f32;
-        current_line_top += starting_offset.y;
-        current_line_bottom += starting_offset.y;
-        if current_line_top > clipping_rect.bottom() {
-            // NOTE: Our text begins past the lower border of the bounding rect and all following
-            //       lines would not be visible anymore
-            return;
-        }
-
-        let mut pos = starting_offset;
-        for line in text.lines() {
-            // Skip lines until we are within our bounding rectangle
-            //
-            if current_line_bottom >= clipping_rect.top() {
-                for codepoint in line.chars() {
-                    let glyph = font.get_glyph_for_codepoint(codepoint as Codepoint);
-                    self.draw_sprite_clipped(
-                        SpriteBy::Index(glyph.sprite_index),
-                        origin + pos,
-                        Vec2::new(font_scale, font_scale),
-                        clipping_rect,
-                        depth,
-                        color_modulate,
-                        additivity,
-                    );
-
-                    pos.x += font_scale * glyph.horizontal_advance as f32;
-                }
-            }
-
-            // We finished a line and need advance to the next line
-            pos.x = 0.0;
-            pos.y += font_scale * font.vertical_advance as f32;
-
-            current_line_top += font_scale * font.vertical_advance as f32;
-            current_line_bottom += font_scale * font.vertical_advance as f32;
-            if clipping_rect.bottom() <= current_line_top {
-                // NOTE: We skipped past the lower border of the bounding rect and all following
-                //       lines will not be visible anymore
-                return;
-            }
-        }
+        font.iter_text_glyphs_clipped(
+            text,
+            font_scale,
+            starting_origin,
+            starting_offset,
+            origin_is_baseline,
+            clipping_rect,
+            &mut |glyph, draw_pos, scale| {
+                self.draw_sprite_clipped(
+                    SpriteBy::Index(glyph.sprite_index),
+                    draw_pos,
+                    Vec2::new(scale, scale),
+                    clipping_rect,
+                    depth,
+                    color_modulate,
+                    additivity,
+                );
+            },
+        )
     }
 
     //--------------------------------------------------------------------------------------------------
