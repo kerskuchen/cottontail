@@ -1,6 +1,6 @@
 mod aseprite;
 
-use ct_lib::bitmap_atlas::{BitmapAtlasPosition, BitmapMultiAtlas};
+use ct_lib::bitmap::{BitmapAtlasPosition, BitmapMultiAtlas};
 use ct_lib::color::*;
 use ct_lib::draw::*;
 use ct_lib::font;

@@ -1,5 +1,4 @@
 use super::bitmap::*;
-use super::bitmap_atlas::BitmapAtlas;
 use super::color::*;
 use super::math::*;
 use super::sprite::*;

@@ -1,6 +1,5 @@
 pub mod audio;
 pub mod bitmap;
-pub mod bitmap_atlas;
 pub mod color;
 pub mod draw;
 pub mod draw_common;

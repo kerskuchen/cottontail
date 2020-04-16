@@ -106,6 +106,9 @@ impl Sprite {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+/// SpriteAtlas
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpriteAtlas {
     pub textures: Vec<Bitmap>,
