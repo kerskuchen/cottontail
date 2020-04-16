@@ -197,11 +197,7 @@ impl BitmapFont {
                     if glyph_rect.right() > right {
                         right = glyph_rect.right();
                     }
-<<<<<<< HEAD
-                    if glyph_rect.bottom() < bottom {
-=======
                     if glyph_rect.bottom() > bottom {
->>>>>>> 84fd6f0e102fd32583b1d4519473b77e6041c5ab
                         bottom = glyph_rect.bottom();
                     }
                 }
