@@ -5,21 +5,14 @@
 * Adds test for text drawing with aligment to `BitmapFont`
 * Move font rendering tests in main to debugscene and pass a loaded fontname 
 * Refactored stuff out of draw module
-* Added glyph iteration methods in SpriteFont
 * Added `Font` and `Glyph` traits with text dimension and iteration implementations
 
 ## Current:
 
-* We need to figure out a way to share the functionality between `Font` and `Bitmapfont` especially 
-  drawing and aligning. This should be simple (API complexity) and fast (runtime and compiletime) 
-* Port functionality from `BitmapFont` to `Font`
+* Port aligned drawing functionality from `BitmapFont` to `Font`
 
 ## Next:
 
-
-## Next:
-
-* How can we share the draw and measure algorithms of our `Font` and `BitmapFont` structs?
 
 ## Backlog:
 
