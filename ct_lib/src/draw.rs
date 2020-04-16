@@ -1434,42 +1434,6 @@ impl Drawstate {
                 );
             },
         )
-
-        /*
-        let mut origin = worldpoint_pixel_snapped(starting_origin);
-        if origin_is_baseline {
-            // NOTE: Ascent will be drawn above the origin and descent below the origin
-            origin.y -= font_scale * font.baseline as f32;
-        } else {
-            // NOTE: Everything is drawn below the origin
-        }
-
-        let mut pos = starting_offset;
-        for codepoint in text.chars() {
-            if codepoint != '\n' {
-                let glyph = font.get_glyph_for_codepoint(codepoint as Codepoint);
-
-                self.draw_sprite_pixel_snapped(
-                    SpriteBy::Index(glyph.sprite_index),
-                    origin + pos,
-                    Vec2::new(font_scale, font_scale),
-                    Vec2::unit_x(),
-                    false,
-                    false,
-                    depth,
-                    color_modulate,
-                    additivity,
-                );
-
-                pos.x += font_scale * glyph.horizontal_advance as f32;
-            } else {
-                pos.x = 0.0;
-                pos.y += font_scale * font.vertical_advance as f32;
-            }
-        }
-
-        pos
-        */
     }
 
     /// Draws a given utf8 text in a given font using a clipping rectangle
@@ -1679,7 +1643,7 @@ impl Drawstate {
 
     pub fn debug_log_color<StringType: Into<String>>(&mut self, color: Color, text: StringType) {
         // NOTE: We needed to re-implement this because the borrow-checker does not let us borrow
-        //       `self.debug_log_font` to use in `self.text(...)`
+        //       `self.debug_log_font` to use in `self.draw_text(...)`
         let origin = worldpoint_pixel_snapped(self.debug_log_origin);
         let mut pos = self.debug_log_offset;
         for codepoint in text.into().chars() {
@@ -1706,6 +1670,7 @@ impl Drawstate {
                 pos.y += self.debug_log_font_scale * self.debug_log_font.vertical_advance as f32;
             }
         }
+
         // Add final '\n'
         pos.x = 0.0;
         pos.y += self.debug_log_font_scale * self.debug_log_font.vertical_advance as f32;
