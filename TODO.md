@@ -6,6 +6,7 @@
 * Move font rendering tests in main to debugscene and pass a loaded fontname 
 * Refactored stuff out of draw module
 * Added glyph iteration methods in SpriteFont
+* Added `Font` and `Glyph` traits with text dimension and iteration implementations
 
 ## Current:
 
