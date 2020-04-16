@@ -1,23 +1,14 @@
 ## Done today
 
-* Assets baker always generates default fonts
-* Can use build-in and loaded fonts the same way
-* Removed the need to pass font filepath to drawstate on its creation
-* Added json font style file which contains info on how to render the given font
-* Added usage of a loaded font to main example
-* Fixed font metrics calculations via offsets
-* Draw baseline in font test in main
-* Tested all proggy fonts and set their correct offsets and sizes
-
+* Move font rendering tests in main to debugscene and pass a loaded fontname 
 
 ## Current:
 
+* When calculating the dimensions of text we currently get back the lineheight even if we only 
+  have glyphs like `'a'` in out text. When trying to center this text vertically we get the wrong results
 
 ## Next:
 
-* Move font rendering tests in main to debugscene and pass a loaded fontname 
-* When calculating the dimensions of text we currently get back the lineheight even if we only 
-  have glyphs like `'a'` in out text. When trying to center this text vertically we get the wrong results
 * How can we share the draw and measure algorithms of our `Font` and `BitmapFont` structs?
 
 ## Backlog:

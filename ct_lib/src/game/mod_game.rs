@@ -2072,6 +2072,8 @@ pub struct SceneDebug {
     choreographer_hp_back: Choreographer,
     choreographer_hp_refill: Choreographer,
 
+    loaded_font_name: String,
+
     hp: f32,
     hp_previous: f32,
 
@@ -2084,6 +2086,7 @@ impl SceneDebug {
         _audio: &mut Audiostate,
         _assets: &mut GameAssets,
         _input: &GameInput,
+        loaded_font_name: &str,
     ) -> SceneDebug {
         let glitter_params = ParticleSystemParams {
             gravity: Vec2::new(0.0, -15.0),
@@ -2100,9 +2103,9 @@ impl SceneDebug {
         };
 
         SceneDebug {
-            music_stream_id: 0,
-
             glitter: ParticleSystem::new(glitter_params, 30, Vec2::zero()),
+
+            music_stream_id: 0,
 
             measure_completion_ratio_values: Vec::new(),
             last_measure_completion_ratio: 0.0,
@@ -2114,6 +2117,8 @@ impl SceneDebug {
             choreographer_hp_front: Choreographer::new(),
             choreographer_hp_back: Choreographer::new(),
             choreographer_hp_refill: Choreographer::new(),
+
+            loaded_font_name: loaded_font_name.to_owned(),
 
             hp: 1.0,
             hp_previous: 1.0,
@@ -2434,6 +2439,51 @@ impl Scene for SceneDebug {
             ),
             DEPTH_DEBUG,
             Color::blue(),
+            ADDITIVITY_NONE,
+        );
+
+        // Text drawing test
+        let test_font = draw.get_font(&self.loaded_font_name);
+        let text = "Loaded font test gorgeous!|";
+        let text_width = test_font.get_text_width(1.0, text);
+        // Draw origin is top-left
+        let draw_pos = Vec2::new(5.0, globals.canvas_height - 40.0);
+        draw.draw_text(
+            text,
+            &test_font,
+            1.0,
+            draw_pos,
+            Vec2::zero(),
+            false,
+            20.0,
+            Color::magenta(),
+            ADDITIVITY_NONE,
+        );
+        draw.draw_line_bresenham(
+            draw_pos + Vec2::new(0.0, test_font.baseline),
+            draw_pos + Vec2::new(text_width, test_font.baseline),
+            20.0,
+            0.3 * Color::yellow(),
+            ADDITIVITY_NONE,
+        );
+        // Draw origin is baseline
+        let draw_pos = Vec2::new(5.0, globals.canvas_height - 15.0);
+        draw.draw_text(
+            text,
+            &test_font,
+            1.0,
+            draw_pos,
+            Vec2::zero(),
+            true,
+            20.0,
+            Color::magenta(),
+            ADDITIVITY_NONE,
+        );
+        draw.draw_line_bresenham(
+            draw_pos,
+            draw_pos + Vec2::new(text_width, 0.0),
+            20.0,
+            0.3 * Color::yellow(),
             ADDITIVITY_NONE,
         );
     }

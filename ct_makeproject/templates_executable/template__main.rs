@@ -83,7 +83,7 @@ impl GameStateInterface for GameState {
             font_default_no_border,
         };
 
-        let scene_debug = SceneDebug::new(draw, audio, assets, input);
+        let scene_debug = SceneDebug::new(draw, audio, assets, input, "Grand9K_Pixel_bordered");
 
         GameState {
             globals,
@@ -150,19 +150,6 @@ impl GameStateInterface for GameState {
 
         self.scene_debug
             .update_and_draw(draw, audio, assets, input, &mut self.globals);
-
-        let test_font = draw.get_font("Grand9K_Pixel_bordered");
-        draw.draw_text(
-            "Loaded font test",
-            &test_font,
-            1.0,
-            Vec2::new(5.0, CANVAS_HEIGHT - 30.0),
-            Vec2::zero(),
-            false,
-            20.0,
-            Color::magenta(),
-            ADDITIVITY_NONE,
-        );
 
         let deltatime = self.globals.deltatime;
         self.globals.camera.update(deltatime);
