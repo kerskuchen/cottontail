@@ -1414,6 +1414,28 @@ impl Drawstate {
         color_modulate: Color,
         additivity: Additivity,
     ) -> Vec2 {
+        font.iter_text_glyphs(
+            text,
+            font_scale,
+            starting_origin,
+            starting_offset,
+            origin_is_baseline,
+            &mut |glyph, draw_pos, scale| {
+                self.draw_sprite_pixel_snapped(
+                    SpriteBy::Index(glyph.sprite_index),
+                    draw_pos,
+                    Vec2::new(scale, scale),
+                    Vec2::unit_x(),
+                    false,
+                    false,
+                    depth,
+                    color_modulate,
+                    additivity,
+                );
+            },
+        )
+
+        /*
         let mut origin = worldpoint_pixel_snapped(starting_origin);
         if origin_is_baseline {
             // NOTE: Ascent will be drawn above the origin and descent below the origin
@@ -1447,6 +1469,7 @@ impl Drawstate {
         }
 
         pos
+        */
     }
 
     /// Draws a given utf8 text in a given font using a clipping rectangle

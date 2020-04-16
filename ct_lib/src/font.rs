@@ -33,6 +33,12 @@ pub type Codepoint = i32;
 pub const FONT_MAX_NUM_FASTPATH_CODEPOINTS: usize = 256;
 const FIRST_VISIBLE_ASCII_CODE_POINT: Codepoint = 32;
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Font
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// SpriteFont
+
 #[derive(Clone)]
 pub struct BitmapFont {
     pub font_name: String,
@@ -690,11 +696,11 @@ mod tests {
     }
 }
 
-//--------------------------------------------------------------------------------------------------
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // SpriteFont
 
-/// NOTE: We cannot store the Sprite here directly because the borrowchecker won't allow the `Drawstate`
-///       to borrow the glyphs sprite and draw it at the same time
+/// NOTE: We cannot store the Sprite here directly because the borrowchecker won't allow the
+///       `Drawstate` to borrow the glyphs sprite and draw it at the same time
 #[derive(Default, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct SpriteGlyph {
     pub horizontal_advance: i32,
@@ -827,130 +833,42 @@ impl SpriteFont {
             Recti::from_bounds_left_top_right_bottom(left, top, right, bottom)
         }
     }
-}
 
-/*
-
-//--------------------------------------------------------------------------------------------------
-// Text drawing
-
-
-/// Draws a given utf8 text with a given font
-/// Returns the starting_offset for the next `text` or `text_formatted` call
-pub fn draw_text(
-    &mut self,
-    text: &str,
-    font: &SpriteFont,
-    font_scale: f32,
-    starting_origin: Vec2,
-    starting_offset: Vec2,
-    origin_is_baseline: bool,
-    depth: Depth,
-    color_modulate: Color,
-    additivity: Additivity,
-) -> Vec2 {
-    let mut origin = worldpoint_pixel_snapped(starting_origin);
-    if origin_is_baseline {
-        // NOTE: Ascent will be drawn above the origin and descent below the origin
-        origin.y -= font_scale * font.baseline;
-    } else {
-        // NOTE: Everything is drawn below the origin
-    }
-
-    let mut pos = starting_offset;
-    for codepoint in text.chars() {
-        if codepoint != '\n' {
-            let glyph = font.get_glyph_for_codepoint(codepoint as Codepoint);
-
-            self.draw_sprite_pixel_snapped(
-                SpriteBy::Index(glyph.sprite_index),
-                origin + pos,
-                Vec2::new(font_scale, font_scale),
-                Vec2::unit_x(),
-                false,
-                false,
-                depth,
-                color_modulate,
-                additivity,
-            );
-
-            pos.x += font_scale * glyph.horizontal_advance;
+    /// Draws a given utf8 text with a given font
+    /// Returns the starting_offset for the next `text` or `text_formatted` call
+    pub fn iter_text_glyphs<Operation: core::ops::FnMut(&SpriteGlyph, Vec2, f32) -> ()>(
+        &self,
+        text: &str,
+        font_scale: f32,
+        starting_origin: Vec2,
+        starting_offset: Vec2,
+        origin_is_baseline: bool,
+        operation: &mut Operation,
+    ) -> Vec2 {
+        let mut origin = worldpoint_pixel_snapped(starting_origin);
+        if origin_is_baseline {
+            // NOTE: Ascent will be drawn above the origin and descent below the origin
+            origin.y -= font_scale * self.baseline as f32;
         } else {
-            pos.x = 0.0;
-            pos.y += font_scale * font.vertical_advance;
+            // NOTE: Everything is drawn below the origin
         }
-    }
 
-    pos
-}
+        let mut pos = starting_offset;
+        for codepoint in text.chars() {
+            if codepoint != '\n' {
+                let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
+                let draw_pos = origin + pos;
+                let scale = font_scale;
 
-/// Draws a given utf8 text in a given font using a clipping rectangle
-/// NOTE: The given text should be already pre-wrapped for a good result
-pub fn draw_text_clipped(
-    &mut self,
-    text: &str,
-    font: &SpriteFont,
-    font_scale: f32,
-    starting_origin: Vec2,
-    starting_offset: Vec2,
-    origin_is_baseline: bool,
-    clipping_rect: Rect,
-    depth: Depth,
-    color_modulate: Color,
-    additivity: Additivity,
-) {
-    let mut origin = worldpoint_pixel_snapped(starting_origin);
-    if origin_is_baseline {
-        // NOTE: Ascent will be drawn above the origin and descent below the origin
-        origin.y -= font_scale * font.baseline;
-    } else {
-        // NOTE: Everything is drawn below the origin
-    }
+                operation(&glyph, draw_pos, scale);
 
-    // Check if we would begin drawing below our clipping rectangle
-    let mut current_line_top = origin.y - font_scale * font.baseline;
-    let mut current_line_bottom = current_line_top + font.vertical_advance;
-    current_line_top += starting_offset.y;
-    current_line_bottom += starting_offset.y;
-    if current_line_top > clipping_rect.bottom() {
-        // NOTE: Our text begins past the lower border of the bounding rect and all following
-        //       lines would not be visible anymore
-        return;
-    }
-
-    let mut pos = starting_offset;
-    for line in text.lines() {
-        // Skip lines until we are within our bounding rectangle
-        //
-        if current_line_bottom >= clipping_rect.top() {
-            for codepoint in line.chars() {
-                let glyph = font.get_glyph_for_codepoint(codepoint as Codepoint);
-                self.draw_sprite_clipped(
-                    SpriteBy::Index(glyph.sprite_index),
-                    origin + pos,
-                    Vec2::new(font_scale, font_scale),
-                    clipping_rect,
-                    depth,
-                    color_modulate,
-                    additivity,
-                );
-
-                pos.x += font_scale * glyph.horizontal_advance;
+                pos.x += font_scale * glyph.horizontal_advance as f32;
+            } else {
+                pos.x = 0.0;
+                pos.y += font_scale * self.vertical_advance as f32;
             }
         }
 
-        // We finished a line and need advance to the next line
-        pos.x = 0.0;
-        pos.y += font_scale * font.vertical_advance;
-
-        current_line_top += font_scale * font.vertical_advance;
-        current_line_bottom += font_scale * font.vertical_advance;
-        if clipping_rect.bottom() <= current_line_top {
-            // NOTE: We skipped past the lower border of the bounding rect and all following
-            //       lines will not be visible anymore
-            return;
-        }
+        pos
     }
 }
-
-*/
