@@ -99,7 +99,7 @@ impl Sprite {
         Quad::from_rect_transformed(
             sprite_dim,
             sprite_pivot,
-            worldpoint_pixel_snapped(pos),
+            pos.pixel_snapped(),
             scale,
             rotation_dir,
         )

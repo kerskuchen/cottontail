@@ -18,27 +18,39 @@ pub type Canvaspoint = Point;
 /// Same as Canvaspoint only as vector
 pub type Canvasvec = Vec2;
 
-/// For a given Worldpoint returns the nearest Worldpoint that is aligned to the
-/// canvas's pixel grid when drawn.
-///
-/// For example pixel-snapping the cameras position before drawing prevents pixel-jittering
-/// artifacts on visible objects if the camera is moving at sub-pixel distances.
-pub fn worldpoint_pixel_snapped(point: Worldpoint) -> Worldpoint {
-    Worldpoint {
-        x: f32::floor(point.x),
-        y: f32::floor(point.y),
+impl Worldpoint {
+    /// For a given Worldpoint returns the nearest Worldpoint that is aligned to the
+    /// canvas's pixel grid when drawn.
+    ///
+    /// For example pixel-snapping the cameras position before drawing prevents pixel-jittering
+    /// artifacts on visible objects if the camera is moving at sub-pixel distances.
+    pub fn pixel_snapped(self) -> Worldpoint {
+        Worldpoint {
+            x: f32::floor(self.x),
+            y: f32::floor(self.y),
+        }
+    }
+
+    /// For a given Worldpoint returns the nearest Worldpoint that is aligned to the
+    /// canvas's pixel grid when drawn.
+    ///
+    /// For example pixel-snapping the cameras position before drawing prevents pixel-jittering
+    /// artifacts on visible objects if the camera is moving at sub-pixel distances.
+    pub fn pixel_snapped_i32(self) -> Vec2i {
+        Vec2i {
+            x: floori(self.x),
+            y: floori(self.y),
+        }
     }
 }
 
-/// For a given Worldpoint returns the nearest Worldpoint that is aligned to the
-/// canvas's pixel grid when drawn.
-///
-/// For example pixel-snapping the cameras position before drawing prevents pixel-jittering
-/// artifacts on visible objects if the camera is moving at sub-pixel distances.
-pub fn worldpoint_pixel_snapped_i32(point: Worldpoint) -> Vec2i {
-    Vec2i {
-        x: floori(point.x),
-        y: floori(point.y),
+impl Rect {
+    pub fn pixel_snapped(self) -> Rect {
+        Rect::from_point_dimensions(self.pos.pixel_snapped(), self.dim.round())
+    }
+
+    pub fn pixel_snapped_i32(self) -> Recti {
+        Recti::from_point_dimensions(self.pos.pixel_snapped_i32(), self.dim.roundi())
     }
 }
 

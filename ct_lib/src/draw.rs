@@ -796,8 +796,7 @@ impl Drawstate {
                 SpriteBy::Name(sprite_name) => self.get_sprite_by_name(sprite_name),
             };
 
-            let quad =
-                sprite.get_quad_transformed(worldpoint_pixel_snapped(pos), scale, rotation_dir);
+            let quad = sprite.get_quad_transformed(pos.pixel_snapped(), scale, rotation_dir);
 
             let mut sprite_uvs = sprite.trimmed_uvs;
             if flip_horizontally {
@@ -1055,7 +1054,7 @@ impl Drawstate {
         // Based on the Paper "A Fast Bresenham Type Algorithm For Drawing Circles" by John Kennedy
         // https://web.engr.oregonstate.edu/~sllu/bcircle.pdf
 
-        let center = worldpoint_pixel_snapped(center);
+        let center = center.pixel_snapped();
         let radius = roundi(radius);
 
         if radius == 0 {
@@ -1198,7 +1197,7 @@ impl Drawstate {
     /// WARNING: This can be slow if used often
     pub fn draw_pixel(&mut self, pos: Vec2, depth: Depth, color: Color, additivity: Additivity) {
         self.draw_rect(
-            Rect::from_point_dimensions(worldpoint_pixel_snapped(pos), Vec2::ones()),
+            Rect::from_point_dimensions(pos.pixel_snapped(), Vec2::ones()),
             depth,
             color,
             additivity,
@@ -1414,8 +1413,8 @@ impl Drawstate {
         color_modulate: Color,
         additivity: Additivity,
     ) -> Vec2 {
-        let origin = worldpoint_pixel_snapped_i32(starting_origin);
-        let offset = worldpoint_pixel_snapped_i32(starting_offset);
+        let origin = starting_origin.pixel_snapped_i32();
+        let offset = starting_offset.pixel_snapped_i32();
         font.iter_text_glyphs(
             text,
             font_scale as i32,
@@ -1455,12 +1454,13 @@ impl Drawstate {
         color_modulate: Color,
         additivity: Additivity,
     ) {
-        let origin = worldpoint_pixel_snapped_i32(starting_origin);
-        let offset = worldpoint_pixel_snapped_i32(starting_offset);
+        let origin = starting_origin.pixel_snapped_i32();
+        let offset = starting_offset.pixel_snapped_i32();
         let clipping_recti = Recti::from_point_dimensions(
-            worldpoint_pixel_snapped_i32(clipping_rect.pos),
+            clipping_rect.pos.pixel_snapped_i32(),
             clipping_rect.dim.roundi(),
         );
+        clipping_rect.pixel_snapped_i32();
         font.iter_text_glyphs_clipped(
             text,
             font_scale as i32,
@@ -1496,8 +1496,7 @@ impl Drawstate {
     ) {
         for y in 0..cells_per_side {
             for x in 0..cells_per_side {
-                let pos =
-                    worldpoint_pixel_snapped(origin) + Vec2::new(x as f32, y as f32) * cell_size;
+                let pos = origin.pixel_snapped() + Vec2::new(x as f32, y as f32) * cell_size;
                 let dim = Vec2::filled(cell_size as f32);
                 let cell_rect = Rect::from_point_dimensions(pos, dim);
                 if y % 2 == 0 {
@@ -1621,7 +1620,7 @@ impl Drawstate {
     pub fn debug_log_color<StringType: Into<String>>(&mut self, color: Color, text: StringType) {
         // NOTE: We needed to re-implement this because the borrow-checker does not let us borrow
         //       `self.debug_log_font` to use in `self.draw_text(...)`
-        let origin = worldpoint_pixel_snapped(self.debug_log_origin);
+        let origin = self.debug_log_origin.pixel_snapped();
         let mut pos = self.debug_log_offset;
         for codepoint in text.into().chars() {
             if codepoint != '\n' {

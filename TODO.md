@@ -6,17 +6,18 @@
 * Refactored other Font functions to use the iterators
 * Prevent bitmapfonts to be created with glyphs that have negative horizontal or vertical offset
 * Simplify font tester function
+* Move `pixelsnapped` functions into `Vec2` and `Rect`
 
 ## Current:
 
-* Should we refactor clipping glyph iterator to use basic iterator internally?
-* Move `pixelsnapped` functions into `Vec2` and `Rect`
+* Make pixie_stitch use new font api
 
 ## Next:
 
 
 ## Backlog:
 
+* Should we refactor clipping glyph iterator to use basic iterator internally?
 * Read the following items in the launcher from a config file:
   - display_to_use;
   - deadzone_threshold_x;

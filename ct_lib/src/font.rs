@@ -94,6 +94,8 @@ pub trait Font<GlyphType: Glyph> {
             return Recti::zero();
         }
 
+        // NOTE: We don't start at (0,0) because the first glyph may be a whitespace which we don't
+        //       want contained in our rect
         let mut left = std::i32::MAX;
         let mut top = std::i32::MAX;
         let mut right = -std::i32::MAX;

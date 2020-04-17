@@ -375,7 +375,7 @@ impl Camera {
 
         Camera {
             pos,
-            pos_pixelsnapped: worldpoint_pixel_snapped(pos),
+            pos_pixelsnapped: pos.pixel_snapped(),
             zoom_level,
             dim_canvas,
             dim_frustum: dim_canvas / zoom_level,
@@ -469,20 +469,20 @@ impl Camera {
         self.zoom_level = new_zoom_level;
         self.dim_frustum = self.dim_canvas / new_zoom_level;
         self.pos = (self.pos - worldpoint) * (old_zoom_level / new_zoom_level) + worldpoint;
-        self.pos_pixelsnapped = worldpoint_pixel_snapped(self.pos);
+        self.pos_pixelsnapped = self.pos.pixel_snapped();
     }
 
     /// Pans the camera using cursor movement distance on the canvas
     #[inline]
     pub fn pan(&mut self, canvas_move_distance: Canvasvec) {
         self.pos -= canvas_move_distance / self.zoom_level;
-        self.pos_pixelsnapped = worldpoint_pixel_snapped(self.pos);
+        self.pos_pixelsnapped = self.pos.pixel_snapped();
     }
 
     #[inline]
     pub fn set_pos(&mut self, worldpoint: Worldpoint) {
         self.pos = worldpoint;
-        self.pos_pixelsnapped = worldpoint_pixel_snapped(self.pos);
+        self.pos_pixelsnapped = self.pos.pixel_snapped();
     }
 }
 
@@ -1774,7 +1774,7 @@ impl ParticleSystem {
             draw.draw_rect_transformed(
                 Vec2::ones(),
                 Vec2::zero(),
-                worldpoint_pixel_snapped(self.pos[index]),
+                self.pos[index].pixel_snapped(),
                 Vec2::filled(scale),
                 Vec2::unit_x(),
                 depth,
