@@ -270,12 +270,47 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
         } else {
             let test_png_filepath =
                 system::path_join("assets_temp", &(font_name.clone() + "_fontsize_test.png"));
-            println!(
+            log::warn!(
                 "Font is missing its render parameters: '{}' - Created font size test image at '{}'",
                 &font_filepath,
                 &test_png_filepath
             );
-            BitmapFont::test_font_sizes(&font_name, &ttf_data_bytes, 4, 32, &test_png_filepath);
+            let test_png_filepath = system::path_join(
+                "assets_temp",
+                &(font_name.clone() + "_fontsize_test_offset_-0.5.png"),
+            );
+            BitmapFont::test_font_sizes(
+                &font_name,
+                &ttf_data_bytes,
+                Vec2::new(0.0, -0.5),
+                4,
+                32,
+                &test_png_filepath,
+            );
+            let test_png_filepath = system::path_join(
+                "assets_temp",
+                &(font_name.clone() + "_fontsize_test_offset_0.0.png"),
+            );
+            BitmapFont::test_font_sizes(
+                &font_name,
+                &ttf_data_bytes,
+                Vec2::new(0.0, 0.0),
+                4,
+                32,
+                &test_png_filepath,
+            );
+            let test_png_filepath = system::path_join(
+                "assets_temp",
+                &(font_name.clone() + "_fontsize_test_offset_0.5.png"),
+            );
+            BitmapFont::test_font_sizes(
+                &font_name,
+                &ttf_data_bytes,
+                Vec2::new(0.0, 0.5),
+                4,
+                32,
+                &test_png_filepath,
+            );
         }
     }
 
@@ -716,7 +751,7 @@ fn main() {
     std::panic::set_hook(Box::new(|panic_info| {
         let (message, location) = ct_lib::panic_message_split_to_message_and_location(panic_info);
         let final_message = format!("{}\n\nError occured at: {}", message, location);
-        println!("{}", final_message);
+        log::error!("{}", final_message);
 
         // NOTE: This forces the other threads to shutdown as well
         std::process::abort();
@@ -729,7 +764,9 @@ fn main() {
             if std::fs::remove_dir_all("assets_temp").is_ok() {
                 break;
             }
-            println!("Unable to delete 'assets_temp' dir, are files from this folder still open?");
+            log::warn!(
+                "Unable to delete 'assets_temp' dir, are files from this folder still open?"
+            );
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
     }
@@ -740,7 +777,9 @@ fn main() {
             if std::fs::remove_dir_all("assets_baked").is_ok() {
                 break;
             }
-            println!("Unable to delete 'assets_baked' dir, are files from this folder still open?");
+            log::warn!(
+                "Unable to delete 'assets_baked' dir, are files from this folder still open?"
+            );
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
     }
@@ -761,7 +800,7 @@ fn main() {
     bake_graphics_resources();
     bake_audio_resources();
 
-    println!(
+    log::info!(
         "ASSETS SUCCESSFULLY BAKED: Elapsed time: {:.3}s",
         start_time.elapsed().as_secs_f64()
     );

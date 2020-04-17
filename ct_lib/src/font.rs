@@ -608,8 +608,12 @@ impl BitmapGlyph {
             offset_y += bounding_box.min.y;
         }
 
-        // Check if our glyph offsets are >= 0. If not then the raster offsets or font pixel height
-        // we were given are wrong
+        // Check if our glyph offsets are >= 0 if our drawn glyph is smaller than our font height.
+        // If not then the raster offsets or font pixel height we were given are wrong
+        let mut glyph_bitmap_invalid = false;
+        let mut glyph_bitmap_crop_left = 0;
+        let mut glyph_bitmap_crop_top = 0;
+        let mut glyph_bitmap_crop_bottom = 0;
         if offset_x < 0 {
             log::warn!(
                 "Glyph '{}' has negative horizontal offset: {} - Font '{}' probably has wrong raster offsets and / or font size",
@@ -617,6 +621,8 @@ impl BitmapGlyph {
                 offset_x,
                 font_name,
             );
+            glyph_bitmap_invalid = true;
+            glyph_bitmap_crop_left = i32::abs(offset_x);
             offset_x = 0;
         }
         if offset_y < 0 {
@@ -626,10 +632,11 @@ impl BitmapGlyph {
                 offset_x,
                 font_name,
             );
+            glyph_bitmap_invalid = true;
+            glyph_bitmap_crop_top = i32::abs(offset_y);
             offset_y = 0;
         }
-
-        if let Some(image) = maybe_image.as_mut() {
+        if let Some(image) = maybe_image.as_ref() {
             let glyph_draw_height = offset_y + image.height;
             if glyph_draw_height > font_height {
                 log::warn!(
@@ -639,10 +646,21 @@ impl BitmapGlyph {
                     font_height,
                     font_name,
                 );
-                // NOTE: We mark the glyph as broken by filling it with a bright color and crop it
-                //       so that rendering it as text does not crash
+                glyph_bitmap_invalid = true;
+                glyph_bitmap_crop_bottom = glyph_draw_height - font_height;
+            }
+        }
+        // NOTE: We mark the glyph as broken by filling it with a bright color and crop it
+        //       so that rendering it as text does not crash
+        if glyph_bitmap_invalid {
+            if let Some(image) = maybe_image.as_mut() {
+                image.crop(
+                    glyph_bitmap_crop_left,
+                    glyph_bitmap_crop_top,
+                    0,
+                    glyph_bitmap_crop_bottom,
+                );
                 image.replace_cells(PixelRGBA::transparent(), PixelRGBA::red());
-                image.height -= glyph_draw_height - font_height;
             }
         }
 
