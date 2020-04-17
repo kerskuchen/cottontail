@@ -52,51 +52,41 @@ pub trait Font<GlyphType: Glyph> {
         format!("{}_codepoint_{}", fontname, codepoint)
     }
 
-    fn get_text_width(&self, text: &str, font_scale: i32) -> i32 {
-        let mut text_width = 0;
-        for codepoint in text.chars() {
-            let glyph = self.get_glyph_for_codepoint(codepoint as i32);
-            text_width += font_scale * glyph.horizontal_advance();
-        }
-        text_width
-    }
-
-    fn get_text_height(&self, font_scale: i32, linecount: usize) -> i32 {
-        assert!(linecount > 0);
-        (font_scale * self.baseline())
-            + (linecount - 1) as i32 * font_scale * self.vertical_advance()
-    }
-
-    /// Returns width and height of a given utf8 text for a given scale.
+    /// Returns width and height of a given utf8 text for a given scale including whitespace.
+    ///
+    /// IMPORTANT: For performance reasons this function only uses the fonts vertical and horizontal
+    ///            advance and is not pixel accurate. If accuracy is important we can use
+    ///            `get_text_bounding_rect_exact`
     fn get_text_dimensions(&self, text: &str, font_scale: i32) -> Vec2i {
         if text.len() == 0 {
             return Vec2i::zero();
         }
 
-        let mut dimensions = Vec2i::new(0, font_scale * self.vertical_advance());
-
-        let mut next_glyph_pos = Vec2i::new(0, 0);
-        for codepoint in text.chars() {
-            if codepoint != '\n' {
-                let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
-                next_glyph_pos.x += font_scale * glyph.horizontal_advance();
-            } else {
-                dimensions.x = i32::max(dimensions.x, next_glyph_pos.x);
-                dimensions.y += font_scale * self.vertical_advance();
-
-                next_glyph_pos.x = 0;
-                next_glyph_pos.y += font_scale * self.vertical_advance();
-            }
-        }
-
-        // In case we did not find a newline character
-        dimensions.x = i32::max(dimensions.x, next_glyph_pos.x);
+        let mut dimensions = Vec2i::zero();
+        self.iter_text_glyphs(
+            text,
+            font_scale,
+            Vec2i::zero(),
+            Vec2i::zero(),
+            false,
+            &mut |glyph, draw_pos, _codepoint| {
+                dimensions.x = i32::max(
+                    draw_pos.x + font_scale * glyph.horizontal_advance(),
+                    dimensions.x,
+                );
+                dimensions.y = i32::max(
+                    draw_pos.y + font_scale * self.vertical_advance(),
+                    dimensions.y,
+                );
+            },
+        );
 
         dimensions
     }
 
     /// Returns the bounding rect of a given utf8 text for a given scale. This ignores whitespace
-    /// and tries to wrap the glyphs of the given text as tight as possible.
+    /// and tries to wrap the bounding rect to the non-whitespace-glyphs of the given text as tight
+    /// as possible.
     fn get_text_bounding_rect_exact(&self, text: &str, font_scale: i32) -> Recti {
         if text.len() == 0 {
             return Recti::zero();
