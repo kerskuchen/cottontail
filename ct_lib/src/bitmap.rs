@@ -103,7 +103,7 @@ impl Bitmap {
             origin,
             starting_offset,
             origin_is_baseline,
-            &mut |glyph, draw_pos| {
+            &mut |glyph, draw_pos, _codepoint| {
                 if let Some(glyph_bitmap) = &glyph.bitmap {
                     glyph_bitmap.blit_to(
                         self,
@@ -134,7 +134,7 @@ impl Bitmap {
             origin_is_baseline,
             alignment_x,
             alignment_y,
-            &mut |glyph, draw_pos| {
+            &mut |glyph, draw_pos, _codepoint| {
                 if let Some(glyph_bitmap) = &glyph.bitmap {
                     glyph_bitmap.blit_to(
                         self,
@@ -167,7 +167,7 @@ impl Bitmap {
             origin_is_baseline,
             alignment_x,
             alignment_y,
-            &mut |glyph, draw_pos| {
+            &mut |glyph, draw_pos, _codepoint| {
                 if let Some(glyph_bitmap) = &glyph.bitmap {
                     glyph_bitmap.blit_to(
                         self,

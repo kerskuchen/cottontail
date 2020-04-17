@@ -148,7 +148,7 @@ pub trait Font<GlyphType: Glyph> {
 
     /// Iterates a given utf8 text and runs a given operation on each glyph.
     /// Returns the starting_offset for the next `iter_text_glyphs` call
-    fn iter_text_glyphs<Operation: core::ops::FnMut(&GlyphType, Vec2i) -> ()>(
+    fn iter_text_glyphs<Operation: core::ops::FnMut(&GlyphType, Vec2i, char) -> ()>(
         &self,
         text: &str,
         font_scale: i32,
@@ -171,7 +171,7 @@ pub trait Font<GlyphType: Glyph> {
                 let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
                 let draw_pos = origin + pos;
 
-                operation(glyph, draw_pos);
+                operation(glyph, draw_pos, codepoint);
 
                 pos.x += font_scale * glyph.horizontal_advance();
             } else {
@@ -185,7 +185,7 @@ pub trait Font<GlyphType: Glyph> {
 
     /// Iterates a given utf8 text and runs a given operation on each glyph if it would be visible
     /// in the given clipping rect
-    fn iter_text_glyphs_clipped<Operation: core::ops::FnMut(&GlyphType, Vec2i) -> ()>(
+    fn iter_text_glyphs_clipped<Operation: core::ops::FnMut(&GlyphType, Vec2i, char) -> ()>(
         &self,
         text: &str,
         font_scale: i32,
@@ -220,7 +220,7 @@ pub trait Font<GlyphType: Glyph> {
                 let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
                 let draw_pos = origin + pos;
 
-                operation(&glyph, draw_pos);
+                operation(&glyph, draw_pos, codepoint);
 
                 pos.x += font_scale * glyph.horizontal_advance();
             } else {
@@ -238,7 +238,7 @@ pub trait Font<GlyphType: Glyph> {
                     let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
                     let draw_pos = origin + pos;
 
-                    operation(&glyph, draw_pos);
+                    operation(glyph, draw_pos, codepoint);
 
                     pos.x += font_scale * glyph.horizontal_advance();
                 }
@@ -258,7 +258,9 @@ pub trait Font<GlyphType: Glyph> {
         }
     }
 
-    fn iter_text_glyphs_aligned_in_point<Operation: core::ops::FnMut(&GlyphType, Vec2i) -> ()>(
+    fn iter_text_glyphs_aligned_in_point<
+        Operation: core::ops::FnMut(&GlyphType, Vec2i, char) -> (),
+    >(
         &self,
         text: &str,
         font_scale: i32,
@@ -287,7 +289,7 @@ pub trait Font<GlyphType: Glyph> {
     /// Same as iter_text_glyphs_aligned_in_point but ignoring whitespace and aligning glyphs as tight
     /// as possible
     fn iter_text_glyphs_aligned_in_point_exact<
-        Operation: core::ops::FnMut(&GlyphType, Vec2i) -> (),
+        Operation: core::ops::FnMut(&GlyphType, Vec2i, char) -> (),
     >(
         &self,
         text: &str,

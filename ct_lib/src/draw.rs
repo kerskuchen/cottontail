@@ -1422,7 +1422,7 @@ impl Drawstate {
             origin,
             offset,
             origin_is_baseline,
-            &mut |glyph, draw_pos| {
+            &mut |glyph, draw_pos, _codepoint| {
                 self.draw_sprite_pixel_snapped(
                     SpriteBy::Index(glyph.sprite_index),
                     draw_pos.into(),
@@ -1468,7 +1468,7 @@ impl Drawstate {
             offset,
             origin_is_baseline,
             clipping_recti,
-            &mut |glyph, draw_pos| {
+            &mut |glyph, draw_pos, _codepoint| {
                 self.draw_sprite_clipped(
                     SpriteBy::Index(glyph.sprite_index),
                     draw_pos.into(),
