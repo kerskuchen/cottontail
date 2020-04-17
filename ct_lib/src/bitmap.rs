@@ -66,9 +66,14 @@ impl Bitmap {
         font_scale: i32,
         background_color: PixelRGBA,
     ) -> Bitmap {
-        let dim = font.get_text_dimensions(text, font_scale);
-        let mut result = Bitmap::new_filled(dim.x as u32, dim.y as u32, background_color);
-        result.draw_text(font, text, font_scale, Vec2i::zero(), Vec2i::zero(), false);
+        let rect = font.get_text_bounding_rect(text, font_scale);
+        let mut result = Bitmap::new_filled(rect.dim.x as u32, rect.dim.y as u32, background_color);
+
+        // NOTE: As it can happen that glyphs have negative vertical offset (i.e. due to being
+        //       big/bordered) we must not start drawing at (0,0) in those cases.
+        let pos = Vec2i::new(i32::min(0, rect.pos.x).abs(), i32::min(0, rect.pos.y).abs());
+
+        result.draw_text(font, text, font_scale, pos, Vec2i::zero(), false);
         result
     }
 

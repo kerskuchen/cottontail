@@ -37,7 +37,7 @@ const FIRST_VISIBLE_ASCII_CODE_POINT: Codepoint = 32;
 // Font and Glyph traits
 
 pub trait Glyph {
-    fn get_trimmed_rect(&self) -> Recti;
+    fn get_bitmap_rect(&self) -> Recti;
     fn horizontal_advance(&self) -> i32;
 }
 
@@ -52,17 +52,17 @@ pub trait Font<GlyphType: Glyph> {
         format!("{}_codepoint_{}", fontname, codepoint)
     }
 
-    /// Returns width and height of a given utf8 text for a given scale including whitespace.
-    ///
-    /// IMPORTANT: For performance reasons this function only uses the fonts vertical and horizontal
-    ///            advance and is not pixel accurate. If accuracy is important we can use
-    ///            `get_text_bounding_rect_exact`
-    fn get_text_dimensions(&self, text: &str, font_scale: i32) -> Vec2i {
+    /// Returns the bounding rect for a given utf8 text for a given scale including whitespace.
+    fn get_text_bounding_rect(&self, text: &str, font_scale: i32) -> Recti {
         if text.len() == 0 {
-            return Vec2i::zero();
+            return Recti::zero();
         }
 
-        let mut dimensions = Vec2i::zero();
+        let mut left = 0;
+        let mut top = 0;
+        let mut right = 0;
+        let mut bottom = 0;
+
         self.iter_text_glyphs(
             text,
             font_scale,
@@ -70,32 +70,34 @@ pub trait Font<GlyphType: Glyph> {
             Vec2i::zero(),
             false,
             &mut |glyph, draw_pos, _codepoint| {
-                dimensions.x = i32::max(
-                    draw_pos.x + font_scale * glyph.horizontal_advance(),
-                    dimensions.x,
-                );
-                dimensions.y = i32::max(
-                    draw_pos.y + font_scale * self.vertical_advance(),
-                    dimensions.y,
-                );
+                left = i32::min(left, draw_pos.x);
+                right = i32::max(right, draw_pos.x + font_scale * glyph.horizontal_advance());
+
+                // NOTE: For top and bottom we need to look at the actual glyphs as they might be
+                //       weirdly positioned vertically. For example there are glyphs with
+                //       `y_offset = -1` so it is not always correct to have `rect.top >= 0`.
+                let rect = glyph.get_bitmap_rect();
+                top = i32::min(top, draw_pos.y + font_scale * rect.top());
+                bottom = bottom
+                    .max(draw_pos.y + font_scale * self.baseline())
+                    .max(draw_pos.y + font_scale * rect.bottom());
             },
         );
 
-        dimensions
+        Recti::from_bounds_left_top_right_bottom(left, top, right, bottom)
     }
 
     /// Returns the bounding rect of a given utf8 text for a given scale. This ignores whitespace
-    /// and tries to wrap the bounding rect to the non-whitespace-glyphs of the given text as tight
-    /// as possible.
-    fn get_text_bounding_rect_exact(&self, text: &str, font_scale: i32) -> Recti {
+    /// and tries to wrap the bounding rect to the non-whitespace-glyphs as tight as possible.
+    fn get_text_bounding_rect_ignore_whitespace(&self, text: &str, font_scale: i32) -> Recti {
         if text.len() == 0 {
             return Recti::zero();
         }
 
         let mut left = std::i32::MAX;
         let mut top = std::i32::MAX;
-        let mut right = 0;
-        let mut bottom = 0;
+        let mut right = -std::i32::MAX;
+        let mut bottom = -std::i32::MAX;
 
         self.iter_text_glyphs(
             text,
@@ -108,7 +110,7 @@ pub trait Font<GlyphType: Glyph> {
                 if codepoint.is_whitespace() {
                     return;
                 }
-                let glyph_rect = glyph.get_trimmed_rect();
+                let glyph_rect = glyph.get_bitmap_rect();
                 if glyph_rect == Recti::zero() {
                     return;
                 }
@@ -264,10 +266,10 @@ pub trait Font<GlyphType: Glyph> {
         alignment_y: AlignmentVertical,
         operation: &mut Operation,
     ) -> Vec2i {
-        let text_dim = self.get_text_dimensions(text, font_scale);
+        let text_dim = self.get_text_bounding_rect(text, font_scale);
         let origin_aligned = Vec2i::new(
-            block_aligned_in_point(text_dim.x, origin.x, alignment_x),
-            block_aligned_in_point(text_dim.y, origin.y, alignment_y),
+            block_aligned_in_point(text_dim.dim.x, origin.x, alignment_x),
+            block_aligned_in_point(text_dim.dim.y, origin.y, alignment_y),
         );
         self.iter_text_glyphs(
             text,
@@ -294,7 +296,7 @@ pub trait Font<GlyphType: Glyph> {
         alignment_y: AlignmentVertical,
         operation: &mut Operation,
     ) -> Vec2i {
-        let text_rect = self.get_text_bounding_rect_exact(text, font_scale);
+        let text_rect = self.get_text_bounding_rect_ignore_whitespace(text, font_scale);
         let text_dim = text_rect.dim;
         let origin_aligned = Vec2i::new(
             block_aligned_in_point(text_dim.x, origin.x, alignment_x),
@@ -534,7 +536,7 @@ pub struct BitmapGlyph {
 }
 
 impl Glyph for BitmapGlyph {
-    fn get_trimmed_rect(&self) -> Recti {
+    fn get_bitmap_rect(&self) -> Recti {
         if let Some(bitmap) = &self.bitmap {
             bitmap.rect().translated_by(self.offset)
         } else {
@@ -590,10 +592,10 @@ impl BitmapGlyph {
         let horizontal_advance = advance_width + border_thickness;
         // NOTE: The offset determines how many pixels the glyph-sprite needs to be offset
         //       from its origin (top-left corner) when drawn to the screen
-        let mut offset_x = left_side_bearing - atlas_padding as i32;
+        let offset_x = left_side_bearing - atlas_padding as i32;
         let mut offset_y = -(atlas_padding as i32);
 
-        let mut maybe_image = create_glyph_image(
+        let maybe_image = create_glyph_image(
             &glyph,
             border_thickness as u32,
             atlas_padding as u32,
@@ -606,62 +608,6 @@ impl BitmapGlyph {
             // NOTE: We don't do `offset_x += bounding_box.min.x;` here because we already added
             //       the left side bearing when we initialized `offset_x`
             offset_y += bounding_box.min.y;
-        }
-
-        // Check if our glyph offsets are >= 0 if our drawn glyph is smaller than our font height.
-        // If not then the raster offsets or font pixel height we were given are wrong
-        let mut glyph_bitmap_invalid = false;
-        let mut glyph_bitmap_crop_left = 0;
-        let mut glyph_bitmap_crop_top = 0;
-        let mut glyph_bitmap_crop_bottom = 0;
-        if offset_x < 0 {
-            log::warn!(
-                "Glyph '{}' has negative horizontal offset: {} - Font '{}' probably has wrong raster offsets and / or font size",
-                BitmapFont::get_glyph_name(font_name, codepoint as Codepoint),
-                offset_x,
-                font_name,
-            );
-            glyph_bitmap_invalid = true;
-            glyph_bitmap_crop_left = i32::abs(offset_x);
-            offset_x = 0;
-        }
-        if offset_y < 0 {
-            log::warn!(
-                "Glyph '{}' has negative horizontal offset: {} - Font '{}' probably has wrong raster offsets and / or font size",
-                BitmapFont::get_glyph_name(font_name, codepoint as Codepoint),
-                offset_x,
-                font_name,
-            );
-            glyph_bitmap_invalid = true;
-            glyph_bitmap_crop_top = i32::abs(offset_y);
-            offset_y = 0;
-        }
-        if let Some(image) = maybe_image.as_ref() {
-            let glyph_draw_height = offset_y + image.height;
-            if glyph_draw_height > font_height {
-                log::warn!(
-                "Glyph '{}' has bigger draw height ({}) than the fonts pixel heigth ({}) - Font '{}' probably has wrong raster offsets and / or font size",
-                    BitmapFont::get_glyph_name(font_name, codepoint as Codepoint),
-                    glyph_draw_height,
-                    font_height,
-                    font_name,
-                );
-                glyph_bitmap_invalid = true;
-                glyph_bitmap_crop_bottom = glyph_draw_height - font_height;
-            }
-        }
-        // NOTE: We mark the glyph as broken by filling it with a bright color and crop it
-        //       so that rendering it as text does not crash
-        if glyph_bitmap_invalid {
-            if let Some(image) = maybe_image.as_mut() {
-                image.crop(
-                    glyph_bitmap_crop_left,
-                    glyph_bitmap_crop_top,
-                    0,
-                    glyph_bitmap_crop_bottom,
-                );
-                image.replace_cells(PixelRGBA::transparent(), PixelRGBA::red());
-            }
         }
 
         BitmapGlyph {
@@ -753,7 +699,7 @@ pub struct SpriteGlyph {
 }
 
 impl Glyph for SpriteGlyph {
-    fn get_trimmed_rect(&self) -> Recti {
+    fn get_bitmap_rect(&self) -> Recti {
         Recti::from_point_dimensions(self.sprite_draw_offset, self.sprite_dimensions)
     }
 

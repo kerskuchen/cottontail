@@ -400,7 +400,7 @@ fn sprite_create_from_glyph(
     glyph: &BitmapGlyph,
     position_in_font_atlas: Option<Vec2i>,
 ) -> AssetSprite {
-    let glyph_rect = glyph.get_trimmed_rect();
+    let glyph_rect = glyph.get_bitmap_rect();
     let glyph_atlas_pos = if let Some(pos) = position_in_font_atlas {
         pos
     } else {
