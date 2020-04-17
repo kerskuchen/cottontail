@@ -4,11 +4,12 @@
 * Make fonts consistently use either Vec2i or Vec 
 * Move bitmap font drawing to `Bitmap`
 * Refactored other Font functions to use the iterators
+* Prevent bitmapfonts to be created with glyphs that have negative horizontal or vertical offset
+* Simplify font tester function
 
 ## Current:
 
 * Should we refactor clipping glyph iterator to use basic iterator internally?
-* Simplify font tester function
 * Move `pixelsnapped` functions into `Vec2` and `Rect`
 
 ## Next:

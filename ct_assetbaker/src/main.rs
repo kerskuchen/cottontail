@@ -427,7 +427,7 @@ pub fn bitmapfont_create_from_ttf(
         color_glyph,
         color_border,
     );
-    let (font_atlas_texture, font_atlas_glyph_positions) = font.create_atlas(&font_name);
+    let (font_atlas_texture, font_atlas_glyph_positions) = font.to_bitmap_atlas(&font_name);
     Bitmap::write_to_png_file(&font_atlas_texture, &output_filepath_png);
 
     // Create sprites and glyphs

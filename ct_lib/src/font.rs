@@ -352,8 +352,8 @@ impl BitmapFont {
         font_ttf_bytes: &[u8],
         font_height: i32,
         font_raster_offset: Vec2,
-        border_thickness: u32,
-        atlas_padding: u32,
+        border_thickness: i32,
+        atlas_padding: i32,
         color_glyph: PixelRGBA,
         color_border: PixelRGBA,
     ) -> BitmapFont {
@@ -368,11 +368,15 @@ impl BitmapFont {
             let descent = v_metrics.descent + font_raster_offset.y;
             let line_gap = v_metrics.line_gap;
 
-            // Check if our vertical metrics are whole numbered. If not then the raster offsets we were
-            // given are wrong
-            if !is_effectively_zero(ascent - ascent.round())
-                || !is_effectively_zero(descent - descent.round())
-                || !is_effectively_zero(line_gap - line_gap.round())
+            let ascent_integer = roundi(ascent);
+            let descent_integer = roundi(descent);
+            let line_gap_integer = roundi(line_gap);
+
+            // Check if our vertical metrics are whole numbered. If not then the raster offsets we
+            // were given are wrong
+            if !is_effectively_zero(ascent - ascent_integer as f32)
+                || !is_effectively_zero(descent - descent_integer as f32)
+                || !is_effectively_zero(line_gap - line_gap_integer as f32)
             {
                 log::warn!(
                     "Vertical metrics of pixelfont '{}' are not whole numbered\nascent: {}\ndescent: {}\nline_gap: {}\nThe given raster offset ({},{}) was not enough to correct this",
@@ -385,10 +389,25 @@ impl BitmapFont {
                 );
             }
 
-            let vertical_advance = ascent - descent + line_gap;
-            let baseline = ascent + border_thickness as f32;
+            // Check if our ascent + descent add up to the font height. If not then the raster
+            // offsets we were given are wrong
+            if font_height != (i32::abs(ascent_integer) + i32::abs(descent_integer)) {
+                log::warn!(
+                    "Fontheight and (ascent + descent) of pixelfont '{}' do not match\nascent: {}\ndescent: {}\nascent + descent: {}\nfont height: {}\nThe given raster offset ({},{}) was probably wrong",
+                    font_name,
+                    i32::abs(ascent_integer),
+                    i32::abs(descent_integer),
+                    i32::abs(ascent_integer) + i32::abs(descent_integer),
+                    font_height,
+                    font_raster_offset.x,
+                    font_raster_offset.y,
+                );
+            }
 
-            (roundi(descent), roundi(vertical_advance), roundi(baseline))
+            let vertical_advance = ascent_integer - descent_integer + line_gap_integer;
+            let baseline = ascent_integer + border_thickness;
+
+            (descent_integer, vertical_advance, baseline)
         };
 
         // Create glyphs
@@ -432,6 +451,7 @@ impl BitmapFont {
                 color_glyph,
                 color_border,
             );
+
             glyphs.insert(codepoint as Codepoint, glyph);
         }
 
@@ -464,57 +484,43 @@ impl BitmapFont {
     pub fn test_font_sizes(
         font_name: &str,
         font_ttf_bytes: &[u8],
+        font_raster_offset: Vec2,
         font_height_min: i32,
         font_height_max: i32,
         test_image_filepath: &str,
     ) {
         let test_text = "123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@#$%^&*()-+";
         let text_padding = 16;
-        let (mut bitmap, lineskip) = {
-            let max_text = format!("{}: {}", font_height_max, test_text,);
-            let max_font = BitmapFont::new(
-                font_name,
-                font_ttf_bytes,
-                font_height_max,
-                Vec2::zero(),
-                0,
-                0,
-                PixelRGBA::black(),
-                PixelRGBA::transparent(),
-            );
-            let max_text_width = max_font.get_text_dimensions(&max_text, 1).x;
-            let max_text_height = max_font.font_height_in_pixels;
 
-            let samplecount = 1 + font_height_max - font_height_min;
-            (
-                Bitmap::new_filled(
-                    (2 * text_padding + max_text_width) as u32,
-                    (2 * text_padding + samplecount * (text_padding + max_text_height)) as u32,
-                    PixelRGBA::white(),
-                ),
-                max_text_height,
-            )
-        };
-
-        for (index, font_height) in (font_height_min..=font_height_max).rev().enumerate() {
+        let mut bitmaps = Vec::new();
+        for font_height in font_height_min..=font_height_max {
             let text = format!("{}: {}", font_height, test_text);
             let font = BitmapFont::new(
                 font_name,
                 font_ttf_bytes,
                 font_height,
-                Vec2::zero(),
+                font_raster_offset,
                 0,
                 0,
                 PixelRGBA::black(),
                 PixelRGBA::transparent(),
             );
-            let pos = Vec2i::new(
-                text_padding,
-                text_padding + index as i32 * (lineskip + text_padding),
+            bitmaps.push(
+                Bitmap::create_from_text(&font, &text, 1, PixelRGBA::white()).extended(
+                    text_padding,
+                    text_padding,
+                    text_padding,
+                    text_padding,
+                    PixelRGBA::white(),
+                ),
             );
-            bitmap.draw_text(&font, &text, 1, pos, Vec2i::zero(), false);
         }
-
+        let bitmap = Bitmap::glue_together_multiple(
+            &bitmaps,
+            GluePosition::BottomLeft,
+            0,
+            PixelRGBA::white(),
+        );
         Bitmap::write_to_png_file(&bitmap, test_image_filepath);
     }
 }
@@ -584,10 +590,10 @@ impl BitmapGlyph {
         let horizontal_advance = advance_width + border_thickness;
         // NOTE: The offset determines how many pixels the glyph-sprite needs to be offset
         //       from its origin (top-left corner) when drawn to the screen
-        let offset_x = left_side_bearing - atlas_padding as i32;
+        let mut offset_x = left_side_bearing - atlas_padding as i32;
         let mut offset_y = -(atlas_padding as i32);
 
-        let maybe_image = create_glyph_image(
+        let mut maybe_image = create_glyph_image(
             &glyph,
             border_thickness as u32,
             atlas_padding as u32,
@@ -600,6 +606,44 @@ impl BitmapGlyph {
             // NOTE: We don't do `offset_x += bounding_box.min.x;` here because we already added
             //       the left side bearing when we initialized `offset_x`
             offset_y += bounding_box.min.y;
+        }
+
+        // Check if our glyph offsets are >= 0. If not then the raster offsets or font pixel height
+        // we were given are wrong
+        if offset_x < 0 {
+            log::warn!(
+                "Glyph '{}' has negative horizontal offset: {} - Font '{}' probably has wrong raster offsets and / or font size",
+                BitmapFont::get_glyph_name(font_name, codepoint as Codepoint),
+                offset_x,
+                font_name,
+            );
+            offset_x = 0;
+        }
+        if offset_y < 0 {
+            log::warn!(
+                "Glyph '{}' has negative horizontal offset: {} - Font '{}' probably has wrong raster offsets and / or font size",
+                BitmapFont::get_glyph_name(font_name, codepoint as Codepoint),
+                offset_x,
+                font_name,
+            );
+            offset_y = 0;
+        }
+
+        if let Some(image) = maybe_image.as_mut() {
+            let glyph_draw_height = offset_y + image.height;
+            if glyph_draw_height > font_height {
+                log::warn!(
+                "Glyph '{}' has bigger draw height ({}) than the fonts pixel heigth ({}) - Font '{}' probably has wrong raster offsets and / or font size",
+                    BitmapFont::get_glyph_name(font_name, codepoint as Codepoint),
+                    glyph_draw_height,
+                    font_height,
+                    font_name,
+                );
+                // NOTE: We mark the glyph as broken by filling it with a bright color and crop it
+                //       so that rendering it as text does not crash
+                image.replace_cells(PixelRGBA::transparent(), PixelRGBA::red());
+                image.height -= glyph_draw_height - font_height;
+            }
         }
 
         BitmapGlyph {
@@ -773,6 +817,18 @@ mod tests {
             0,
             PixelRGBA::black(),
             PixelRGBA::transparent(),
+        )
+    }
+
+    #[test]
+    fn fontsize_tester() {
+        BitmapFont::test_font_sizes(
+            FONT_DEFAULT_TINY_NAME,
+            FONT_DEFAULT_TINY_TTF,
+            FONT_DEFAULT_TINY_RASTER_OFFSET,
+            4,
+            32,
+            "tests/fontsize_tester.png",
         )
     }
 
