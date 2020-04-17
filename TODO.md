@@ -8,8 +8,6 @@
 * Simplify font tester function
 * Move `pixelsnapped` functions into `Vec2` and `Rect`
 
-## Current:
-
 * Make pixie_stitch use new font api
 
 ## Next:
@@ -17,6 +15,7 @@
 
 ## Backlog:
 
+* Replace git subtrees because it is getting dangerous
 * Should we refactor clipping glyph iterator to use basic iterator internally?
 * Read the following items in the launcher from a config file:
   - display_to_use;

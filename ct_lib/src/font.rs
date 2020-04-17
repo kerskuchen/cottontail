@@ -63,26 +63,29 @@ pub trait Font<GlyphType: Glyph> {
         let mut right = 0;
         let mut bottom = 0;
 
-        self.iter_text_glyphs(
+        let final_pos = self.iter_text_glyphs(
             text,
             font_scale,
             Vec2i::zero(),
             Vec2i::zero(),
             false,
             &mut |glyph, draw_pos, _codepoint| {
-                left = i32::min(left, draw_pos.x);
-                right = i32::max(right, draw_pos.x + font_scale * glyph.horizontal_advance());
+                left = left.min(draw_pos.x);
+                right = right.max(draw_pos.x + font_scale * glyph.horizontal_advance());
 
                 // NOTE: For top and bottom we need to look at the actual glyphs as they might be
                 //       weirdly positioned vertically. For example there are glyphs with
                 //       `y_offset = -1` so it is not always correct to have `rect.top >= 0`.
                 let rect = glyph.get_bitmap_rect();
-                top = i32::min(top, draw_pos.y + font_scale * rect.top());
+                top = top.min(draw_pos.y + font_scale * rect.top());
                 bottom = bottom
                     .max(draw_pos.y + font_scale * self.baseline())
                     .max(draw_pos.y + font_scale * rect.bottom());
             },
         );
+
+        // In case we got trailing newlines
+        bottom = bottom.max(final_pos.y);
 
         Recti::from_bounds_left_top_right_bottom(left, top, right, bottom)
     }
