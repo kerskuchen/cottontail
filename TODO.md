@@ -6,8 +6,8 @@
 * Refactored other Font functions to use the iterators
 * Prevent bitmapfonts to be created with glyphs that have negative horizontal or vertical offset
 * Simplify font tester function
+* Solved problem with rogue glyphs that are not drawn between [0, font_height - 1]
 * Move `pixelsnapped` functions into `Vec2` and `Rect`
-
 * Make pixie_stitch use new font api
 
 ## Next:
