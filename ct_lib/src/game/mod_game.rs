@@ -9,6 +9,7 @@ use super::bitmap::*;
 use super::draw::*;
 use super::math::*;
 use super::random::*;
+use super::sprite::*;
 use super::system;
 use super::*;
 
@@ -109,7 +110,8 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
 
             let window_config = GameStateType::get_window_config();
             let atlas = game_load_atlas("assets_baked");
-            let mut draw = Drawstate::new(atlas);
+            let fonts = game_load_fonts("assets_baked");
+            let mut draw = Drawstate::new(atlas, fonts);
             game_setup_window(
                 &mut draw,
                 &window_config,
@@ -373,7 +375,7 @@ impl Camera {
 
         Camera {
             pos,
-            pos_pixelsnapped: worldpoint_pixel_snapped(pos),
+            pos_pixelsnapped: pos.pixel_snapped(),
             zoom_level,
             dim_canvas,
             dim_frustum: dim_canvas / zoom_level,
@@ -467,20 +469,20 @@ impl Camera {
         self.zoom_level = new_zoom_level;
         self.dim_frustum = self.dim_canvas / new_zoom_level;
         self.pos = (self.pos - worldpoint) * (old_zoom_level / new_zoom_level) + worldpoint;
-        self.pos_pixelsnapped = worldpoint_pixel_snapped(self.pos);
+        self.pos_pixelsnapped = self.pos.pixel_snapped();
     }
 
     /// Pans the camera using cursor movement distance on the canvas
     #[inline]
     pub fn pan(&mut self, canvas_move_distance: Canvasvec) {
         self.pos -= canvas_move_distance / self.zoom_level;
-        self.pos_pixelsnapped = worldpoint_pixel_snapped(self.pos);
+        self.pos_pixelsnapped = self.pos.pixel_snapped();
     }
 
     #[inline]
     pub fn set_pos(&mut self, worldpoint: Worldpoint) {
         self.pos = worldpoint;
-        self.pos_pixelsnapped = worldpoint_pixel_snapped(self.pos);
+        self.pos_pixelsnapped = self.pos.pixel_snapped();
     }
 }
 
@@ -1772,7 +1774,7 @@ impl ParticleSystem {
             draw.draw_rect_transformed(
                 Vec2::ones(),
                 Vec2::zero(),
-                worldpoint_pixel_snapped(self.pos[index]),
+                self.pos[index].pixel_snapped(),
                 Vec2::filled(scale),
                 Vec2::unit_x(),
                 depth,
@@ -1979,6 +1981,10 @@ pub fn game_load_atlas(assets_folder: &str) -> SpriteAtlas {
         sprites_filepath
     ));
 
+    SpriteAtlas::new(textures, sprites)
+}
+
+pub fn game_load_fonts(assets_folder: &str) -> HashMap<String, SpriteFont> {
     let fonts_filepath = system::path_join(assets_folder, "fonts.data");
     let fonts = bincode::deserialize(&std::fs::read(&fonts_filepath).expect(&format!(
         "Could not read '{}' - Gamedata corrupt?",
@@ -1989,7 +1995,7 @@ pub fn game_load_atlas(assets_folder: &str) -> SpriteAtlas {
         fonts_filepath
     ));
 
-    SpriteAtlas::new(textures, sprites, fonts)
+    fonts
 }
 
 pub fn game_load_animations(assets_folder: &str) -> HashMap<String, Animation> {
@@ -2038,8 +2044,8 @@ pub struct Globals {
     pub canvas_width: f32,
     pub canvas_height: f32,
 
-    pub font_default: Font,
-    pub font_default_no_border: Font,
+    pub font_default: SpriteFont,
+    pub font_default_no_border: SpriteFont,
 }
 
 pub trait Scene: Clone {
@@ -2444,8 +2450,8 @@ impl Scene for SceneDebug {
 
         // Text drawing test
         let test_font = draw.get_font(&self.loaded_font_name);
-        let text = "Loaded font test gorgeous!|";
-        let text_width = test_font.get_text_width(1.0, text);
+        let text = "Loaded font test gorgeous!|\u{08A8}";
+        let text_width = test_font.get_text_bounding_rect(text, 1).dim.x;
         // Draw origin is top-left
         let draw_pos = Vec2::new(5.0, globals.canvas_height - 40.0);
         draw.draw_text(
@@ -2460,8 +2466,8 @@ impl Scene for SceneDebug {
             ADDITIVITY_NONE,
         );
         draw.draw_line_bresenham(
-            draw_pos + Vec2::new(0.0, test_font.baseline),
-            draw_pos + Vec2::new(text_width, test_font.baseline),
+            draw_pos + Vec2::new(0.0, test_font.baseline as f32),
+            draw_pos + Vec2::new(text_width as f32, test_font.baseline as f32),
             20.0,
             0.3 * Color::yellow(),
             ADDITIVITY_NONE,
@@ -2481,7 +2487,7 @@ impl Scene for SceneDebug {
         );
         draw.draw_line_bresenham(
             draw_pos,
-            draw_pos + Vec2::new(text_width, 0.0),
+            draw_pos + Vec2::new(text_width as f32, 0.0),
             20.0,
             0.3 * Color::yellow(),
             ADDITIVITY_NONE,

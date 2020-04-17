@@ -51,6 +51,56 @@ impl From<Recti> for Rect {
 
 impl Rect {
     #[inline]
+    pub fn floor(self) -> Rect {
+        Rect {
+            pos: self.pos.floor(),
+            dim: self.dim.floor(),
+        }
+    }
+
+    #[inline]
+    pub fn floori(self) -> Recti {
+        Recti {
+            pos: self.pos.floori(),
+            dim: self.dim.floori(),
+        }
+    }
+
+    #[inline]
+    pub fn round(self) -> Rect {
+        Rect {
+            pos: self.pos.round(),
+            dim: self.dim.round(),
+        }
+    }
+
+    #[inline]
+    pub fn roundi(self) -> Recti {
+        Recti {
+            pos: self.pos.roundi(),
+            dim: self.dim.roundi(),
+        }
+    }
+
+    #[inline]
+    pub fn ceil(self) -> Rect {
+        Rect {
+            pos: self.pos.ceil(),
+            dim: self.dim.ceil(),
+        }
+    }
+
+    #[inline]
+    pub fn ceili(self) -> Recti {
+        Recti {
+            pos: self.pos.ceili(),
+            dim: self.dim.ceili(),
+        }
+    }
+}
+
+impl Rect {
+    #[inline]
     pub fn points(self) -> [Point; 4] {
         [
             Point::new(self.left(), self.top()),

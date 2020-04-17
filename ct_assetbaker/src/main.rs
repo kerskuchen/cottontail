@@ -1,12 +1,12 @@
 mod aseprite;
 
-use ct_lib::bitmap_atlas::{BitmapAtlasPosition, BitmapMultiAtlas};
-use ct_lib::bitmap_font;
-use ct_lib::bitmap_font::*;
+use ct_lib::bitmap::{BitmapAtlasPosition, BitmapMultiAtlas};
 use ct_lib::color::*;
 use ct_lib::draw::*;
+use ct_lib::font;
 use ct_lib::game::*;
 use ct_lib::math::*;
+use ct_lib::sprite::*;
 use ct_lib::system;
 use ct_lib::IndexMap;
 
@@ -53,6 +53,11 @@ pub struct AssetGlyph {
     pub sprite_name: Spritename,
     pub sprite_index: SpriteIndex,
     pub horizontal_advance: i32,
+
+    /// This is mainly used for text dimension calculations
+    pub sprite_dimensions: Vec2i,
+    /// This is mainly used for text dimension calculations
+    pub sprite_draw_offset: Vec2i,
 }
 
 #[derive(Default, Debug, Clone, Serialize)]
@@ -61,6 +66,7 @@ pub struct AssetFont {
     pub name_hash: u64,
     pub baseline: i32,
     pub vertical_advance: i32,
+    pub font_height_in_pixels: i32,
     pub glyphcount: u32,
     pub glyphs: IndexMap<Codepoint, AssetGlyph>,
 }
@@ -264,53 +270,88 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
         } else {
             let test_png_filepath =
                 system::path_join("assets_temp", &(font_name.clone() + "_fontsize_test.png"));
-            println!(
+            log::warn!(
                 "Font is missing its render parameters: '{}' - Created font size test image at '{}'",
                 &font_filepath,
                 &test_png_filepath
             );
-            BitmapFont::test_font_sizes(&font_name, &ttf_data_bytes, 4, 32, &test_png_filepath);
+            let test_png_filepath = system::path_join(
+                "assets_temp",
+                &(font_name.clone() + "_fontsize_test_offset_-0.5.png"),
+            );
+            BitmapFont::test_font_sizes(
+                &font_name,
+                &ttf_data_bytes,
+                Vec2::new(0.0, -0.5),
+                4,
+                32,
+                &test_png_filepath,
+            );
+            let test_png_filepath = system::path_join(
+                "assets_temp",
+                &(font_name.clone() + "_fontsize_test_offset_0.0.png"),
+            );
+            BitmapFont::test_font_sizes(
+                &font_name,
+                &ttf_data_bytes,
+                Vec2::new(0.0, 0.0),
+                4,
+                32,
+                &test_png_filepath,
+            );
+            let test_png_filepath = system::path_join(
+                "assets_temp",
+                &(font_name.clone() + "_fontsize_test_offset_0.5.png"),
+            );
+            BitmapFont::test_font_sizes(
+                &font_name,
+                &ttf_data_bytes,
+                Vec2::new(0.0, 0.5),
+                4,
+                32,
+                &test_png_filepath,
+            );
         }
     }
 
     // Add default fonts
     result_properties.insert(
-        bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned(),
+        font::FONT_DEFAULT_TINY_NAME.to_owned(),
         BitmapFontProperties {
-            ttf_data_bytes: bitmap_font::FONT_DEFAULT_TINY_TTF.to_vec(),
+            ttf_data_bytes: font::FONT_DEFAULT_TINY_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
-                height_in_pixels: bitmap_font::FONT_DEFAULT_TINY_PIXEL_HEIGHT,
-                raster_offset: bitmap_font::FONT_DEFAULT_TINY_RASTER_OFFSET,
+                height_in_pixels: font::FONT_DEFAULT_TINY_PIXEL_HEIGHT,
+                raster_offset: font::FONT_DEFAULT_TINY_RASTER_OFFSET,
             },
         },
     );
     result_properties.insert(
-        bitmap_font::FONT_DEFAULT_SMALL_NAME.to_owned(),
+        font::FONT_DEFAULT_SMALL_NAME.to_owned(),
         BitmapFontProperties {
-            ttf_data_bytes: bitmap_font::FONT_DEFAULT_SMALL_TTF.to_vec(),
+            ttf_data_bytes: font::FONT_DEFAULT_SMALL_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
-                height_in_pixels: bitmap_font::FONT_DEFAULT_SMALL_PIXEL_HEIGHT,
-                raster_offset: bitmap_font::FONT_DEFAULT_SMALL_RASTER_OFFSET,
+                height_in_pixels: font::FONT_DEFAULT_SMALL_PIXEL_HEIGHT,
+                raster_offset: font::FONT_DEFAULT_SMALL_RASTER_OFFSET,
             },
         },
     );
     result_properties.insert(
-        bitmap_font::FONT_DEFAULT_REGULAR_NAME.to_owned(),
+        font::FONT_DEFAULT_REGULAR_NAME.to_owned(),
         BitmapFontProperties {
-            ttf_data_bytes: bitmap_font::FONT_DEFAULT_REGULAR_TTF.to_vec(),
+            ttf_data_bytes: font::FONT_DEFAULT_REGULAR_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
-                height_in_pixels: bitmap_font::FONT_DEFAULT_REGULAR_PIXEL_HEIGHT,
-                raster_offset: bitmap_font::FONT_DEFAULT_REGULAR_RASTER_OFFSET,
+                height_in_pixels: font::FONT_DEFAULT_REGULAR_PIXEL_HEIGHT,
+                raster_offset: font::FONT_DEFAULT_REGULAR_RASTER_OFFSET,
             },
         },
     );
     result_properties.insert(
-        bitmap_font::FONT_DEFAULT_SQUARE_NAME.to_owned(),
+        font::FONT_DEFAULT_SQUARE_NAME.to_owned(),
         BitmapFontProperties {
-            ttf_data_bytes: bitmap_font::FONT_DEFAULT_SQUARE_TTF.to_vec(),
+            ttf_data_bytes: font::FONT_DEFAULT_SQUARE_TTF.to_vec(),
             render_params: BitmapFontRenderParams {
-                height_in_pixels: bitmap_font::FONT_DEFAULT_SQUARE_PIXEL_HEIGHT,
-                raster_offset: bitmap_font::FONT_DEFAULT_SQUARE_RASTER_OFFSET,
+                height_in_pixels: font::FONT_DEFAULT_SQUARE_PIXEL_HEIGHT,
+                raster_offset: font::FONT_DEFAULT_SQUARE_RASTER_OFFSET,
             },
         },
     );
@@ -336,13 +377,13 @@ fn load_font_styles() -> Vec<BitmapFontStyle> {
     let default_color_glyph = PixelRGBA::new(255, 255, 255, 255);
     let default_color_border = PixelRGBA::new(0, 0, 0, 255);
     result_styles.push(BitmapFontStyle {
-        fontname: bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned(),
+        fontname: font::FONT_DEFAULT_TINY_NAME.to_owned(),
         bordered: false,
         color_glyph: default_color_glyph,
         color_border: default_color_border,
     });
     result_styles.push(BitmapFontStyle {
-        fontname: bitmap_font::FONT_DEFAULT_TINY_NAME.to_owned(),
+        fontname: font::FONT_DEFAULT_TINY_NAME.to_owned(),
         bordered: true,
         color_glyph: default_color_glyph,
         color_border: default_color_border,
@@ -356,14 +397,10 @@ fn load_font_styles() -> Vec<BitmapFontStyle> {
 
 fn sprite_create_from_glyph(
     sprite_name: &str,
-    glyph: &BitmapFontGlyph,
+    glyph: &BitmapGlyph,
     position_in_font_atlas: Option<Vec2i>,
 ) -> AssetSprite {
-    let (glyph_width, glyph_height, glyph_offset) = if let Some(bitmap) = &glyph.bitmap {
-        (bitmap.width, bitmap.height, glyph.offset)
-    } else {
-        (0, 0, Vec2i::zero())
-    };
+    let glyph_rect = glyph.get_bitmap_rect();
     let glyph_atlas_pos = if let Some(pos) = position_in_font_atlas {
         pos
     } else {
@@ -384,20 +421,15 @@ fn sprite_create_from_glyph(
 
         attachment_points: [Vec2i::zero(); SPRITE_ATTACHMENT_POINTS_MAX_COUNT],
 
-        untrimmed_dimensions: Vec2i::new(glyph_width, glyph_height),
+        untrimmed_dimensions: glyph_rect.dim,
 
-        trimmed_rect: Recti::from_xy_width_height(
-            glyph_offset.x,
-            glyph_offset.y,
-            glyph_width,
-            glyph_height,
-        ),
+        trimmed_rect: glyph_rect,
 
         trimmed_uvs: Recti::from_xy_width_height(
             glyph_atlas_pos.x,
             glyph_atlas_pos.y,
-            glyph_width,
-            glyph_height,
+            glyph_rect.width(),
+            glyph_rect.height(),
         ),
     }
 }
@@ -430,15 +462,17 @@ pub fn bitmapfont_create_from_ttf(
         color_glyph,
         color_border,
     );
-    let (font_atlas_texture, font_atlas_glyph_positions) = font.create_atlas(&font_name);
+    let (font_atlas_texture, font_atlas_glyph_positions) = font.to_bitmap_atlas(&font_name);
     Bitmap::write_to_png_file(&font_atlas_texture, &output_filepath_png);
 
     // Create sprites and glyphs
     let mut result_glyphs: IndexMap<Codepoint, AssetGlyph> = IndexMap::new();
     let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
-    for glyph in &font.glyphs {
+    for glyph in font.glyphs.values() {
         let codepoint = glyph.codepoint as Codepoint;
         let sprite_name = BitmapFont::get_glyph_name(&font_name, glyph.codepoint as Codepoint);
+        let sprite_pos = font_atlas_glyph_positions.get(&sprite_name).cloned();
+        let sprite = sprite_create_from_glyph(&sprite_name, glyph, sprite_pos);
 
         let asset_glyph = AssetGlyph {
             codepoint,
@@ -447,9 +481,9 @@ pub fn bitmapfont_create_from_ttf(
             //       our the sprites
             sprite_index: std::u32::MAX,
             horizontal_advance: glyph.horizontal_advance,
+            sprite_dimensions: sprite.trimmed_rect.dim,
+            sprite_draw_offset: sprite.trimmed_rect.pos,
         };
-        let sprite_pos = font_atlas_glyph_positions.get(&sprite_name).cloned();
-        let sprite = sprite_create_from_glyph(&sprite_name, glyph, sprite_pos);
 
         result_glyphs.insert(codepoint, asset_glyph);
         result_sprites.insert(sprite_name, sprite);
@@ -461,6 +495,7 @@ pub fn bitmapfont_create_from_ttf(
         name_hash: ct_lib::hash_string_64(&font_name),
         baseline: font.baseline,
         vertical_advance: font.vertical_advance,
+        font_height_in_pixels: font.font_height_in_pixels,
         glyphcount: result_glyphs.len() as u32,
         glyphs: result_glyphs,
     };
@@ -547,16 +582,19 @@ fn convert_sprite(
     }
 }
 
-fn convert_glyph(glyph: &AssetGlyph) -> Glyph {
-    Glyph {
-        horizontal_advance: glyph.horizontal_advance as f32,
+fn convert_glyph(glyph: &AssetGlyph) -> SpriteGlyph {
+    SpriteGlyph {
+        horizontal_advance: glyph.horizontal_advance,
         sprite_index: glyph.sprite_index,
+        sprite_dimensions: glyph.sprite_dimensions,
+        sprite_draw_offset: glyph.sprite_draw_offset,
     }
 }
 
-fn convert_font(font: &AssetFont) -> Font {
-    let mut ascii_glyphs: Vec<Glyph> = vec![Glyph::default(); FONT_MAX_NUM_FASTPATH_CODEPOINTS];
-    let mut unicode_glyphs: HashMap<Codepoint, Glyph> = HashMap::new();
+fn convert_font(font: &AssetFont) -> SpriteFont {
+    let mut ascii_glyphs: Vec<SpriteGlyph> =
+        vec![SpriteGlyph::default(); FONT_MAX_NUM_FASTPATH_CODEPOINTS];
+    let mut unicode_glyphs: HashMap<Codepoint, SpriteGlyph> = HashMap::new();
 
     for glyph in font.glyphs.values() {
         let codepoint = glyph.codepoint;
@@ -568,10 +606,11 @@ fn convert_font(font: &AssetFont) -> Font {
         }
     }
 
-    Font {
+    SpriteFont {
         name: font.name.clone(),
-        baseline: font.baseline as f32,
-        vertical_advance: font.vertical_advance as f32,
+        baseline: font.baseline,
+        vertical_advance: font.vertical_advance,
+        font_height_in_pixels: font.font_height_in_pixels,
         ascii_glyphs,
         unicode_glyphs,
     }
@@ -621,7 +660,7 @@ fn serialize_fonts(font_map: &IndexMap<Fontname, AssetFont>) {
     )
     .unwrap();
 
-    let binary: HashMap<String, Font> = font_map
+    let binary: HashMap<String, SpriteFont> = font_map
         .iter()
         .map(|(name, font)| (name.clone(), convert_font(font)))
         .collect();
@@ -712,7 +751,7 @@ fn main() {
     std::panic::set_hook(Box::new(|panic_info| {
         let (message, location) = ct_lib::panic_message_split_to_message_and_location(panic_info);
         let final_message = format!("{}\n\nError occured at: {}", message, location);
-        println!("{}", final_message);
+        log::error!("{}", final_message);
 
         // NOTE: This forces the other threads to shutdown as well
         std::process::abort();
@@ -725,7 +764,9 @@ fn main() {
             if std::fs::remove_dir_all("assets_temp").is_ok() {
                 break;
             }
-            println!("Unable to delete 'assets_temp' dir, are files from this folder still open?");
+            log::warn!(
+                "Unable to delete 'assets_temp' dir, are files from this folder still open?"
+            );
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
     }
@@ -736,7 +777,9 @@ fn main() {
             if std::fs::remove_dir_all("assets_baked").is_ok() {
                 break;
             }
-            println!("Unable to delete 'assets_baked' dir, are files from this folder still open?");
+            log::warn!(
+                "Unable to delete 'assets_baked' dir, are files from this folder still open?"
+            );
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
     }
@@ -757,7 +800,7 @@ fn main() {
     bake_graphics_resources();
     bake_audio_resources();
 
-    println!(
+    log::info!(
         "ASSETS SUCCESSFULLY BAKED: Elapsed time: {:.3}s",
         start_time.elapsed().as_secs_f64()
     );

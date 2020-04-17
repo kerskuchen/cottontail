@@ -355,6 +355,25 @@ where
         trimmed_result
     }
 
+    pub fn crop(&mut self, left: i32, top: i32, right: i32, bottom: i32) {
+        *self = self.cropped(left, top, right, bottom);
+    }
+
+    pub fn cropped(&self, left: i32, top: i32, right: i32, bottom: i32) -> Grid<CellType> {
+        let new_width = self.width - left - right;
+        let new_height = self.height - top - bottom;
+        if new_width <= 0 || new_height <= 0 {
+            return Grid::empty();
+        }
+
+        let mut result = Grid::new(new_width as u32, new_height as u32);
+        let crop_rect = Recti::from_xy_width_height(left, right, new_width, new_height);
+        let result_rect = result.rect();
+        Grid::copy_region(self, crop_rect, &mut result, result_rect, None);
+
+        result
+    }
+
     pub fn replace_cells(&mut self, to_replace: CellType, replace_with: CellType) {
         for cell in self.data.iter_mut() {
             if *cell == to_replace {

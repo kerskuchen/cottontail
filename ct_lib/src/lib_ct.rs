@@ -1,11 +1,12 @@
 pub mod audio;
 pub mod bitmap;
-pub mod bitmap_atlas;
-pub mod bitmap_font;
 pub mod color;
 pub mod draw;
+pub mod draw_common;
+pub mod font;
 pub mod grid;
 pub mod random;
+pub mod sprite;
 pub mod system;
 
 #[path = "game/mod_game.rs"]

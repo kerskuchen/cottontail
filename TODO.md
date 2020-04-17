@@ -1,20 +1,20 @@
 ## Done today
 
-* Move font rendering tests in main to debugscene and pass a loaded fontname 
-* Adds exact text measurement and drawing and with alignment to `BitmapFont`
-* Adds test for text drawing with aligment to `BitmapFont`
-
-
-## Current:
+* Port aligned drawing functionality from `BitmapFont` to `Font`
+* Make fonts consistently use either Vec2i or Vec 
+* Move bitmap font drawing to `Bitmap`
+* Refactored other Font functions to use the iterators
+* Prevent bitmapfonts to be created with glyphs that have negative horizontal or vertical offset
+* Simplify font tester function
+* Move `pixelsnapped` functions into `Vec2` and `Rect`
 
 ## Next:
 
-* We need to figure out a way to share the functionality between `Font` and `Bitmapfont` especially 
-  drawing and aligning. This should be simple (API complexity) and fast (runtime and compiletime) 
-* Port functionality from `BitmapFont` to `Font`
+* Make pixie_stitch use new font api
 
 ## Backlog:
 
+* Should we refactor clipping glyph iterator to use basic iterator internally?
 * Read the following items in the launcher from a config file:
   - display_to_use;
   - deadzone_threshold_x;
