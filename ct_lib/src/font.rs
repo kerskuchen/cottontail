@@ -111,25 +111,24 @@ pub trait Font<GlyphType: Glyph> {
         for codepoint in text.chars() {
             if codepoint != '\n' {
                 let glyph = &self.get_glyph_for_codepoint(codepoint as Codepoint);
-                let glyph_rect = {
-                    let rect = glyph.get_trimmed_rect();
-                    Recti::from_point_dimensions(
-                        next_glyph_pos + font_scale * rect.pos,
-                        font_scale * rect.dim,
-                    )
-                };
+                let glyph_rect = glyph.get_trimmed_rect();
+
                 if glyph_rect != Recti::zero() {
-                    if glyph_rect.left() < left {
-                        left = glyph_rect.left();
+                    let glyph_rect_transformed = Recti::from_point_dimensions(
+                        next_glyph_pos + font_scale * glyph_rect.pos,
+                        font_scale * glyph_rect.dim,
+                    );
+                    if glyph_rect_transformed.left() < left {
+                        left = glyph_rect_transformed.left();
                     }
-                    if glyph_rect.top() < top {
-                        top = glyph_rect.top();
+                    if glyph_rect_transformed.top() < top {
+                        top = glyph_rect_transformed.top();
                     }
-                    if glyph_rect.right() > right {
-                        right = glyph_rect.right();
+                    if glyph_rect_transformed.right() > right {
+                        right = glyph_rect_transformed.right();
                     }
-                    if glyph_rect.bottom() > bottom {
-                        bottom = glyph_rect.bottom();
+                    if glyph_rect_transformed.bottom() > bottom {
+                        bottom = glyph_rect_transformed.bottom();
                     }
                 }
 
@@ -149,19 +148,19 @@ pub trait Font<GlyphType: Glyph> {
 
     /// Iterates a given utf8 text and runs a given operation on each glyph.
     /// Returns the starting_offset for the next `iter_text_glyphs` call
-    fn iter_text_glyphs<Operation: core::ops::FnMut(&GlyphType, Vec2, f32) -> ()>(
+    fn iter_text_glyphs<Operation: core::ops::FnMut(&GlyphType, Vec2i) -> ()>(
         &self,
         text: &str,
-        font_scale: f32,
-        starting_origin: Vec2,
-        starting_offset: Vec2,
+        font_scale: i32,
+        origin: Vec2i,
+        starting_offset: Vec2i,
         origin_is_baseline: bool,
         operation: &mut Operation,
-    ) -> Vec2 {
-        let mut origin = worldpoint_pixel_snapped(starting_origin);
+    ) -> Vec2i {
+        let mut origin = origin;
         if origin_is_baseline {
             // NOTE: Ascent will be drawn above the origin and descent below the origin
-            origin.y -= font_scale * self.baseline() as f32;
+            origin.y -= font_scale * self.baseline();
         } else {
             // NOTE: Everything is drawn below the origin
         }
@@ -171,14 +170,13 @@ pub trait Font<GlyphType: Glyph> {
             if codepoint != '\n' {
                 let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
                 let draw_pos = origin + pos;
-                let scale = font_scale;
 
-                operation(glyph, draw_pos, scale);
+                operation(glyph, draw_pos);
 
-                pos.x += font_scale * glyph.horizontal_advance() as f32;
+                pos.x += font_scale * glyph.horizontal_advance();
             } else {
-                pos.x = 0.0;
-                pos.y += font_scale * self.vertical_advance() as f32;
+                pos.x = 0;
+                pos.y += font_scale * self.vertical_advance();
             }
         }
 
@@ -187,27 +185,27 @@ pub trait Font<GlyphType: Glyph> {
 
     /// Iterates a given utf8 text and runs a given operation on each glyph if it would be visible
     /// in the given clipping rect
-    fn iter_text_glyphs_clipped<Operation: core::ops::FnMut(&GlyphType, Vec2, f32) -> ()>(
+    fn iter_text_glyphs_clipped<Operation: core::ops::FnMut(&GlyphType, Vec2i) -> ()>(
         &self,
         text: &str,
-        font_scale: f32,
-        starting_origin: Vec2,
-        starting_offset: Vec2,
+        font_scale: i32,
+        origin: Vec2i,
+        starting_offset: Vec2i,
         origin_is_baseline: bool,
-        clipping_rect: Rect,
+        clipping_rect: Recti,
         operation: &mut Operation,
     ) {
-        let mut origin = worldpoint_pixel_snapped(starting_origin);
+        let mut origin = origin;
         if origin_is_baseline {
             // NOTE: Ascent will be drawn above the origin and descent below the origin
-            origin.y -= font_scale * self.baseline() as f32;
+            origin.y -= font_scale * self.baseline();
         } else {
             // NOTE: Everything is drawn below the origin
         }
 
         // Check if we would begin drawing below our clipping rectangle
-        let mut current_line_top = origin.y - font_scale * self.baseline() as f32;
-        let mut current_line_bottom = current_line_top + self.vertical_advance() as f32;
+        let mut current_line_top = origin.y - font_scale * self.baseline();
+        let mut current_line_bottom = current_line_top + self.vertical_advance();
         current_line_top += starting_offset.y;
         current_line_bottom += starting_offset.y;
         if current_line_top > clipping_rect.bottom() {
@@ -221,14 +219,13 @@ pub trait Font<GlyphType: Glyph> {
             if codepoint != '\n' {
                 let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
                 let draw_pos = origin + pos;
-                let scale = font_scale;
 
-                operation(&glyph, draw_pos, scale);
+                operation(&glyph, draw_pos);
 
-                pos.x += font_scale * glyph.horizontal_advance() as f32;
+                pos.x += font_scale * glyph.horizontal_advance();
             } else {
-                pos.x = 0.0;
-                pos.y += font_scale * self.vertical_advance() as f32;
+                pos.x = 0;
+                pos.y += font_scale * self.vertical_advance();
             }
         }
 
@@ -240,26 +237,83 @@ pub trait Font<GlyphType: Glyph> {
                 for codepoint in line.chars() {
                     let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
                     let draw_pos = origin + pos;
-                    let scale = font_scale;
 
-                    operation(&glyph, draw_pos, scale);
+                    operation(&glyph, draw_pos);
 
-                    pos.x += font_scale * glyph.horizontal_advance() as f32;
+                    pos.x += font_scale * glyph.horizontal_advance();
                 }
             }
 
             // We finished a line and need advance to the next line
-            pos.x = 0.0;
-            pos.y += font_scale * self.vertical_advance() as f32;
+            pos.x = 0;
+            pos.y += font_scale * self.vertical_advance();
 
-            current_line_top += font_scale * self.vertical_advance() as f32;
-            current_line_bottom += font_scale * self.vertical_advance() as f32;
+            current_line_top += font_scale * self.vertical_advance();
+            current_line_bottom += font_scale * self.vertical_advance();
             if clipping_rect.bottom() <= current_line_top {
                 // NOTE: We skipped past the lower border of the bounding rect and all following
                 //       lines will not be visible anymore
                 return;
             }
         }
+    }
+
+    fn iter_text_glyphs_aligned_in_point<Operation: core::ops::FnMut(&GlyphType, Vec2i) -> ()>(
+        &self,
+        text: &str,
+        font_scale: i32,
+        origin: Vec2i,
+        starting_offset: Vec2i,
+        origin_is_baseline: bool,
+        alignment_x: AlignmentHorizontal,
+        alignment_y: AlignmentVertical,
+        operation: &mut Operation,
+    ) -> Vec2i {
+        let text_dim = self.get_text_dimensions(text, font_scale);
+        let origin_aligned = Vec2i::new(
+            block_aligned_in_point(text_dim.x, origin.x, alignment_x),
+            block_aligned_in_point(text_dim.y, origin.y, alignment_y),
+        );
+        self.iter_text_glyphs(
+            text,
+            font_scale,
+            origin_aligned,
+            starting_offset.into(),
+            origin_is_baseline,
+            operation,
+        )
+    }
+
+    /// Same as iter_text_glyphs_aligned_in_point but ignoring whitespace and aligning glyphs as tight
+    /// as possible
+    fn iter_text_glyphs_aligned_in_point_exact<
+        Operation: core::ops::FnMut(&GlyphType, Vec2i) -> (),
+    >(
+        &self,
+        text: &str,
+        font_scale: i32,
+        origin: Vec2i,
+        starting_offset: Vec2i,
+        origin_is_baseline: bool,
+        alignment_x: AlignmentHorizontal,
+        alignment_y: AlignmentVertical,
+        operation: &mut Operation,
+    ) -> Vec2i {
+        let text_rect = self.get_text_bounding_rect_exact(text, font_scale);
+        let text_dim = text_rect.dim;
+        let origin_aligned = Vec2i::new(
+            block_aligned_in_point(text_dim.x, origin.x, alignment_x),
+            block_aligned_in_point(text_dim.y, origin.y, alignment_y),
+        ) - text_rect.pos;
+
+        self.iter_text_glyphs(
+            text,
+            font_scale,
+            origin_aligned,
+            starting_offset.into(),
+            origin_is_baseline,
+            operation,
+        )
     }
 }
 
@@ -412,83 +466,6 @@ impl BitmapFont {
         (atlas.atlas_texture, atlas.sprite_positions)
     }
 
-    pub fn create_text_bitmap(&self, text: &str, background_color: PixelRGBA) -> Bitmap {
-        let dim = self.get_text_dimensions(text, 1);
-        let mut result = Bitmap::new_filled(dim.x as u32, dim.y as u32, background_color);
-        self.draw_text(&mut result, text, Vec2i::zero(), Vec2i::zero());
-        result
-    }
-
-    pub fn draw_text_aligned_in_point(
-        &self,
-        image: &mut Bitmap,
-        text: &str,
-        origin: Vec2i,
-        starting_offset: Vec2i,
-        alignment_x: AlignmentHorizontal,
-        alignment_y: AlignmentVertical,
-    ) -> Vec2i {
-        let text_dim = self.get_text_dimensions(text, 1);
-        let origin_aligned = Vec2i::new(
-            block_aligned_in_point(text_dim.x, origin.x, alignment_x),
-            block_aligned_in_point(text_dim.y, origin.y, alignment_y),
-        );
-        self.draw_text(image, text, origin_aligned, starting_offset)
-    }
-
-    /// Same as draw_text_aligned_in_point but ignoring whitespace and aligning glyphs as tight
-    /// as possible
-    pub fn draw_text_aligned_in_point_exact(
-        &self,
-        image: &mut Bitmap,
-        text: &str,
-        origin: Vec2i,
-        starting_offset: Vec2i,
-        alignment_x: AlignmentHorizontal,
-        alignment_y: AlignmentVertical,
-    ) -> Vec2i {
-        let text_rect = self.get_text_bounding_rect_exact(text, 1);
-        let text_dim = text_rect.dim;
-        let origin_aligned = Vec2i::new(
-            block_aligned_in_point(text_dim.x, origin.x, alignment_x),
-            block_aligned_in_point(text_dim.y, origin.y, alignment_y),
-        ) - text_rect.pos;
-
-        self.draw_text(image, text, origin_aligned, starting_offset)
-    }
-
-    /// Draws a given utf8 text to a given bitmap
-    /// Returns the starting_offset for the next `draw_text` call
-    pub fn draw_text(
-        &self,
-        image: &mut Bitmap,
-        text: &str,
-        origin: Vec2i,
-        starting_offset: Vec2i,
-    ) -> Vec2i {
-        let mut pos = starting_offset;
-        for codepoint in text.chars() {
-            if codepoint != '\n' {
-                let glyph = self.get_glyph_for_codepoint(codepoint as Codepoint);
-
-                if let Some(glyph_bitmap) = &glyph.bitmap {
-                    glyph_bitmap.blit_to(
-                        image,
-                        origin + pos + glyph.offset,
-                        Some(PixelRGBA::transparent()),
-                    );
-                }
-
-                pos.x += glyph.horizontal_advance;
-            } else {
-                pos.x = 0;
-                pos.y += self.vertical_advance;
-            }
-        }
-
-        pos
-    }
-
     pub fn test_font_sizes(
         font_name: &str,
         font_ttf_bytes: &[u8],
@@ -540,7 +517,7 @@ impl BitmapFont {
                 text_padding,
                 text_padding + index as i32 * (lineskip + text_padding),
             );
-            font.draw_text(&mut bitmap, &text, pos, Vec2i::zero());
+            bitmap.draw_text(&font, &text, 1, pos, Vec2i::zero(), false);
         }
 
         Bitmap::write_to_png_file(&bitmap, test_image_filepath);
@@ -824,19 +801,23 @@ mod tests {
                 AlignmentVertical::Bottom,
             ] {
                 let mut bitmap = Bitmap::new(bitmap_width as u32, bitmap_height as u32);
-                font.draw_text_aligned_in_point(
-                    &mut bitmap,
+                bitmap.draw_text_aligned_in_point(
+                    &font,
                     &format!("{:?} - {:?}", alignment_x, alignment_y),
+                    1,
                     Vec2i::new(bitmap_width / 2, 0),
                     Vec2i::zero(),
+                    false,
                     AlignmentHorizontal::Center,
                     AlignmentVertical::Top,
                 );
-                font.draw_text_aligned_in_point(
-                    &mut bitmap,
+                bitmap.draw_text_aligned_in_point(
+                    &font,
                     text,
+                    1,
                     bitmap_center,
                     Vec2i::zero(),
+                    false,
                     *alignment_x,
                     *alignment_y,
                 );
@@ -876,19 +857,23 @@ mod tests {
                 AlignmentVertical::Bottom,
             ] {
                 let mut bitmap = Bitmap::new(bitmap_width as u32, bitmap_height as u32);
-                font.draw_text_aligned_in_point(
-                    &mut bitmap,
+                bitmap.draw_text_aligned_in_point(
+                    &font,
                     &format!("{:?} - {:?}", alignment_x, alignment_y),
+                    1,
                     Vec2i::new(bitmap_width / 2, 0),
                     Vec2i::zero(),
+                    false,
                     AlignmentHorizontal::Center,
                     AlignmentVertical::Top,
                 );
-                font.draw_text_aligned_in_point_exact(
-                    &mut bitmap,
+                bitmap.draw_text_aligned_in_point_exact(
+                    &font,
                     text,
+                    1,
                     bitmap_center,
                     Vec2i::zero(),
+                    false,
                     *alignment_x,
                     *alignment_y,
                 );
@@ -925,19 +910,23 @@ mod tests {
                 AlignmentVertical::Bottom,
             ] {
                 let mut bitmap = Bitmap::new(bitmap_width as u32, bitmap_height as u32);
-                font.draw_text_aligned_in_point(
-                    &mut bitmap,
+                bitmap.draw_text_aligned_in_point(
+                    &font,
                     &format!("{:?} - {:?}", alignment_x, alignment_y),
+                    1,
                     Vec2i::new(bitmap_width / 2, 0),
                     Vec2i::zero(),
+                    false,
                     AlignmentHorizontal::Center,
                     AlignmentVertical::Top,
                 );
-                font.draw_text_aligned_in_point_exact(
-                    &mut bitmap,
+                bitmap.draw_text_aligned_in_point_exact(
+                    &font,
                     text,
+                    1,
                     bitmap_center,
                     Vec2i::zero(),
+                    false,
                     *alignment_x,
                     *alignment_y,
                 );

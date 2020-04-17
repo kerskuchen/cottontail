@@ -1,7 +1,8 @@
 pub use super::color::{Color, PixelRGBA};
+pub use super::font::{BitmapFont, Font};
 pub use super::grid::GluePosition;
 pub use super::math;
-pub use super::math::Vec2i;
+pub use super::math::{AlignmentHorizontal, AlignmentVertical, Vec2i};
 pub use super::system;
 
 use serde_derive::Serialize;
@@ -59,6 +60,18 @@ impl Bitmap {
         Bitmap::new_from_buffer(image.width as u32, image.height as u32, buffer)
     }
 
+    pub fn create_from_text(
+        font: &BitmapFont,
+        text: &str,
+        font_scale: i32,
+        background_color: PixelRGBA,
+    ) -> Bitmap {
+        let dim = font.get_text_dimensions(text, font_scale);
+        let mut result = Bitmap::new_filled(dim.x as u32, dim.y as u32, background_color);
+        result.draw_text(font, text, font_scale, Vec2i::zero(), Vec2i::zero(), false);
+        result
+    }
+
     pub fn write_to_png_file(bitmap: &Bitmap, png_filepath: &str) {
         std::fs::create_dir_all(system::path_without_filename(png_filepath)).expect(&format!(
             "Could not create necessary directories to write to '{}'",
@@ -71,6 +84,99 @@ impl Bitmap {
             bitmap.height as usize,
         )
         .expect(&format!("Could not write png file to '{}'", png_filepath));
+    }
+
+    /// Draws a given utf8 text to a given bitmap
+    /// Returns the starting_offset for the next `draw_text` call
+    pub fn draw_text(
+        &mut self,
+        font: &BitmapFont,
+        text: &str,
+        font_scale: i32,
+        origin: Vec2i,
+        starting_offset: Vec2i,
+        origin_is_baseline: bool,
+    ) -> Vec2i {
+        font.iter_text_glyphs(
+            text,
+            font_scale,
+            origin,
+            starting_offset,
+            origin_is_baseline,
+            &mut |glyph, draw_pos| {
+                if let Some(glyph_bitmap) = &glyph.bitmap {
+                    glyph_bitmap.blit_to(
+                        self,
+                        draw_pos + glyph.offset,
+                        Some(PixelRGBA::transparent()),
+                    );
+                }
+            },
+        )
+    }
+
+    pub fn draw_text_aligned_in_point(
+        &mut self,
+        font: &BitmapFont,
+        text: &str,
+        font_scale: i32,
+        origin: Vec2i,
+        starting_offset: Vec2i,
+        origin_is_baseline: bool,
+        alignment_x: AlignmentHorizontal,
+        alignment_y: AlignmentVertical,
+    ) -> Vec2i {
+        font.iter_text_glyphs_aligned_in_point(
+            text,
+            font_scale,
+            origin,
+            starting_offset,
+            origin_is_baseline,
+            alignment_x,
+            alignment_y,
+            &mut |glyph, draw_pos| {
+                if let Some(glyph_bitmap) = &glyph.bitmap {
+                    glyph_bitmap.blit_to(
+                        self,
+                        draw_pos + glyph.offset,
+                        Some(PixelRGBA::transparent()),
+                    );
+                }
+            },
+        )
+    }
+
+    /// Same as draw_text_aligned_in_point but ignoring whitespace and aligning glyphs as tight
+    /// as possible
+    pub fn draw_text_aligned_in_point_exact(
+        &mut self,
+        font: &BitmapFont,
+        text: &str,
+        font_scale: i32,
+        origin: Vec2i,
+        starting_offset: Vec2i,
+        origin_is_baseline: bool,
+        alignment_x: AlignmentHorizontal,
+        alignment_y: AlignmentVertical,
+    ) -> Vec2i {
+        font.iter_text_glyphs_aligned_in_point_exact(
+            text,
+            font_scale,
+            origin,
+            starting_offset,
+            origin_is_baseline,
+            alignment_x,
+            alignment_y,
+            &mut |glyph, draw_pos| {
+                if let Some(glyph_bitmap) = &glyph.bitmap {
+                    glyph_bitmap.blit_to(
+                        self,
+                        draw_pos + glyph.offset,
+                        Some(PixelRGBA::transparent()),
+                    );
+                }
+            },
+        )
     }
 }
 

@@ -1,15 +1,14 @@
 ## Done today
 
-* Move font rendering tests in main to debugscene and pass a loaded fontname 
-* Adds exact text measurement and drawing and with alignment to `BitmapFont`
-* Adds test for text drawing with aligment to `BitmapFont`
-* Move font rendering tests in main to debugscene and pass a loaded fontname 
-* Refactored stuff out of draw module
-* Added `Font` and `Glyph` traits with text dimension and iteration implementations
+* Port aligned drawing functionality from `BitmapFont` to `Font`
+* Make fonts consistently use either Vec2i or Vec 
+* Move bitmap font drawing to `Bitmap`
 
 ## Current:
 
-* Port aligned drawing functionality from `BitmapFont` to `Font`
+* Refactor other Font functions to use the iterators
+* Determine what to do with other font text dimension functions
+* Move `pixelsnapped` functions into `Vec2` and `Rect`
 
 ## Next:
 

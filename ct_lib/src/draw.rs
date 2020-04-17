@@ -1414,17 +1414,19 @@ impl Drawstate {
         color_modulate: Color,
         additivity: Additivity,
     ) -> Vec2 {
+        let origin = worldpoint_pixel_snapped_i32(starting_origin);
+        let offset = worldpoint_pixel_snapped_i32(starting_offset);
         font.iter_text_glyphs(
             text,
-            font_scale,
-            starting_origin,
-            starting_offset,
+            font_scale as i32,
+            origin,
+            offset,
             origin_is_baseline,
-            &mut |glyph, draw_pos, scale| {
+            &mut |glyph, draw_pos| {
                 self.draw_sprite_pixel_snapped(
                     SpriteBy::Index(glyph.sprite_index),
-                    draw_pos,
-                    Vec2::new(scale, scale),
+                    draw_pos.into(),
+                    Vec2::new(font_scale, font_scale),
                     Vec2::unit_x(),
                     false,
                     false,
@@ -1434,6 +1436,7 @@ impl Drawstate {
                 );
             },
         )
+        .into()
     }
 
     /// Draws a given utf8 text in a given font using a clipping rectangle
@@ -1452,18 +1455,24 @@ impl Drawstate {
         color_modulate: Color,
         additivity: Additivity,
     ) {
+        let origin = worldpoint_pixel_snapped_i32(starting_origin);
+        let offset = worldpoint_pixel_snapped_i32(starting_offset);
+        let clipping_recti = Recti::from_point_dimensions(
+            worldpoint_pixel_snapped_i32(clipping_rect.pos),
+            clipping_rect.dim.roundi(),
+        );
         font.iter_text_glyphs_clipped(
             text,
-            font_scale,
-            starting_origin,
-            starting_offset,
+            font_scale as i32,
+            origin,
+            offset,
             origin_is_baseline,
-            clipping_rect,
-            &mut |glyph, draw_pos, scale| {
+            clipping_recti,
+            &mut |glyph, draw_pos| {
                 self.draw_sprite_clipped(
                     SpriteBy::Index(glyph.sprite_index),
-                    draw_pos,
-                    Vec2::new(scale, scale),
+                    draw_pos.into(),
+                    Vec2::new(font_scale, font_scale),
                     clipping_rect,
                     depth,
                     color_modulate,

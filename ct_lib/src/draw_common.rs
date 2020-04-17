@@ -30,6 +30,18 @@ pub fn worldpoint_pixel_snapped(point: Worldpoint) -> Worldpoint {
     }
 }
 
+/// For a given Worldpoint returns the nearest Worldpoint that is aligned to the
+/// canvas's pixel grid when drawn.
+///
+/// For example pixel-snapping the cameras position before drawing prevents pixel-jittering
+/// artifacts on visible objects if the camera is moving at sub-pixel distances.
+pub fn worldpoint_pixel_snapped_i32(point: Worldpoint) -> Vec2i {
+    Vec2i {
+        x: floori(point.x),
+        y: floori(point.y),
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Canvas and screen blitting and transformations
 
