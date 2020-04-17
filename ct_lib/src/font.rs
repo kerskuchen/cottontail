@@ -97,37 +97,40 @@ pub trait Font<GlyphType: Glyph> {
         let mut right = 0;
         let mut bottom = 0;
 
-        let mut next_glyph_pos = Vec2i::zero();
-        for codepoint in text.chars() {
-            if codepoint != '\n' {
-                let glyph = &self.get_glyph_for_codepoint(codepoint as Codepoint);
+        self.iter_text_glyphs(
+            text,
+            font_scale,
+            Vec2i::zero(),
+            Vec2i::zero(),
+            false,
+            &mut |glyph, draw_pos, codepoint| {
+                // Ignore empty or whitespace glyphs
+                if codepoint.is_whitespace() {
+                    return;
+                }
                 let glyph_rect = glyph.get_trimmed_rect();
-
-                if glyph_rect != Recti::zero() {
-                    let glyph_rect_transformed = Recti::from_point_dimensions(
-                        next_glyph_pos + font_scale * glyph_rect.pos,
-                        font_scale * glyph_rect.dim,
-                    );
-                    if glyph_rect_transformed.left() < left {
-                        left = glyph_rect_transformed.left();
-                    }
-                    if glyph_rect_transformed.top() < top {
-                        top = glyph_rect_transformed.top();
-                    }
-                    if glyph_rect_transformed.right() > right {
-                        right = glyph_rect_transformed.right();
-                    }
-                    if glyph_rect_transformed.bottom() > bottom {
-                        bottom = glyph_rect_transformed.bottom();
-                    }
+                if glyph_rect == Recti::zero() {
+                    return;
                 }
 
-                next_glyph_pos.x += font_scale * glyph.horizontal_advance();
-            } else {
-                next_glyph_pos.x = 0;
-                next_glyph_pos.y += font_scale * self.vertical_advance();
-            }
-        }
+                let glyph_rect_transformed = Recti::from_point_dimensions(
+                    draw_pos + font_scale * glyph_rect.pos,
+                    font_scale * glyph_rect.dim,
+                );
+                if glyph_rect_transformed.left() < left {
+                    left = glyph_rect_transformed.left();
+                }
+                if glyph_rect_transformed.top() < top {
+                    top = glyph_rect_transformed.top();
+                }
+                if glyph_rect_transformed.right() > right {
+                    right = glyph_rect_transformed.right();
+                }
+                if glyph_rect_transformed.bottom() > bottom {
+                    bottom = glyph_rect_transformed.bottom();
+                }
+            },
+        );
 
         if left >= right || top >= bottom {
             Recti::zero()
@@ -441,7 +444,7 @@ impl BitmapFont {
         }
     }
 
-    pub fn create_atlas(&self, fontname: &str) -> (Bitmap, IndexMap<String, Vec2i>) {
+    pub fn to_bitmap_atlas(&self, fontname: &str) -> (Bitmap, IndexMap<String, Vec2i>) {
         let mut atlas = BitmapAtlas::new(64);
         for glyph in self.glyphs.values() {
             if let Some(bitmap) = &glyph.bitmap {

@@ -3,11 +3,12 @@
 * Port aligned drawing functionality from `BitmapFont` to `Font`
 * Make fonts consistently use either Vec2i or Vec 
 * Move bitmap font drawing to `Bitmap`
+* Refactored other Font functions to use the iterators
 
 ## Current:
 
-* Refactor other Font functions to use the iterators
-* Determine what to do with other font text dimension functions
+* Should we refactor clipping glyph iterator to use basic iterator internally?
+* Simplify font tester function
 * Move `pixelsnapped` functions into `Vec2` and `Rect`
 
 ## Next:
