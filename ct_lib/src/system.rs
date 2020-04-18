@@ -1,6 +1,8 @@
 use std::ffi::OsStr;
 use std::path::Path;
 
+pub use easy_process;
+
 pub trait PathHelper {
     fn to_string_owned(&self) -> String;
     fn to_string_borrowed(&self) -> &str;
