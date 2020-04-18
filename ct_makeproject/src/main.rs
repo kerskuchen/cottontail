@@ -316,6 +316,7 @@ fn project_create(project_name: &str, project_git_url: Option<String>) {
     for command in &[
         "git submodule add -b master https://github.com/kerskuchen/cottontail.git",
         "git submodule update --init --remote",
+        "git commit -am \"Adds Cottontail submodule\"",
     ] {
         print!(
             "> {}\n{}",

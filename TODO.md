@@ -1,22 +1,13 @@
 ## Done today
 
-* Port aligned drawing functionality from `BitmapFont` to `Font`
-* Make fonts consistently use either Vec2i or Vec 
-* Move bitmap font drawing to `Bitmap`
-* Refactored other Font functions to use the iterators
-* Prevent bitmapfonts to be created with glyphs that have negative horizontal or vertical offset
-* Simplify font tester function
-* Solved problem with rogue glyphs that are not drawn between [0, font_height - 1]
-* Move `pixelsnapped` functions into `Vec2` and `Rect`
-* Make pixie_stitch use new font api
+* Replaces git subtrees by submodules
 
 ## Next:
 
-* Replace git subtrees because it is getting dangerous
-* testtest
 
 ## Backlog:
 
+* Do bugreport on easy_process 
 * Prefix all generic files like `main.rs`, `lib.rs`, `mod.rs` with its module/cratename
 * Create static assets dir concept that is not processed and just copied directly to assets_baked
 * Create build_shipping.bat that copies assets_baked and launcher.exe into ouput dir
