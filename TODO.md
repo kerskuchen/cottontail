@@ -6,13 +6,14 @@
 * Rename main executable to launcher
 * Prefix all generic files like `main.rs`, `lib.rs`, `mod.rs` with its module/cratename
 * Create build_shipping.bat that copies resources and launcher.exe into ouput dir
+* Fix pixie stitch
 
 ## Next:
 
-* Fix pixie stitch
 
 ## Backlog:
 
+* Add installation instructions to pixie stitch 
 
 * Use https://github.com/GarkGarcia/icon_baker to bake .ico file so we can get rid of imagemagick. 
   - This will also allow us to choose the right icon size. At the moment we just scale the 512.png
