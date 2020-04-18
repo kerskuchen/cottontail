@@ -236,14 +236,43 @@ fn project_refresh() {
         "cottontail/ct_makeproject/templates_vscode/template__tasks.json",
         "./.vscode/",
         &project_details,
-        false,
+        true,
     );
     template_copy_to_dir(
         "cottontail/ct_makeproject/templates_vscode/template__launch.json",
         "./.vscode/",
         &project_details,
+        true,
+    );
+
+    // ---------------------------------------------------------------------------------------------
+    // Windows project setup
+
+    template_copy_to_dir(
+        "cottontail/ct_makeproject/templates_windows/template__versioninfo.rc",
+        "./assets_executable/",
+        &project_details,
         false,
     );
+    template_copy_to_dir(
+        "cottontail/ct_makeproject/templates_windows/template__windows_build_shipping.bat",
+        "./",
+        &project_details,
+        true,
+    );
+    if !project_details
+        .get("windows_certificate_path")
+        .as_ref()
+        .unwrap()
+        .is_empty()
+    {
+        template_copy_to_dir(
+            "cottontail/ct_makeproject/templates_windows/template__windows_sign_executable.bat",
+            "./assets_executable/",
+            &project_details,
+            true,
+        );
+    }
 
     // ---------------------------------------------------------------------------------------------
     // Executable setup

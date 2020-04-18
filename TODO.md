@@ -5,13 +5,17 @@
 * Create static assets dir concept that is not processed and just copied directly to assets_baked
 * Rename main executable to launcher
 * Prefix all generic files like `main.rs`, `lib.rs`, `mod.rs` with its module/cratename
+* Create build_shipping.bat that copies resources and launcher.exe into ouput dir
 
 ## Next:
 
-* Create build_shipping.bat that copies assets_baked and launcher.exe into ouput dir
 
 ## Backlog:
 
+
+* Use https://github.com/GarkGarcia/icon_baker to bake .ico file so we can get rid of imagemagick. 
+  - This will also allow us to choose the right icon size. At the moment we just scale the 512.png
+    down to every needed size and ignoring existing ones
 
 * Should we refactor clipping glyph iterator to use basic iterator internally?
 
