@@ -13,6 +13,14 @@
 
 ## Backlog:
 
+* Find out why we sometimes get 
+  ```ERROR: Unable to create 'resources' dir: Os { code: 5, kind: PermissionDenied, message: 
+     "Access is denied." } 
+     Error occured at: cottontail\ct_assetbaker\src/main_assetbaker.rs:781:5
+     error: process didn't exit successfully: `target\release\ct_assetbaker.exe` (exit code: 0xc0000409, STATUS_STACK_BUFFER_OVERRUN)
+  ```
+  when doing asset-baking
+
 * Add installation instructions to pixie stitch 
 * Add template clone instructions for new projects
 
