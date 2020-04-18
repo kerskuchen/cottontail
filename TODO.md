@@ -16,9 +16,13 @@
 
 ## Backlog:
 
-* Should we refactor clipping glyph iterator to use basic iterator internally?
+* Prefix all generic files like `main.rs`, `lib.rs`, `mod.rs` with its module/cratename
 * Create static assets dir concept that is not processed and just copied directly to assets_baked
 * Create build_shipping.bat that copies assets_baked and launcher.exe into ouput dir
+* Rename main executable to launcher
+
+* Should we refactor clipping glyph iterator to use basic iterator internally?
+
 * Read the following items in the launcher from a config file:
   - display_to_use;
   - deadzone_threshold_x;
