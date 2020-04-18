@@ -268,7 +268,7 @@ fn project_refresh() {
     {
         template_copy_to_dir(
             "cottontail/ct_makeproject/templates_windows/template__windows_sign_executable.bat",
-            "./assets_executable/",
+            "./",
             &project_details,
             true,
         );
