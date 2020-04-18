@@ -17,3 +17,7 @@ log = "0.4"
 
 [dependencies.ct_lib]
 path = "../ct_lib"
+
+[[bin]]
+path = "src/main_assetbaker.rs"
+name = "ct_assetbaker"

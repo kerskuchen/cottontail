@@ -17,3 +17,7 @@ mustache = "0"
 
 [dependencies.ct_lib]
 path = "../ct_lib"
+
+[[bin]]
+path = "src/main_makeproject.rs"
+name = "ct_makeproject"

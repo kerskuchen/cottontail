@@ -243,16 +243,16 @@ fn project_refresh() {
     // ---------------------------------------------------------------------------------------------
     // Executable setup
 
-    if !system::path_exists(&project_directory_name) {
+    if !system::path_exists("launcher") {
         template_copy_to_dir(
             "cottontail/ct_makeproject/templates_executable/template__Cargo.toml",
-            &project_directory_name,
+            "launcher",
             &project_details,
             false,
         );
         template_copy_to_dir(
             "cottontail/ct_makeproject/templates_executable/template__main.rs",
-            &(project_directory_name.clone() + "/src"),
+            "launcher/src",
             &project_details,
             false,
         );
