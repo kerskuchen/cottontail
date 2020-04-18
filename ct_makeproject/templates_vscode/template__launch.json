@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable '{{project_directory_name}}'",
+            "name": "Debug executable 'launcher'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin={{project_directory_name}}",
-                    "--package={{project_directory_name}}",
+                    "--bin=launcher",
+                    "--package=launcher"
                 ],
                 "filter": {
-                    "name": "{{project_directory_name}}",
+                    "name": "launcher",
                     "kind": "bin"
                 }
             },
