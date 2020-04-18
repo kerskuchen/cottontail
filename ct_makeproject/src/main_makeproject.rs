@@ -16,17 +16,15 @@ const PROGRAM_USAGE: &str = "Expected usage:
  - for refreshing a project we can call `ct_makeproject` without any arguments.
  - for creating a new project we can use: `ct_makeproject <PROJECT_NAME> [PROJECT_GIT_URL]`";
 
-fn create_default_project_details(
-    project_directory_name: String,
-) -> (ProjectDetails, ProjectDetailsLocal) {
-    let project_display_name = project_directory_name.to_title_case();
+fn create_default_project_details(project_name: String) -> (ProjectDetails, ProjectDetailsLocal) {
+    let project_display_name = project_name.to_title_case();
     let project_company_name = "SnailSpaceGames".to_owned();
     let project_copyright_year = Utc::now().year().to_string();
 
     let windows_appdata_dir = project_display_name.to_camel_case();
 
     let mut details: ProjectDetails = indexmap::IndexMap::new();
-    details.insert("project_directory_name".to_owned(), project_directory_name);
+    details.insert("project_name".to_owned(), project_name);
     details.insert("project_display_name".to_owned(), project_display_name);
     details.insert(
         "project_company_name".to_owned(),
@@ -41,9 +39,9 @@ fn create_default_project_details(
     (details, details_local)
 }
 
-fn get_or_generate_project_details(project_directory_name: String) -> ProjectDetailsMerged {
+fn get_or_generate_project_details(project_name: String) -> ProjectDetailsMerged {
     let (project_details_default, project_details_local_default) =
-        create_default_project_details(project_directory_name);
+        create_default_project_details(project_name);
 
     let mut project_details = IndexMap::new();
     let mut project_details_local = IndexMap::new();
@@ -183,7 +181,7 @@ fn template_copy_to_dir(
 
 fn project_refresh() {
     // Get project details
-    let project_directory_name = {
+    let project_name = {
         assert!(
             system::path_exists("cottontail/ct_makeproject"),
             "{}\n{}",
@@ -192,9 +190,16 @@ fn project_refresh() {
         );
         let current_working_dir =
             std::env::current_dir().expect("Cannot determine current working directory");
-        current_working_dir.file_name().unwrap().to_string_owned()
+
+        let working_dir = current_working_dir.file_name().unwrap().to_string_owned();
+        if working_dir.starts_with("ct_") {
+            // NOTE: We want to reserve the `ct_` folder-name-prefix for ourselves
+            working_dir.replacen("ct_", "", 1)
+        } else {
+            working_dir
+        }
     };
-    let project_details = get_or_generate_project_details(project_directory_name.clone());
+    let project_details = get_or_generate_project_details(project_name.clone());
 
     // ---------------------------------------------------------------------------------------------
     // Repository setup
@@ -287,23 +292,23 @@ fn project_refresh() {
     println!("FINISHED REFRESHING PROJECT INFO");
 }
 
-fn project_create(project_name: &str, project_git_url: Option<String>) {
+fn project_create(project_directory_name: &str, project_git_url: Option<String>) {
     // Save the current working dir for later
     let start_working_dir =
         std::env::current_dir().expect("Cannot determine current working directory");
 
     // Create project dir
     assert!(
-        !system::path_exists(project_name),
+        !system::path_exists(project_directory_name),
         "A directory with the name '{}' already exists",
-        project_name
+        project_directory_name
     );
-    std::fs::create_dir(&project_name).expect("Cannot create project directory");
-    std::env::set_current_dir(&Path::new(&project_name))
+    std::fs::create_dir(&project_directory_name).expect("Cannot create project directory");
+    std::env::set_current_dir(&Path::new(&project_directory_name))
         .expect("Cannot switch to project directory");
 
     // Init git repo and add initial commit
-    std::fs::write("README.md", &project_name).expect("Cannot create readme file");
+    std::fs::write("README.md", &project_directory_name).expect("Cannot create readme file");
     for command in &[
         "git init",
         "git add README.md",
@@ -357,7 +362,10 @@ fn project_create(project_name: &str, project_git_url: Option<String>) {
     // Restore previous working dir
     std::env::set_current_dir(start_working_dir)
         .expect("Cannot switch back to initial working directory");
-    println!("FINISHED PROJECT INITIALIZATION '{}'", project_name);
+    println!(
+        "FINISHED PROJECT INITIALIZATION '{}'",
+        project_directory_name
+    );
 }
 
 fn main() {
