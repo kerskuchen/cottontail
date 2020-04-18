@@ -12,11 +12,13 @@
 
 ## Next:
 
+* Replace git subtrees because it is getting dangerous
 
 ## Backlog:
 
-* Replace git subtrees because it is getting dangerous
 * Should we refactor clipping glyph iterator to use basic iterator internally?
+* Create static assets dir concept that is not processed and just copied directly to assets_baked
+* Create build_shipping.bat that copies assets_baked and launcher.exe into ouput dir
 * Read the following items in the launcher from a config file:
   - display_to_use;
   - deadzone_threshold_x;
