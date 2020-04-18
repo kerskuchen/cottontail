@@ -9,6 +9,7 @@
 
 ## Next:
 
+* Fix pixie stitch
 
 ## Backlog:
 
