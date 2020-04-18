@@ -230,51 +230,6 @@ fn project_refresh() {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // VSCode setup
-
-    template_copy_to_dir(
-        "cottontail/ct_makeproject/templates_vscode/template__tasks.json",
-        "./.vscode/",
-        &project_details,
-        true,
-    );
-    template_copy_to_dir(
-        "cottontail/ct_makeproject/templates_vscode/template__launch.json",
-        "./.vscode/",
-        &project_details,
-        true,
-    );
-
-    // ---------------------------------------------------------------------------------------------
-    // Windows project setup
-
-    template_copy_to_dir(
-        "cottontail/ct_makeproject/templates_windows/template__versioninfo.rc",
-        "./assets_executable/",
-        &project_details,
-        false,
-    );
-    template_copy_to_dir(
-        "cottontail/ct_makeproject/templates_windows/template__windows_build_shipping.bat",
-        "./",
-        &project_details,
-        true,
-    );
-    if !project_details
-        .get("windows_certificate_path")
-        .as_ref()
-        .unwrap()
-        .is_empty()
-    {
-        template_copy_to_dir(
-            "cottontail/ct_makeproject/templates_windows/template__windows_sign_executable.bat",
-            "./",
-            &project_details,
-            true,
-        );
-    }
-
-    // ---------------------------------------------------------------------------------------------
     // Executable setup
 
     if !system::path_exists("launcher") {
@@ -285,7 +240,7 @@ fn project_refresh() {
             false,
         );
         template_copy_to_dir(
-            "cottontail/ct_makeproject/templates_executable/template__main.rs",
+            "cottontail/ct_makeproject/templates_executable/template__main_launcher.rs",
             "launcher/src",
             &project_details,
             false,
@@ -323,6 +278,51 @@ fn project_refresh() {
             "assets_executable",
         );
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Windows project setup
+
+    template_copy_to_dir(
+        "cottontail/ct_makeproject/templates_windows/template__versioninfo.rc",
+        "./assets_executable/",
+        &project_details,
+        false,
+    );
+    template_copy_to_dir(
+        "cottontail/ct_makeproject/templates_windows/template__windows_build_shipping.bat",
+        "./",
+        &project_details,
+        true,
+    );
+    if !project_details
+        .get("windows_certificate_path")
+        .as_ref()
+        .unwrap()
+        .is_empty()
+    {
+        template_copy_to_dir(
+            "cottontail/ct_makeproject/templates_windows/template__windows_sign_executable.bat",
+            "./",
+            &project_details,
+            true,
+        );
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // VSCode setup
+
+    template_copy_to_dir(
+        "cottontail/ct_makeproject/templates_vscode/template__tasks.json",
+        "./.vscode/",
+        &project_details,
+        true,
+    );
+    template_copy_to_dir(
+        "cottontail/ct_makeproject/templates_vscode/template__launch.json",
+        "./.vscode/",
+        &project_details,
+        true,
+    );
 
     println!("FINISHED REFRESHING PROJECT INFO");
 }

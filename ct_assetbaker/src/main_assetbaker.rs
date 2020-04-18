@@ -780,11 +780,15 @@ fn main() {
     }
     std::fs::create_dir_all("resources").expect("Unable to create 'resources' dir");
 
-    create_credits_file(
-        "assets/credits.txt",
-        &["assets", "assets_copy", "assets_executable"],
-        "resources/credits.txt",
-    );
+    if system::path_exists("assets/credits.txt") {
+        create_credits_file(
+            "assets/credits.txt",
+            &["assets", "assets_copy", "assets_executable"],
+            "resources/credits.txt",
+        );
+    } else {
+        log::warn!("No credits file found at 'assets/credits.txt'")
+    }
 
     if system::path_exists("assets_copy") {
         system::path_copy_directory_contents_recursive("assets_copy", "resources");
@@ -795,8 +799,10 @@ fn main() {
         std::fs::remove_file(&license_path).expect(&format!("Cannot delete '{}'", &license_path));
     }
 
-    bake_graphics_resources();
-    bake_audio_resources();
+    if system::path_exists("assets") {
+        bake_graphics_resources();
+        bake_audio_resources();
+    }
 
     log::info!(
         "ASSETS SUCCESSFULLY BAKED: Elapsed time: {:.3}s",
