@@ -97,7 +97,7 @@ fn bake_graphics_resources() {
             bitmapfont_create_from_ttf(
                 &style.fontname,
                 &properties.ttf_data_bytes,
-                "assets_temp",
+                "target/assets_temp",
                 properties.render_params.height_in_pixels,
                 properties.render_params.raster_offset,
                 style.bordered,
@@ -111,7 +111,7 @@ fn bake_graphics_resources() {
         result_fonts.insert(font.name.clone(), font);
     }
 
-    // Convert png and aseprite files to png sheets and move to them to `assets_temp`
+    // Convert png and aseprite files to png sheets and move to them to `target/assets_temp`
     let mut imagepaths = vec![];
     imagepaths.append(&mut system::collect_files_by_extension_recursive(
         "assets", ".ase",
@@ -124,7 +124,9 @@ fn bake_graphics_resources() {
         IndexMap<Animationname, AssetAnimation>,
     )> = imagepaths
         .par_iter()
-        .map(|imagepath| aseprite::create_sheet_animations(imagepath, "assets", "assets_temp"))
+        .map(|imagepath| {
+            aseprite::create_sheet_animations(imagepath, "assets", "target/assets_temp")
+        })
         .collect();
     for (sprites, animations) in sprites_and_animations {
         result_sprites.extend(sprites);
@@ -133,7 +135,7 @@ fn bake_graphics_resources() {
 
     // Create texture atlas and Adjust positions of our sprites according to the final packed
     // atlas positions
-    let result_atlas = atlas_create_from_pngs("assets_temp", "assets_baked", 1024);
+    let result_atlas = atlas_create_from_pngs("target/assets_temp", "assets_baked", 1024);
     for (sprite_name, sprite_pos) in &result_atlas.sprite_positions {
         if result_sprites.contains_key(sprite_name) {
             // Atlas-sprite is a regular sprite
@@ -268,15 +270,17 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
                 },
             );
         } else {
-            let test_png_filepath =
-                system::path_join("assets_temp", &(font_name.clone() + "_fontsize_test.png"));
+            let test_png_filepath = system::path_join(
+                "target/assets_temp",
+                &(font_name.clone() + "_fontsize_test.png"),
+            );
             log::warn!(
                 "Font is missing its render parameters: '{}' - Created font size test image at '{}'",
                 &font_filepath,
                 &test_png_filepath
             );
             let test_png_filepath = system::path_join(
-                "assets_temp",
+                "target/assets_temp",
                 &(font_name.clone() + "_fontsize_test_offset_-0.5.png"),
             );
             BitmapFont::test_font_sizes(
@@ -288,7 +292,7 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
                 &test_png_filepath,
             );
             let test_png_filepath = system::path_join(
-                "assets_temp",
+                "target/assets_temp",
                 &(font_name.clone() + "_fontsize_test_offset_0.0.png"),
             );
             BitmapFont::test_font_sizes(
@@ -300,7 +304,7 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
                 &test_png_filepath,
             );
             let test_png_filepath = system::path_join(
-                "assets_temp",
+                "target/assets_temp",
                 &(font_name.clone() + "_fontsize_test_offset_0.5.png"),
             );
             BitmapFont::test_font_sizes(
@@ -759,18 +763,19 @@ fn main() {
 
     let start_time = std::time::Instant::now();
 
-    if system::path_exists("assets_temp") {
+    if system::path_exists("target/assets_temp") {
         loop {
-            if std::fs::remove_dir_all("assets_temp").is_ok() {
+            if std::fs::remove_dir_all("target/assets_temp").is_ok() {
                 break;
             }
             log::warn!(
-                "Unable to delete 'assets_temp' dir, are files from this folder still open?"
+                "Unable to delete 'target/assets_temp' dir, are files from this folder still open?"
             );
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
     }
-    std::fs::create_dir_all("assets_temp").expect("Unable to create 'assets_temp' dir");
+    std::fs::create_dir_all("target/assets_temp")
+        .expect("Unable to create 'target/assets_temp' dir");
 
     if system::path_exists("assets_baked") {
         loop {
