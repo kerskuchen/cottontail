@@ -782,12 +782,17 @@ fn main() {
 
     create_credits_file(
         "assets/credits.txt",
-        &["assets", "code"],
+        &["assets", "assets_copy", "assets_executable"],
         "resources/credits.txt",
     );
 
     if system::path_exists("assets_copy") {
         system::path_copy_directory_contents_recursive("assets_copy", "resources");
+    }
+    // Delete license files that got accidentally copied over to output path.
+    // NOTE: We don't need those because we already created a credits file containing all licenses
+    for license_path in system::collect_files_by_extension_recursive("resources", ".license") {
+        std::fs::remove_file(&license_path).expect(&format!("Cannot delete '{}'", &license_path));
     }
 
     bake_graphics_resources();

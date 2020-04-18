@@ -2,15 +2,15 @@
 
 * Replaces git subtrees by submodules
 * Do bugreport on easy_process 
+* Create static assets dir concept that is not processed and just copied directly to assets_baked
 
 ## Next:
 
-* Create static assets dir concept that is not processed and just copied directly to assets_baked
+* Rename main executable to launcher
 
 ## Backlog:
 
 * Create build_shipping.bat that copies assets_baked and launcher.exe into ouput dir
-* Rename main executable to launcher
 * Prefix all generic files like `main.rs`, `lib.rs`, `mod.rs` with its module/cratename
 
 * Should we refactor clipping glyph iterator to use basic iterator internally?
