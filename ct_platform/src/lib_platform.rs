@@ -373,8 +373,8 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
                 &savadata_dir
             );
             sdl_controller
-                .load_mappings("assets_baked/gamecontrollerdb.txt")
-                .expect("Cannot find 'assets_baked/gamecontrollerdb.txt' - game data corrupt?")
+                .load_mappings("resources/etc/gamecontrollerdb.txt")
+                .expect("Cannot find 'resources/etc/gamecontrollerdb.txt' - game data corrupt?")
         });
 
     // ---------------------------------------------------------------------------------------------

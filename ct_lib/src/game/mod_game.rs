@@ -109,8 +109,8 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
             let _drawstate_setup_timer = TimerScoped::new_scoped("Drawstate setup time");
 
             let window_config = GameStateType::get_window_config();
-            let atlas = game_load_atlas("assets_baked");
-            let fonts = game_load_fonts("assets_baked");
+            let atlas = game_load_atlas("resources");
+            let fonts = game_load_fonts("resources");
             let mut draw = Drawstate::new(atlas, fonts);
             game_setup_window(
                 &mut draw,
@@ -131,7 +131,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
             self.draw = Some(draw);
         }
         if self.assets.is_none() {
-            let animations = game_load_animations("assets_baked");
+            let animations = game_load_animations("resources");
             self.assets = Some(GameAssets::new(animations));
         }
         if self.audio.is_none() {
@@ -179,7 +179,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
                 {
                     let _audiostate_setup_timer = TimerScoped::new_scoped("Audiostate setup time");
 
-                    let audiorecordings_mono = game_load_audiorecordings_mono("assets_baked");
+                    let audiorecordings_mono = game_load_audiorecordings_mono("resources");
                     for (recording_name, buffer) in audiorecordings_mono.into_iter() {
                         audio.add_recording_mono(&recording_name, buffer);
                     }

@@ -277,6 +277,12 @@ fn project_refresh() {
             "assets",
         );
     }
+    if !system::path_exists("assets_copy") {
+        ct_lib::system::path_copy_directory_contents_recursive(
+            "cottontail/ct_makeproject/templates_assets/assets_copy",
+            "assets_copy",
+        );
+    }
 
     println!("FINISHED REFRESHING PROJECT INFO");
 }

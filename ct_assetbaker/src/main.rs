@@ -135,7 +135,7 @@ fn bake_graphics_resources() {
 
     // Create texture atlas and Adjust positions of our sprites according to the final packed
     // atlas positions
-    let result_atlas = atlas_create_from_pngs("target/assets_temp", "assets_baked", 1024);
+    let result_atlas = atlas_create_from_pngs("target/assets_temp", "resources", 1024);
     for (sprite_name, sprite_pos) in &result_atlas.sprite_positions {
         if result_sprites.contains_key(sprite_name) {
             // Atlas-sprite is a regular sprite
@@ -207,14 +207,14 @@ fn bake_graphics_resources() {
 fn bake_audio_resources() {
     let ogg_paths = system::collect_files_by_extension_recursive("assets", ".ogg");
     for ogg_path_source in &ogg_paths {
-        let ogg_path_dest = ogg_path_source.replace("assets", "assets_baked");
+        let ogg_path_dest = ogg_path_source.replace("assets", "resources");
         std::fs::create_dir_all(system::path_without_filename(&ogg_path_dest)).unwrap();
         std::fs::copy(ogg_path_source, ogg_path_dest).unwrap();
     }
 
     let wav_paths = system::collect_files_by_extension_recursive("assets", ".wav");
     for wav_path_source in &wav_paths {
-        let wav_path_dest = wav_path_source.replace("assets", "assets_baked");
+        let wav_path_dest = wav_path_source.replace("assets", "resources");
         std::fs::create_dir_all(system::path_without_filename(&wav_path_dest)).unwrap();
         std::fs::copy(wav_path_source, wav_path_dest).unwrap();
     }
@@ -539,7 +539,7 @@ pub fn atlas_create_from_pngs(
 
             // NOTE: We assume that our atlas textures will be located at the root of our final destination,
             //       so we drop the prefix
-            let texture_path_shortened = texture_path.replace("assets_baked/", "");
+            let texture_path_shortened = texture_path.replace("resources/", "");
             texture_imagepaths.push(texture_path_shortened);
         }
         texture_imagepaths
@@ -639,7 +639,7 @@ fn convert_animation(anim: &AssetAnimation) -> Animation {
 fn serialize_sprites(sprite_map: &IndexMap<Spritename, AssetSprite>, atlas_texture_size: u32) {
     let human_readable: Vec<AssetSprite> = sprite_map.values().cloned().collect();
     std::fs::write(
-        "assets_baked/sprites.json",
+        "resources/sprites.json",
         serde_json::to_string_pretty(&human_readable).unwrap(),
     )
     .unwrap();
@@ -650,7 +650,7 @@ fn serialize_sprites(sprite_map: &IndexMap<Spritename, AssetSprite>, atlas_textu
         .map(|(index, sprite)| convert_sprite(sprite, index as u32, atlas_texture_size))
         .collect();
     std::fs::write(
-        "assets_baked/sprites.data",
+        "resources/sprites.data",
         bincode::serialize(&binary).unwrap(),
     )
     .unwrap();
@@ -659,7 +659,7 @@ fn serialize_sprites(sprite_map: &IndexMap<Spritename, AssetSprite>, atlas_textu
 fn serialize_fonts(font_map: &IndexMap<Fontname, AssetFont>) {
     let human_readable: Vec<AssetFont> = font_map.values().cloned().collect();
     std::fs::write(
-        "assets_baked/fonts.json",
+        "resources/fonts.json",
         serde_json::to_string_pretty(&human_readable).unwrap(),
     )
     .unwrap();
@@ -668,17 +668,13 @@ fn serialize_fonts(font_map: &IndexMap<Fontname, AssetFont>) {
         .iter()
         .map(|(name, font)| (name.clone(), convert_font(font)))
         .collect();
-    std::fs::write(
-        "assets_baked/fonts.data",
-        bincode::serialize(&binary).unwrap(),
-    )
-    .unwrap();
+    std::fs::write("resources/fonts.data", bincode::serialize(&binary).unwrap()).unwrap();
 }
 
 fn serialize_animations(animation_map: &IndexMap<Animationname, AssetAnimation>) {
     let human_readable: Vec<AssetAnimation> = animation_map.values().cloned().collect();
     std::fs::write(
-        "assets_baked/animations.json",
+        "resources/animations.json",
         serde_json::to_string_pretty(&human_readable).unwrap(),
     )
     .unwrap();
@@ -688,7 +684,7 @@ fn serialize_animations(animation_map: &IndexMap<Animationname, AssetAnimation>)
         .map(|(name, anim)| (name.clone(), convert_animation(anim)))
         .collect();
     std::fs::write(
-        "assets_baked/animations.data",
+        "resources/animations.data",
         bincode::serialize(&binary).unwrap(),
     )
     .unwrap();
@@ -697,17 +693,13 @@ fn serialize_animations(animation_map: &IndexMap<Animationname, AssetAnimation>)
 fn serialize_atlas(atlas: &AssetAtlas) {
     // Human readable
     std::fs::write(
-        "assets_baked/atlas.json",
+        "resources/atlas.json",
         serde_json::to_string_pretty(&atlas).unwrap(),
     )
     .unwrap();
 
     let binary: Vec<String> = atlas.texture_imagepaths.clone();
-    std::fs::write(
-        "assets_baked/atlas.data",
-        bincode::serialize(&binary).unwrap(),
-    )
-    .unwrap();
+    std::fs::write("resources/atlas.data", bincode::serialize(&binary).unwrap()).unwrap();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -777,30 +769,26 @@ fn main() {
     std::fs::create_dir_all("target/assets_temp")
         .expect("Unable to create 'target/assets_temp' dir");
 
-    if system::path_exists("assets_baked") {
+    if system::path_exists("resources") {
         loop {
-            if std::fs::remove_dir_all("assets_baked").is_ok() {
+            if std::fs::remove_dir_all("resources").is_ok() {
                 break;
             }
-            log::warn!(
-                "Unable to delete 'assets_baked' dir, are files from this folder still open?"
-            );
+            log::warn!("Unable to delete 'resources' dir, are files from this folder still open?");
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
     }
-    std::fs::create_dir_all("assets_baked").expect("Unable to create 'assets_baked' dir");
+    std::fs::create_dir_all("resources").expect("Unable to create 'resources' dir");
 
     create_credits_file(
         "assets/credits.txt",
         &["assets", "code"],
-        "assets_baked/credits.txt",
+        "resources/credits.txt",
     );
 
-    std::fs::copy(
-        "assets/etc/gamecontrollerdb.txt",
-        "assets_baked/gamecontrollerdb.txt",
-    )
-    .unwrap();
+    if system::path_exists("assets_copy") {
+        system::path_copy_directory_contents_recursive("assets_copy", "resources");
+    }
 
     bake_graphics_resources();
     bake_audio_resources();
