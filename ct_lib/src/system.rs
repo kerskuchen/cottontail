@@ -38,6 +38,15 @@ pub fn path_exists(path: &str) -> bool {
     Path::new(path).exists()
 }
 
+pub fn path_dir_empty(dir_path: &str) -> bool {
+    walkdir::WalkDir::new(dir_path)
+        .into_iter()
+        .filter_map(|maybe_entry| maybe_entry.ok())
+        .filter(|entry| entry.file_name().to_string_borrowed() != dir_path)
+        .count()
+        == 0
+}
+
 /// NOTE: Result contains Unix-style file seperators only
 pub fn path_join(first: &str, second: &str) -> String {
     Path::new(first)

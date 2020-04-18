@@ -780,14 +780,19 @@ fn main() {
     }
     std::fs::create_dir_all("resources").expect("Unable to create 'resources' dir");
 
-    if system::path_exists("assets/credits.txt") {
-        create_credits_file(
-            "assets/credits.txt",
-            &["assets", "assets_copy", "assets_executable"],
-            "resources/credits.txt",
-        );
-    } else {
-        log::warn!("No credits file found at 'assets/credits.txt'")
+    if system::path_exists("assets") && !system::path_dir_empty("assets") {
+        if system::path_exists("assets/credits.txt") {
+            create_credits_file(
+                "assets/credits.txt",
+                &["assets", "assets_copy", "assets_executable"],
+                "resources/credits.txt",
+            );
+        } else {
+            log::warn!("No credits file found at 'assets/credits.txt'")
+        }
+
+        bake_graphics_resources();
+        bake_audio_resources();
     }
 
     if system::path_exists("assets_copy") {
@@ -797,11 +802,6 @@ fn main() {
     // NOTE: We don't need those because we already created a credits file containing all licenses
     for license_path in system::collect_files_by_extension_recursive("resources", ".license") {
         std::fs::remove_file(&license_path).expect(&format!("Cannot delete '{}'", &license_path));
-    }
-
-    if system::path_exists("assets") {
-        bake_graphics_resources();
-        bake_audio_resources();
     }
 
     log::info!(
