@@ -201,8 +201,7 @@ fn project_refresh() {
     for template_filepath in &[
         "cottontail/ct_makeproject/templates_repository/template__.gitattributes",
         "cottontail/ct_makeproject/templates_repository/template__.gitignore",
-        "cottontail/ct_makeproject/templates_repository/template__git_push.bat",
-        "cottontail/ct_makeproject/templates_repository/template__git_merge_upstream_changes.bat",
+        "cottontail/ct_makeproject/templates_repository/template__git_update_cottontail.bat",
         "cottontail/ct_makeproject/templates_repository/template__project_refresh.bat",
     ] {
         template_copy_to_dir(template_filepath, "./", &project_details, true);
@@ -312,10 +311,10 @@ fn project_create(project_name: &str, project_git_url: Option<String>) {
         );
     }
 
-    // Add Cottontail as git subtree
+    // Add Cottontail as git submodule
     for command in &[
-        "git remote add -f cottontail https://github.com/kerskuchen/cottontail.git",
-        "git subtree add --prefix cottontail cottontail master --squash",
+        "git submodule add -b master https://github.com/kerskuchen/cottontail.git",
+        "git submodule update --init --remote",
     ] {
         print!(
             "> {}\n{}",
