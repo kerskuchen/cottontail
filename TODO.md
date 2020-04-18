@@ -14,6 +14,7 @@
 ## Backlog:
 
 * Add installation instructions to pixie stitch 
+* Add template clone instructions for new projects
 
 * Use https://github.com/GarkGarcia/icon_baker to bake .ico file so we can get rid of imagemagick. 
   - This will also allow us to choose the right icon size. At the moment we just scale the 512.png
