@@ -3,6 +3,7 @@
 * Updates dependencies
 * Restructured windows_build_shipping.bat so that it does not crash
 * Replaced imagemagick dependency for .ico creation with custom assetbaker functionalty
+* Better windows shipping batch error handling
 
 ## Next:
 

@@ -1,4 +1,6 @@
 resources/
+resources_executable/
+temp/
 target/
 shipping_windows/
 
