@@ -2,6 +2,8 @@ use ct_lib::draw::*;
 use ct_lib::draw_common::*;
 use ct_lib::math::*;
 
+use ct_lib::log;
+
 use glow::*;
 
 use std::collections::HashMap;

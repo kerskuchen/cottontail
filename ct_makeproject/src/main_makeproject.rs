@@ -1,10 +1,12 @@
 use ct_lib::system;
-use ct_lib::system::easy_process;
 use ct_lib::system::PathHelper;
+
+use ct_lib::indexmap::IndexMap;
+use ct_lib::serde_json;
+use ct_lib::system::easy_process;
 
 use chrono::prelude::*;
 use heck::{CamelCase, TitleCase};
-use indexmap::IndexMap;
 
 type ProjectDetails = IndexMap<String, String>;
 type ProjectDetailsLocal = IndexMap<String, String>;
@@ -23,7 +25,7 @@ fn create_default_project_details(project_name: String) -> (ProjectDetails, Proj
 
     let windows_appdata_dir = project_display_name.to_camel_case();
 
-    let mut details: ProjectDetails = indexmap::IndexMap::new();
+    let mut details: ProjectDetails = IndexMap::new();
     details.insert("project_name".to_owned(), project_name);
     details.insert("project_display_name".to_owned(), project_display_name);
     details.insert(
@@ -33,7 +35,7 @@ fn create_default_project_details(project_name: String) -> (ProjectDetails, Proj
     details.insert("project_copyright_year".to_owned(), project_copyright_year);
     details.insert("windows_appdata_dir".to_owned(), windows_appdata_dir);
 
-    let mut details_local: ProjectDetailsLocal = indexmap::IndexMap::new();
+    let mut details_local: ProjectDetailsLocal = IndexMap::new();
     details_local.insert("windows_certificate_path".to_owned(), "".to_owned());
 
     (details, details_local)

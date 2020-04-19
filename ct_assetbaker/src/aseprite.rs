@@ -5,8 +5,9 @@ use ct_lib::math::*;
 use ct_lib::sprite::*;
 use ct_lib::system;
 
-use ct_lib::IndexMap;
-use serde_derive::Deserialize;
+use ct_lib::indexmap::IndexMap;
+use ct_lib::serde_derive::Deserialize;
+use ct_lib::serde_json;
 
 pub fn create_sheet_animations(
     image_filepath: &str,

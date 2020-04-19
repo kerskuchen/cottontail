@@ -7,7 +7,7 @@ pub use super::system;
 
 use serde_derive::Serialize;
 
-use super::IndexMap;
+use super::indexmap::IndexMap;
 
 use rect_packer;
 

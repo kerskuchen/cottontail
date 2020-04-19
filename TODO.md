@@ -4,14 +4,14 @@
 * Restructured windows_build_shipping.bat so that it does not crash
 * Replaced imagemagick dependency for .ico creation with custom assetbaker functionalty
 * Better windows shipping batch error handling
+* Using dependencies from ct_lib if possible
 
 ## Next:
 
 
 ## Backlog:
 
-
-* Can we just re-export some dependencies in ct_lib? like log and serde and bincode?
+* Fix pixie stitch with new shipping workflow
 * Add installation instructions to pixie stitch 
 * Add template clone instructions for new projects
 

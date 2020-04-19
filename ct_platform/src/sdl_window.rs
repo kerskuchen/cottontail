@@ -1,5 +1,7 @@
 use super::renderer_opengl::Renderer;
 
+use ct_lib::log;
+
 use std::collections::HashMap;
 
 pub struct Window {

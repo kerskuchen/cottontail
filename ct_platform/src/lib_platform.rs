@@ -5,6 +5,8 @@ mod sdl_window;
 use ct_lib::audio::*;
 use ct_lib::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand};
 
+use ct_lib::log;
+
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
