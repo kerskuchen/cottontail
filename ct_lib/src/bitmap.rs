@@ -14,6 +14,17 @@ use rect_packer;
 pub type Bitmap = super::grid::Grid<PixelRGBA>;
 
 impl Bitmap {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut result = Vec::new();
+        for pixel in &self.data {
+            result.push(pixel.r);
+            result.push(pixel.g);
+            result.push(pixel.b);
+            result.push(pixel.a);
+        }
+        result
+    }
+
     pub fn from_premultiplied(&self) -> Bitmap {
         let mut result = self.clone();
         for y in 0..self.height {
@@ -43,6 +54,22 @@ impl Bitmap {
                 result.set(x, y, color);
             }
         }
+        result
+    }
+
+    pub fn scale(&mut self, new_width: u32, new_height: u32) {
+        *self = self.scaled_to_sample_nearest_neighbor(new_width, new_height);
+    }
+
+    #[must_use]
+    pub fn scaled_to_sample_nearest_neighbor(&self, new_width: u32, new_height: u32) -> Bitmap {
+        assert!(new_width > 0);
+        assert!(new_height > 0);
+
+        let mut result = Bitmap::new(new_width, new_height);
+        let result_rect = result.rect();
+        Bitmap::copy_region_sample_nearest_neighbor(self, self.rect(), &mut result, result_rect);
+
         result
     }
 

@@ -11,6 +11,7 @@ use ct_lib::system;
 use ct_lib::IndexMap;
 
 use fern;
+use ico;
 use log;
 use rayon::prelude::*;
 use serde_derive::{Deserialize, Serialize};
@@ -703,6 +704,83 @@ fn serialize_atlas(atlas: &AssetAtlas) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Launcher icon
+
+fn load_existing_launcher_icon_images(search_dir: &str) -> HashMap<i32, Bitmap> {
+    let mut result = HashMap::new();
+    let image_paths = system::collect_files_by_extension_recursive(search_dir, ".png");
+    for image_path in &image_paths {
+        let image = Bitmap::create_from_png_file(image_path);
+        let size = system::path_to_filename_without_extension(image_path)
+            .parse()
+            .expect(&format!(
+                "Launcher icon name '{}' invalid, see README_ICONS.md",
+                image_path,
+            ));
+
+        assert!(
+            image.width == size && image.height == size,
+            "Launcher icon name '{}' does not match its dimension ({}x{}), see README_ICONS.md",
+            image_path,
+            image.width,
+            image.height
+        );
+        result.insert(size, image);
+    }
+    assert!(
+        !result.is_empty(),
+        "No launcher icons found at '{}'",
+        search_dir
+    );
+    result
+}
+
+fn create_windows_launcher_icon_images(
+    existing_launcher_icons: &HashMap<i32, Bitmap>,
+) -> HashMap<i32, Bitmap> {
+    let biggest_size = existing_launcher_icons.keys().max().unwrap();
+    let windows_icon_sizes = [256, 128, 64, 48, 32, 16];
+    let mut result = HashMap::new();
+    for &size in windows_icon_sizes.iter() {
+        if !existing_launcher_icons.contains_key(&size) {
+            let scaled_image = existing_launcher_icons
+                .get(&biggest_size)
+                .unwrap()
+                .scaled_to_sample_nearest_neighbor(size as u32, size as u32);
+            result.insert(size, scaled_image);
+        } else {
+            let image = existing_launcher_icons.get(&size).unwrap();
+            result.insert(size, image.clone());
+        }
+    }
+    result
+}
+
+fn create_windows_launcher_icon(
+    windows_icon_images: &HashMap<i32, Bitmap>,
+    icon_output_filepath: &str,
+) {
+    let mut iconpacker = ico::IconDir::new(ico::ResourceType::Icon);
+    for (_size, image) in windows_icon_images.iter() {
+        let icon_image = ico::IconImage::from_rgba_data(
+            image.width as u32,
+            image.height as u32,
+            image.to_bytes(),
+        );
+
+        iconpacker.add_entry(ico::IconDirEntry::encode(&icon_image).expect(&format!(
+            "Cannot encode icon ({}x{}) into launcher icon",
+            image.width, image.height,
+        )));
+    }
+    let output_file = std::fs::File::create(icon_output_filepath)
+        .expect(&format!("Could not create path '{}'", icon_output_filepath));
+    iconpacker
+        .write(output_file)
+        .expect(&format!("Could not write to '{}'", icon_output_filepath));
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main
 
 fn create_credits_file(
@@ -734,7 +812,25 @@ fn create_credits_file(
     std::fs::write(output_filepath, credits_content).unwrap();
 }
 
+fn recreate_directory(path: &str) {
+    if system::path_exists(path) {
+        loop {
+            if std::fs::remove_dir_all(path).is_ok() {
+                break;
+            }
+            log::warn!(
+                "Unable to delete '{}' dir, are files from this folder still open?",
+                path
+            );
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+    }
+    std::fs::create_dir_all(path).expect(&format!("Unable to create '{}' dir", path));
+}
+
 fn main() {
+    let start_time = std::time::Instant::now();
+
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!("{}: {}\r", record.level(), message))
@@ -753,32 +849,9 @@ fn main() {
         std::process::abort();
     }));
 
-    let start_time = std::time::Instant::now();
-
-    if system::path_exists("target/assets_temp") {
-        loop {
-            if std::fs::remove_dir_all("target/assets_temp").is_ok() {
-                break;
-            }
-            log::warn!(
-                "Unable to delete 'target/assets_temp' dir, are files from this folder still open?"
-            );
-            std::thread::sleep(std::time::Duration::from_secs(1));
-        }
-    }
-    std::fs::create_dir_all("target/assets_temp")
-        .expect("Unable to create 'target/assets_temp' dir");
-
-    if system::path_exists("resources") {
-        loop {
-            if std::fs::remove_dir_all("resources").is_ok() {
-                break;
-            }
-            log::warn!("Unable to delete 'resources' dir, are files from this folder still open?");
-            std::thread::sleep(std::time::Duration::from_secs(1));
-        }
-    }
-    std::fs::create_dir_all("resources").expect("Unable to create 'resources' dir");
+    recreate_directory("target/assets_temp");
+    recreate_directory("resources");
+    recreate_directory("resources_executable");
 
     if system::path_exists("assets") && !system::path_dir_empty("assets") {
         if system::path_exists("assets/credits.txt") {
@@ -797,11 +870,39 @@ fn main() {
 
     if system::path_exists("assets_copy") {
         system::path_copy_directory_contents_recursive("assets_copy", "resources");
+        // Delete license files that got accidentally copied over to output path.
+        // NOTE: We don't need those because we will create a credits file containing all licenses
+        for license_path in system::collect_files_by_extension_recursive("resources", ".license") {
+            std::fs::remove_file(&license_path)
+                .expect(&format!("Cannot delete '{}'", &license_path));
+        }
     }
-    // Delete license files that got accidentally copied over to output path.
-    // NOTE: We don't need those because we already created a credits file containing all licenses
-    for license_path in system::collect_files_by_extension_recursive("resources", ".license") {
-        std::fs::remove_file(&license_path).expect(&format!("Cannot delete '{}'", &license_path));
+
+    if system::path_exists("assets_executable") {
+        // Copy version info
+        if system::path_exists("assets_executable/versioninfo.rc") {
+            std::fs::copy(
+                "assets_executable/versioninfo.rc",
+                "resources_executable/versioninfo.rc",
+            )
+            .expect(
+                "Could not copy from 'assets_executable/versioninfo.rc' to 'resources_executable/versioninfo.rc'",
+            );
+        }
+
+        // Create launcher icon
+        if system::path_exists("assets_executable/launcher_icon") {
+            let existing_launcher_icons =
+                load_existing_launcher_icon_images("assets_executable/launcher_icon");
+            let windows_icon_images = create_windows_launcher_icon_images(&existing_launcher_icons);
+            for (&size, image) in windows_icon_images.iter() {
+                Bitmap::write_to_png_file(
+                    image,
+                    &format!("target/assets_temp/launcher_icons_windows/{}.png", size),
+                );
+            }
+            create_windows_launcher_icon(&windows_icon_images, "resources_executable/launcher.ico");
+        }
     }
 
     log::info!(
