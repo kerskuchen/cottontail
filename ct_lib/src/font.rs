@@ -364,7 +364,7 @@ impl BitmapFont {
         color_glyph: PixelRGBA,
         color_border: PixelRGBA,
     ) -> BitmapFont {
-        let font = rusttype::Font::from_bytes(font_ttf_bytes)
+        let font = rusttype::Font::try_from_bytes(font_ttf_bytes)
             .expect(&format!("Could not decode font from bytes"));
 
         // Font metrics
@@ -568,7 +568,6 @@ impl BitmapGlyph {
     ) -> BitmapGlyph {
         let glyph = font
             .glyph(codepoint)
-            .standalone()
             .scaled(rusttype::Scale::uniform(font_height as f32))
             // NOTE: We pre-position the glyph such that it vertically fits into the
             //       interval [0, pixel_text_height - 1], where 0 is a glyphs highest possible
