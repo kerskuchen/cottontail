@@ -1,32 +1,20 @@
 ## Done today
 
-* Replaces git subtrees by submodules
-* Do bugreport on easy_process 
-* Create static assets dir concept that is not processed and just copied directly to assets_baked
-* Rename main executable to launcher
-* Prefix all generic files like `main.rs`, `lib.rs`, `mod.rs` with its module/cratename
-* Create build_shipping.bat that copies resources and launcher.exe into ouput dir
-* Fix pixie stitch
+* Updates dependencies
+* Restructured windows_build_shipping.bat so that it does not crash
 
 ## Next:
-
-
-## Backlog:
-
-* Find out why we sometimes get 
-  ```ERROR: Unable to create 'resources' dir: Os { code: 5, kind: PermissionDenied, message: 
-     "Access is denied." } 
-     Error occured at: cottontail\ct_assetbaker\src/main_assetbaker.rs:781:5
-     error: process didn't exit successfully: `target\release\ct_assetbaker.exe` (exit code: 0xc0000409, STATUS_STACK_BUFFER_OVERRUN)
-  ```
-  when doing asset-baking
-
-* Add installation instructions to pixie stitch 
-* Add template clone instructions for new projects
 
 * Use https://github.com/GarkGarcia/icon_baker to bake .ico file so we can get rid of imagemagick. 
   - This will also allow us to choose the right icon size. At the moment we just scale the 512.png
     down to every needed size and ignoring existing ones
+
+## Backlog:
+
+
+* Add installation instructions to pixie stitch 
+* Add template clone instructions for new projects
+
 
 * Should we refactor clipping glyph iterator to use basic iterator internally?
 
