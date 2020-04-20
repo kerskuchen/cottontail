@@ -6,6 +6,7 @@
 * Adds template instructions for new projects
 * Re-add old gamecode from previous bytepath implementation to our current project
 * Reads display index and controller deadzone thresholds from config file
+* Moved WINDOW_TITLE, SAVE_FOLDER_NAME and COMPANY_NAME to its own generated file 
 
 ## Next:
 
@@ -26,8 +27,6 @@
   - Debug print frametimes
   - Set log levels
   - Splashscreen
-* How can we make GAME_WINDOW_TITLE, GAME_SAVE_FOLDER_NAME and GAME_COMPANY_NAME available to the
-  platform layer in a much more convenient way? Maybe we can use include_bytes! macro?
 * Clean up old stuff code at the end of draw.rs and sdl_window.rs. 
   Determine what is needed and implement it. Throw out the rest 
 * Easy debug-printing text API that draws in screenspace (not canvas-space)

@@ -242,13 +242,15 @@ fn project_refresh() {
     // ---------------------------------------------------------------------------------------------
     // Executable setup
 
-    if !system::path_exists("launcher") {
+    if !system::path_exists("launcher/Cargo.toml") {
         template_copy_to_dir(
             "cottontail/ct_makeproject/templates_executable/template__Cargo.toml",
             "launcher",
             &project_details,
             false,
         );
+    }
+    if !system::path_exists("launcher/main_launcher.rs") {
         template_copy_to_dir(
             "cottontail/ct_makeproject/templates_executable/template__main_launcher.rs",
             "launcher/src",
@@ -256,6 +258,13 @@ fn project_refresh() {
             false,
         );
     }
+    // NOTE: This should overwrite always
+    template_copy_to_dir(
+        "cottontail/ct_makeproject/templates_executable/template__main_launcher_info.rs",
+        "launcher/src",
+        &project_details,
+        false,
+    );
 
     // ---------------------------------------------------------------------------------------------
     // Assets setup

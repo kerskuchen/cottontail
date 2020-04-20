@@ -8,9 +8,7 @@ use ct_platform;
 const CANVAS_WIDTH: f32 = 480.0;
 const CANVAS_HEIGHT: f32 = 270.0;
 
-pub const GAME_WINDOW_TITLE: &str = "{{project_display_name}}";
-pub const GAME_SAVE_FOLDER_NAME: &str = "{{windows_appdata_dir}}";
-pub const GAME_COMPANY_NAME: &str = "{{project_company_name}}";
+mod main_launcher_info;
 
 const WINDOW_CONFIG: WindowConfig = WindowConfig {
     has_canvas: true,
@@ -36,9 +34,9 @@ pub struct GameState {
 impl GameStateInterface for GameState {
     fn get_game_config() -> GameInfo {
         GameInfo {
-            game_window_title: GAME_WINDOW_TITLE.to_owned(),
-            game_save_folder_name: GAME_SAVE_FOLDER_NAME.to_owned(),
-            game_company_name: GAME_COMPANY_NAME.to_owned(),
+            game_window_title: game_info::LAUNCHER_WINDOW_TITLE.to_owned(),
+            game_save_folder_name: game_info::LAUNCHER_SAVE_FOLDER_NAME.to_owned(),
+            game_company_name: game_info::LAUNCHER_COMPANY_NAME.to_owned(),
         }
     }
     fn get_window_config() -> WindowConfig {
