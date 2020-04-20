@@ -62,6 +62,65 @@ impl TimerScoped {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Convenience Serialization / Deserialization
+
+pub fn serialize_to_file_binary<T>(data: &T, filepath: &str)
+where
+    T: serde::Serialize,
+{
+    let encoded_data = bincode::serialize(data).expect(&format!(
+        "Could not encode data for serializing to binary file '{}'",
+        filepath
+    ));
+    std::fs::write(filepath, encoded_data).expect(&format!(
+        "Could not write serialized data to binary file '{}'",
+        filepath
+    ));
+}
+
+pub fn serialize_to_file_json<T>(data: &T, filepath: &str)
+where
+    T: serde::Serialize,
+{
+    let output_string = serde_json::to_string_pretty(data).expect(&format!(
+        "Could not deserialize data to json for writing to '{}",
+        filepath
+    ));
+    std::fs::write(filepath, output_string).expect(&format!(
+        "Could write data string to json file '{}'",
+        filepath
+    ));
+}
+
+pub fn deserialize_from_file_binary<T>(filepath: &str) -> T
+where
+    for<'de> T: serde::Deserialize<'de>,
+{
+    let file = std::fs::File::open(filepath).expect(&format!(
+        "Could not open binary file '{}' for deserialization",
+        filepath
+    ));
+    bincode::deserialize_from(&file).expect(&format!(
+        "Could not deserialize from binary file '{}'",
+        filepath
+    ))
+}
+
+pub fn deserialize_from_file_json<T>(filepath: &str) -> T
+where
+    for<'de> T: serde::Deserialize<'de>,
+{
+    let file = std::fs::File::open(filepath).expect(&format!(
+        "Could not open json file '{}' for deserialization",
+        filepath
+    ));
+    serde_json::from_reader(&file).expect(&format!(
+        "Could not deserialize from json file '{}'",
+        filepath
+    ))
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Utility
 
 /// Makes a panic info a little easier to read by splitting it into the message and location
@@ -86,21 +145,6 @@ pub fn panic_set_hook_wait_for_keypress() {
         let _ = std::io::stdin().read_line(&mut line).ok();
     }));
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Snippets
-
-/*
-// Quick random values
-
-use rand::Rng;
-let color = Color::new(
-    rand::thread_rng().gen::<f32>(),
-    rand::thread_rng().gen::<f32>(),
-    rand::thread_rng().gen::<f32>(),
-    1.0,
-);
-*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Transmutation
@@ -199,3 +243,18 @@ pub fn common_resolutions(resolutions: &[(u32, u32)]) -> Vec<(u32, u32)> {
     result.sort();
     result
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Snippets
+
+/*
+// Quick random values
+
+use rand::Rng;
+let color = Color::new(
+    rand::thread_rng().gen::<f32>(),
+    rand::thread_rng().gen::<f32>(),
+    rand::thread_rng().gen::<f32>(),
+    1.0,
+);
+*/

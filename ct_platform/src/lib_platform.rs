@@ -4,8 +4,10 @@ mod sdl_window;
 
 use ct_lib::audio::*;
 use ct_lib::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand};
+use ct_lib::system;
 
 use ct_lib::log;
+use ct_lib::serde_derive::{Deserialize, Serialize};
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -15,8 +17,9 @@ use std::sync::{Arc, Mutex};
 
 const ENABLE_PANIC_MESSAGES: bool = false;
 
-struct _GameConfig {
-    display_index_to_use: u32,
+#[derive(Serialize, Deserialize)]
+struct LauncherConfig {
+    display_index_to_use: i32,
     controller_deadzone_threshold_x: f32,
     controller_deadzone_threshold_y: f32,
 }
@@ -187,15 +190,31 @@ fn log_frametimes(
 pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     let launcher_start_time = std::time::Instant::now();
     let game_config = GameStateType::get_game_config();
-    let savadata_dir = platform_get_savegame_dir(
+    let savedata_dir = platform_get_savegame_dir(
         &game_config.game_company_name,
         &game_config.game_save_folder_name,
     );
 
+    // Get launcher config
+    let launcher_config: LauncherConfig = {
+        let config_filepath = system::path_join(&savedata_dir, "launcher_config.json");
+        if system::path_exists(&config_filepath) {
+            ct_lib::deserialize_from_file_json(&config_filepath)
+        } else {
+            let config = LauncherConfig {
+                display_index_to_use: 0,
+                controller_deadzone_threshold_x: 0.1,
+                controller_deadzone_threshold_y: 0.1,
+            };
+            ct_lib::serialize_to_file_json(&config, &config_filepath);
+            config
+        }
+    };
+
     // ---------------------------------------------------------------------------------------------
     // Logging and error handling
 
-    let logfile_path = ct_lib::system::path_join(&savadata_dir, "logging.txt");
+    let logfile_path = ct_lib::system::path_join(&savedata_dir, "logging.txt");
     if ct_lib::system::path_exists(&logfile_path) {
         let remove_result = std::fs::remove_file(&logfile_path);
         if let Err(error) = remove_result {
@@ -277,7 +296,11 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     // ---------------------------------------------------------------------------------------------
     // SDL Window
 
-    let mut window = sdl_window::Window::new(sdl_video.clone(), 0, &game_config.game_window_title);
+    let mut window = sdl_window::Window::new(
+        sdl_video.clone(),
+        launcher_config.display_index_to_use,
+        &game_config.game_window_title,
+    );
     let mut renderer = window.create_renderer();
 
     let target_updates_per_second = window.refresh_rate();
@@ -366,13 +389,13 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
 
     sdl_controller
         .load_mappings(ct_lib::system::path_join(
-            &savadata_dir,
+            &savedata_dir,
             "gamecontrollerdb.txt",
         ))
         .unwrap_or_else(|_error| {
             log::info!(
                 "Could not find 'gamecontrollerdb.txt' at '{}' using default one from game data",
-                &savadata_dir
+                &savedata_dir
             );
             sdl_controller
                 .load_mappings("resources/gamecontrollerdb.txt")

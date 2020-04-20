@@ -5,6 +5,7 @@
 * Adds installation instructions to pixie stitch 
 * Adds template instructions for new projects
 * Re-add old gamecode from previous bytepath implementation to our current project
+* Reads display index and controller deadzone thresholds from config file
 
 ## Next:
 
@@ -12,18 +13,12 @@
 ## Backlog:
 
 
-* Should we refactor clipping glyph iterator to use basic iterator internally?
-
 * Pixie Stitch: 
   - Implement center based coordinate marker system
   - Split images based on coordinate system center
   - Add additional ouput folder for center based coordinate patterns
   - Add custom launcher icon
 
-* Read the following items in the launcher from a config file:
-  - display_to_use;
-  - deadzone_threshold_x;
-  - deadzone_threshold_y;
 * We need a production/develop version where we enable/disable i.e. panic messageboxes. It would be 
   useful to having a config file for this that is read on startup. Maybe this can be the same as the 
   display / controller config file? We want to configure/enable/disable the following things:
