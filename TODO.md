@@ -3,13 +3,12 @@
 * Fixed pixie stitch to work with new shipping workflow
 * Windows shipping build does not crash when resources tool is not available
 * Adds installation instructions to pixie stitch 
+* Adds template instructions for new projects
 
 ## Next:
 
-* Add template clone instructions for new projects
 
 ## Backlog:
-
 
 
 * Should we refactor clipping glyph iterator to use basic iterator internally?
@@ -31,15 +30,21 @@
   Determine what is needed and implement it. Throw out the rest 
 * Easy debug-printing text API that draws in screenspace (not canvas-space)
   - We need to add a debug layer to the drawstate with its own drawqueue
+
 * Allow hotreloading of game assets
 * Support ogg audio and differentiate between mono/stereo recordings
+
 * Add modulators like in https://www.youtube.com/watch?v=n-txrCMvdms especially shift register 
   modulator and newtonian following modulator
+
+* Update version info resource with the crate version
+* Zip up final executable and add version from crate
 * We need to certify our Windows executable with a real certificate
   Maybe like this one:
   https://codesigncert.com/cheapcodesigning
   Also useful:
   https://social.technet.microsoft.com/wiki/contents/articles/38117.microsoft-trusted-root-certificate-program-participants-as-of-june-27-2017.aspx#C
+
 * Future tutorial games:
   - https://simplegametutorials.github.io/
   - https://github.com/noooway/love2d_arkanoid_tutorial

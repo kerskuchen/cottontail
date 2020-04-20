@@ -230,6 +230,14 @@ fn project_refresh() {
             false,
         );
     }
+    if !system::path_exists("README.md") || std::fs::metadata("README.md").unwrap().len() == 0 {
+        template_copy_to_dir(
+            "cottontail/ct_makeproject/templates_repository/template__README.md",
+            "./",
+            &project_details,
+            false,
+        );
+    }
 
     // ---------------------------------------------------------------------------------------------
     // Executable setup
@@ -345,7 +353,7 @@ fn project_create(project_directory_name: &str, project_git_url: Option<String>)
         .expect("Cannot switch to project directory");
 
     // Init git repo and add initial commit
-    std::fs::write("README.md", &project_directory_name).expect("Cannot create readme file");
+    std::fs::write("README.md", "").expect("Cannot create readme file");
     for command in &[
         "git init",
         "git add README.md",
