@@ -1,19 +1,15 @@
 ## Done today
 
-* Updates dependencies
-* Restructured windows_build_shipping.bat so that it does not crash
-* Replaced imagemagick dependency for .ico creation with custom assetbaker functionalty
-* Better windows shipping batch error handling
-* Using dependencies from ct_lib if possible
+* Fixed pixie stitch to work with new shipping workflow
+* Windows shipping build does not crash when resources tool is not available
+* Adds installation instructions to pixie stitch 
 
 ## Next:
 
+* Add template clone instructions for new projects
 
 ## Backlog:
 
-* Fix pixie stitch with new shipping workflow
-* Add installation instructions to pixie stitch 
-* Add template clone instructions for new projects
 
 
 * Should we refactor clipping glyph iterator to use basic iterator internally?
