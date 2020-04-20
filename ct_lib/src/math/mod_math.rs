@@ -73,7 +73,7 @@ pub fn compare_floats(a: f32, b: f32) -> std::cmp::Ordering {
 }
 
 #[inline]
-pub const fn make_even(x: u32) -> u32 {
+pub const fn make_even(x: i32) -> i32 {
     (x / 2) * 2
 }
 
@@ -497,12 +497,18 @@ impl Circle {
         Circle { center, radius }
     }
 
-    /// For a given radius this returns the number of vertices a circle should have to have a
+    /// For a given radius (in pixels) this returns the number of vertices a circle needs to have a
     /// visible pixel error of less than 1/2 pixels
-    pub fn get_optimal_vertex_count(radius: f32) -> usize {
+    pub fn get_optimal_vertex_count_for_drawing(radius: f32) -> usize {
+        if radius < 0.5 {
+            return 4;
+        }
+
         // Based on https://stackoverflow.com/a/11774493 with maximum error of 1/2 pixel
-        ceili(2.0 * PI / f32::acos(2.0 * (1.0 - 0.5 / radius) * (1.0 - 0.5 / radius) - 1.0))
-            as usize
+        let num_vertices =
+            ceili(2.0 * PI / f32::acos(2.0 * (1.0 - 0.5 / radius) * (1.0 - 0.5 / radius) - 1.0));
+
+        clampi(make_even(num_vertices), 4, 128) as usize
     }
 
     #[inline]

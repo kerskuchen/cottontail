@@ -4,6 +4,7 @@
 * Windows shipping build does not crash when resources tool is not available
 * Adds installation instructions to pixie stitch 
 * Adds template instructions for new projects
+* Re-add old gamecode from previous bytepath implementation to our current project
 
 ## Next:
 
@@ -12,6 +13,12 @@
 
 
 * Should we refactor clipping glyph iterator to use basic iterator internally?
+
+* Pixie Stitch: 
+  - Implement center based coordinate marker system
+  - Split images based on coordinate system center
+  - Add additional ouput folder for center based coordinate patterns
+  - Add custom launcher icon
 
 * Read the following items in the launcher from a config file:
   - display_to_use;

@@ -992,20 +992,28 @@ impl Drawstate {
         color: Color,
         additivity: Additivity,
     ) {
-        let num_vertices = Circle::get_optimal_vertex_count(radius);
-        let segment_count = make_even(num_vertices as u32 + 1);
+        if radius < 0.5 {
+            self.draw_pixel(center, depth, color, additivity);
+            return;
+        }
 
+        let num_vertices = Circle::get_optimal_vertex_count_for_drawing(radius);
+        let segment_count = (num_vertices + 1) as u32;
+
+        assert!(num_vertices < 32);
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
 
         vertices.push(center);
 
         let mut angle_current = 0.0;
-        let angle_increment = 360.0 / segment_count as f32;
+        let angle_increment = deg_to_rad(360.0 / segment_count as f32);
         for _ in 0..segment_count {
-            let mut pos = center;
-            pos.x += radius * f32::cos(deg_to_rad(angle_current));
-            pos.y += radius * f32::sin(deg_to_rad(angle_current));
+            let pos = center
+                + Vec2::new(
+                    radius * f32::cos(angle_current),
+                    radius * f32::sin(angle_current),
+                );
             vertices.push(pos);
 
             angle_current += angle_increment;
@@ -1125,15 +1133,24 @@ impl Drawstate {
 
     pub fn ellipse_bresenham(
         &mut self,
-        _center: Vec2,
-        _radius_x: f32,
-        _radius_y: f32,
-        _depth: Depth,
-        _color: Color,
-        _additivity: Additivity,
+        center: Vec2,
+        radius_x: f32,
+        radius_y: f32,
+        depth: Depth,
+        color: Color,
+        additivity: Additivity,
     ) {
         // Based on the Paper "A Fast Bresenham Type AlgorithmFor Drawing Ellipses"
         // https://dai.fmph.uniba.sk/upload/0/01/Ellipse.pdf
+        let center = center.pixel_snapped();
+        let radius_x = roundi(radius_x);
+        let radius_y = roundi(radius_y);
+
+        if radius_x == 0 || radius_y == 0 {
+            self.draw_pixel(center, depth, color, additivity);
+            return;
+        }
+
         todo!()
     }
 
@@ -1146,8 +1163,13 @@ impl Drawstate {
         color: Color,
         additivity: Additivity,
     ) {
-        let num_vertices = Circle::get_optimal_vertex_count(radius);
-        let segment_count = make_even(num_vertices as u32 + 1);
+        if radius < 0.5 {
+            self.draw_pixel(center, depth, color, additivity);
+            return;
+        }
+
+        let num_vertices = Circle::get_optimal_vertex_count_for_drawing(radius);
+        let segment_count = num_vertices as u32 + 1;
 
         let radius_outer = radius + 0.5 * thickness;
         let radius_inner = radius - 0.5 * thickness;
