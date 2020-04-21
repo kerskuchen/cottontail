@@ -7,13 +7,14 @@
 * Re-add old gamecode from previous bytepath implementation to our current project
 * Reads display index and controller deadzone thresholds from config file
 * Moved WINDOW_TITLE, SAVE_FOLDER_NAME and COMPANY_NAME to its own generated file 
+* Pixie Stitch: 
+  - Implement origin based coordinate marker system
+  - Adds additional ouput folder for center based coordinate patterns
 
 ## Next:
 
 * Pixie Stitch: 
-  - Implement center based coordinate marker system
   - Split images based on coordinate system center
-  - Add additional ouput folder for center based coordinate patterns
   - Add custom launcher icon
 
 ## Backlog:
