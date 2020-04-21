@@ -10,15 +10,15 @@
 
 ## Next:
 
-
-## Backlog:
-
-
 * Pixie Stitch: 
   - Implement center based coordinate marker system
   - Split images based on coordinate system center
   - Add additional ouput folder for center based coordinate patterns
   - Add custom launcher icon
+
+## Backlog:
+
+
 
 * We need a production/develop version where we enable/disable i.e. panic messageboxes. It would be 
   useful to having a config file for this that is read on startup. Maybe this can be the same as the 
