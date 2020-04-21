@@ -190,18 +190,48 @@ pub fn ceili(x: f32) -> i32 {
     f32::ceil(x) as i32
 }
 
+pub fn ceil_to_multiple_of_target_i32(value: i32, target: i32) -> i32 {
+    assert!(target > 0);
+
+    let remainder = value % target;
+    if remainder == 0 {
+        return value;
+    }
+    if value >= 0 {
+        value + (target - remainder)
+    } else {
+        // NOTE: remainer is negative because value is negative
+        value - remainder
+    }
+}
+
+pub fn floor_to_multiple_of_target_i32(value: i32, target: i32) -> i32 {
+    assert!(target > 0);
+
+    let remainder = value % target;
+    if remainder == 0 {
+        return value;
+    }
+    if value >= 0 {
+        value - remainder
+    } else {
+        // NOTE: remainer is negative because value is negative
+        value - (target + remainder)
+    }
+}
+
 #[inline]
-pub fn round_to_nearest_multiple_of_target(value: f32, target: f32) -> f32 {
+pub fn round_to_multiple_of_target(value: f32, target: f32) -> f32 {
     f32::round(value / target) * target
 }
 
 #[inline]
-pub fn round_down_to_nearest_multiple_of_target(value: f32, target: f32) -> f32 {
+pub fn floor_to_multiple_of_target(value: f32, target: f32) -> f32 {
     f32::floor(value / target) * target
 }
 
 #[inline]
-pub fn round_up_to_nearest_multiple_of_target(value: f32, target: f32) -> f32 {
+pub fn ceil_to_multiple_of_target(value: f32, target: f32) -> f32 {
     f32::ceil(value / target) * target
 }
 
@@ -769,4 +799,182 @@ pub fn sample_integer_upper_exclusive_floored(
     let dest_point = dest_min as f32 + relative_point * dest_width as f32;
 
     f32::floor(dest_point) as i32
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Tests
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ceil_to_multiple_of_target_i32_test() {
+        assert_eq!(ceil_to_multiple_of_target_i32(-20, 10), -20);
+        assert_eq!(ceil_to_multiple_of_target_i32(-19, 10), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-18, 10), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-17, 10), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-16, 10), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-15, 10), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-14, 10), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-13, 10), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-12, 10), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-11, 10), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-10, 10), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-9, 10), -0);
+        assert_eq!(ceil_to_multiple_of_target_i32(-8, 10), -0);
+        assert_eq!(ceil_to_multiple_of_target_i32(-6, 10), -0);
+        assert_eq!(ceil_to_multiple_of_target_i32(-5, 10), 0);
+        assert_eq!(ceil_to_multiple_of_target_i32(-4, 10), 0);
+        assert_eq!(ceil_to_multiple_of_target_i32(-3, 10), 0);
+        assert_eq!(ceil_to_multiple_of_target_i32(-2, 10), 0);
+        assert_eq!(ceil_to_multiple_of_target_i32(-1, 10), 0);
+        assert_eq!(ceil_to_multiple_of_target_i32(0, 10), 0);
+        assert_eq!(ceil_to_multiple_of_target_i32(1, 10), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(2, 10), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(3, 10), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(4, 10), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(5, 10), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(6, 10), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(7, 10), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(8, 10), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(9, 10), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(10, 10), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(11, 10), 20);
+        assert_eq!(ceil_to_multiple_of_target_i32(12, 10), 20);
+        assert_eq!(ceil_to_multiple_of_target_i32(13, 10), 20);
+        assert_eq!(ceil_to_multiple_of_target_i32(14, 10), 20);
+        assert_eq!(ceil_to_multiple_of_target_i32(15, 10), 20);
+        assert_eq!(ceil_to_multiple_of_target_i32(16, 10), 20);
+        assert_eq!(ceil_to_multiple_of_target_i32(17, 10), 20);
+        assert_eq!(ceil_to_multiple_of_target_i32(18, 10), 20);
+        assert_eq!(ceil_to_multiple_of_target_i32(19, 10), 20);
+        assert_eq!(ceil_to_multiple_of_target_i32(20, 10), 20);
+
+        assert_eq!(ceil_to_multiple_of_target_i32(-20, 5), -20);
+        assert_eq!(ceil_to_multiple_of_target_i32(-19, 5), -15);
+        assert_eq!(ceil_to_multiple_of_target_i32(-18, 5), -15);
+        assert_eq!(ceil_to_multiple_of_target_i32(-17, 5), -15);
+        assert_eq!(ceil_to_multiple_of_target_i32(-16, 5), -15);
+        assert_eq!(ceil_to_multiple_of_target_i32(-15, 5), -15);
+        assert_eq!(ceil_to_multiple_of_target_i32(-14, 5), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-13, 5), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-12, 5), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-11, 5), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-10, 5), -10);
+        assert_eq!(ceil_to_multiple_of_target_i32(-9, 5), -5);
+        assert_eq!(ceil_to_multiple_of_target_i32(-8, 5), -5);
+        assert_eq!(ceil_to_multiple_of_target_i32(-6, 5), -5);
+        assert_eq!(ceil_to_multiple_of_target_i32(-5, 5), -5);
+        assert_eq!(ceil_to_multiple_of_target_i32(-4, 5), 0);
+        assert_eq!(ceil_to_multiple_of_target_i32(-3, 5), 0);
+        assert_eq!(ceil_to_multiple_of_target_i32(-2, 5), 0);
+        assert_eq!(ceil_to_multiple_of_target_i32(-1, 5), 0);
+        assert_eq!(ceil_to_multiple_of_target_i32(0, 5), 0);
+        assert_eq!(ceil_to_multiple_of_target_i32(1, 5), 5);
+        assert_eq!(ceil_to_multiple_of_target_i32(2, 5), 5);
+        assert_eq!(ceil_to_multiple_of_target_i32(3, 5), 5);
+        assert_eq!(ceil_to_multiple_of_target_i32(4, 5), 5);
+        assert_eq!(ceil_to_multiple_of_target_i32(5, 5), 5);
+        assert_eq!(ceil_to_multiple_of_target_i32(6, 5), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(7, 5), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(8, 5), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(9, 5), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(10, 5), 10);
+        assert_eq!(ceil_to_multiple_of_target_i32(11, 5), 15);
+        assert_eq!(ceil_to_multiple_of_target_i32(12, 5), 15);
+        assert_eq!(ceil_to_multiple_of_target_i32(13, 5), 15);
+        assert_eq!(ceil_to_multiple_of_target_i32(14, 5), 15);
+        assert_eq!(ceil_to_multiple_of_target_i32(15, 5), 15);
+        assert_eq!(ceil_to_multiple_of_target_i32(16, 5), 20);
+        assert_eq!(ceil_to_multiple_of_target_i32(17, 5), 20);
+        assert_eq!(ceil_to_multiple_of_target_i32(18, 5), 20);
+        assert_eq!(ceil_to_multiple_of_target_i32(19, 5), 20);
+        assert_eq!(ceil_to_multiple_of_target_i32(20, 5), 20);
+    }
+
+    #[test]
+    fn floor_to_multiple_of_target_i32_test() {
+        assert_eq!(floor_to_multiple_of_target_i32(-20, 10), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-19, 10), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-18, 10), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-17, 10), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-16, 10), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-15, 10), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-14, 10), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-13, 10), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-12, 10), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-11, 10), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-10, 10), -10);
+        assert_eq!(floor_to_multiple_of_target_i32(-9, 10), -10);
+        assert_eq!(floor_to_multiple_of_target_i32(-8, 10), -10);
+        assert_eq!(floor_to_multiple_of_target_i32(-6, 10), -10);
+        assert_eq!(floor_to_multiple_of_target_i32(-5, 10), -10);
+        assert_eq!(floor_to_multiple_of_target_i32(-4, 10), -10);
+        assert_eq!(floor_to_multiple_of_target_i32(-3, 10), -10);
+        assert_eq!(floor_to_multiple_of_target_i32(-2, 10), -10);
+        assert_eq!(floor_to_multiple_of_target_i32(-1, 10), -10);
+        assert_eq!(floor_to_multiple_of_target_i32(0, 10), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(1, 10), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(2, 10), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(3, 10), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(4, 10), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(5, 10), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(6, 10), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(7, 10), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(8, 10), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(9, 10), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(10, 10), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(11, 10), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(12, 10), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(13, 10), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(14, 10), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(15, 10), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(16, 10), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(17, 10), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(18, 10), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(19, 10), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(20, 10), 20);
+
+        assert_eq!(floor_to_multiple_of_target_i32(-20, 5), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-19, 5), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-18, 5), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-17, 5), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-16, 5), -20);
+        assert_eq!(floor_to_multiple_of_target_i32(-15, 5), -15);
+        assert_eq!(floor_to_multiple_of_target_i32(-14, 5), -15);
+        assert_eq!(floor_to_multiple_of_target_i32(-13, 5), -15);
+        assert_eq!(floor_to_multiple_of_target_i32(-12, 5), -15);
+        assert_eq!(floor_to_multiple_of_target_i32(-11, 5), -15);
+        assert_eq!(floor_to_multiple_of_target_i32(-10, 5), -10);
+        assert_eq!(floor_to_multiple_of_target_i32(-9, 5), -10);
+        assert_eq!(floor_to_multiple_of_target_i32(-8, 5), -10);
+        assert_eq!(floor_to_multiple_of_target_i32(-6, 5), -10);
+        assert_eq!(floor_to_multiple_of_target_i32(-5, 5), -5);
+        assert_eq!(floor_to_multiple_of_target_i32(-4, 5), -5);
+        assert_eq!(floor_to_multiple_of_target_i32(-3, 5), -5);
+        assert_eq!(floor_to_multiple_of_target_i32(-2, 5), -5);
+        assert_eq!(floor_to_multiple_of_target_i32(-1, 5), -5);
+        assert_eq!(floor_to_multiple_of_target_i32(0, 5), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(1, 5), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(2, 5), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(3, 5), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(4, 5), 0);
+        assert_eq!(floor_to_multiple_of_target_i32(5, 5), 5);
+        assert_eq!(floor_to_multiple_of_target_i32(6, 5), 5);
+        assert_eq!(floor_to_multiple_of_target_i32(7, 5), 5);
+        assert_eq!(floor_to_multiple_of_target_i32(8, 5), 5);
+        assert_eq!(floor_to_multiple_of_target_i32(9, 5), 5);
+        assert_eq!(floor_to_multiple_of_target_i32(10, 5), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(11, 5), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(12, 5), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(13, 5), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(14, 5), 10);
+        assert_eq!(floor_to_multiple_of_target_i32(15, 5), 15);
+        assert_eq!(floor_to_multiple_of_target_i32(16, 5), 15);
+        assert_eq!(floor_to_multiple_of_target_i32(17, 5), 15);
+        assert_eq!(floor_to_multiple_of_target_i32(18, 5), 15);
+        assert_eq!(floor_to_multiple_of_target_i32(19, 5), 15);
+        assert_eq!(floor_to_multiple_of_target_i32(20, 5), 20);
+    }
 }
