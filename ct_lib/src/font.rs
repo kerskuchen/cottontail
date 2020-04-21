@@ -44,6 +44,7 @@ pub trait Glyph {
 pub trait Font<GlyphType: Glyph> {
     fn baseline(&self) -> i32;
     fn vertical_advance(&self) -> i32;
+    fn horizontal_advance_max(&self) -> i32;
     fn font_height_in_pixels(&self) -> i32;
     fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> &GlyphType;
     fn get_glyph_for_codepoint_copy(&self, codepoint: Codepoint) -> GlyphType;
@@ -327,6 +328,7 @@ pub struct BitmapFont {
     pub font_name: String,
     pub font_height_in_pixels: i32,
     pub vertical_advance: i32,
+    pub horizontal_advance_max: i32,
     pub baseline: i32,
     pub glyphs: IndexMap<Codepoint, BitmapGlyph>,
 }
@@ -337,6 +339,9 @@ impl Font<BitmapGlyph> for BitmapFont {
     }
     fn vertical_advance(&self) -> i32 {
         self.vertical_advance
+    }
+    fn horizontal_advance_max(&self) -> i32 {
+        self.horizontal_advance_max
     }
     fn font_height_in_pixels(&self) -> i32 {
         self.font_height_in_pixels
@@ -462,10 +467,20 @@ impl BitmapFont {
             glyphs.insert(codepoint as Codepoint, glyph);
         }
 
+        let horizontal_advance_max = glyphs
+            .values()
+            .map(|glyph| glyph.horizontal_advance)
+            .max()
+            .expect(&format!(
+                "Pixelfont '{}' does not contain any glyphs",
+                font_name
+            ));
+
         BitmapFont {
             font_name: font_name.to_owned(),
             font_height_in_pixels: font_height + 2 * border_thickness as i32,
             vertical_advance: vertical_advance + 2 * border_thickness as i32,
+            horizontal_advance_max: horizontal_advance_max + 2 * border_thickness as i32,
             baseline,
             glyphs,
         }
@@ -718,6 +733,7 @@ pub struct SpriteFont {
 
     pub baseline: i32,
     pub vertical_advance: i32,
+    pub horizontal_advance_max: i32,
     pub font_height_in_pixels: i32,
 
     /// Fastpath glyphs for quick access (mainly latin glyphs)
@@ -732,6 +748,9 @@ impl Font<SpriteGlyph> for SpriteFont {
     }
     fn vertical_advance(&self) -> i32 {
         self.vertical_advance
+    }
+    fn horizontal_advance_max(&self) -> i32 {
+        self.horizontal_advance_max
     }
     fn font_height_in_pixels(&self) -> i32 {
         self.font_height_in_pixels

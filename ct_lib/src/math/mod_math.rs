@@ -73,7 +73,7 @@ pub fn compare_floats(a: f32, b: f32) -> std::cmp::Ordering {
 }
 
 #[inline]
-pub const fn make_even(x: i32) -> i32 {
+pub const fn make_even_upwards(x: i32) -> i32 {
     (x / 2) * 2
 }
 
@@ -508,7 +508,7 @@ impl Circle {
         let num_vertices =
             ceili(2.0 * PI / f32::acos(2.0 * (1.0 - 0.5 / radius) * (1.0 - 0.5 / radius) - 1.0));
 
-        clampi(make_even(num_vertices), 4, 128) as usize
+        clampi(make_even_upwards(num_vertices), 4, 128) as usize
     }
 
     #[inline]

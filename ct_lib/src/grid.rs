@@ -464,6 +464,21 @@ where
         }
     }
 
+    pub fn draw_rect_filled_safely(
+        &mut self,
+        start_x: i32,
+        start_y: i32,
+        width: i32,
+        height: i32,
+        value: CellType,
+    ) {
+        for y in start_y..(start_y + height) {
+            for x in start_x..(start_x + width) {
+                self.set_safely(x, y, value);
+            }
+        }
+    }
+
     pub fn draw_rect(
         &mut self,
         start_x: i32,
