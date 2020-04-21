@@ -10,15 +10,15 @@
 * Pixie Stitch: 
   - Implement origin based coordinate marker system
   - Adds additional ouput folder for center based coordinate patterns
+  - Showing of edge coordinate labels
 
 ## Next:
 
-* Pixie Stitch: 
-  - Split images based on coordinate system center
-  - Add custom launcher icon
-
 ## Backlog:
 
+
+* Pixie Stitch: 
+  - Add custom launcher icon
 
 
 * We need a production/develop version where we enable/disable i.e. panic messageboxes. It would be 
