@@ -307,10 +307,10 @@ impl Vec2 {
     /// If v and u are parallel and pointing into the same direction it returns zero
     /// If v is "left" of u then a positive value is returned, otherwise a negative
     /// If v and u are almost parallel and pointing into different directions it returns almost PI
-    /// or -PI depending on if v is more to the "left" or to the "right" of u respectively NOTE:
-    /// This function does not need for v and u to be normalized (see
-    /// https://stackoverflow.com/a/21486462)
+    /// or -PI depending on if v is more to the "left" or to the "right" of u respectively
     ///
+    /// NOTE: This function does not need for v and u to be normalized
+    ///       (see https://stackoverflow.com/a/21486462)
     #[inline]
     pub fn signed_angle_between(v: Vec2, u: Vec2) -> f32 {
         let dot = Vec2::dot(v, u);
@@ -324,6 +324,14 @@ impl Vec2 {
     #[inline]
     pub fn to_angle(self) -> f32 {
         Vec2::signed_angle_between(self, Vec2::unit_x())
+    }
+
+    /// Returns an angle in [-PI, PI] which represents the angle between the given vector and
+    /// the vector (1,0) in the y-flipped 2D cartesian coordinate system.
+    /// NOTE: This function does not need for v and u to be normalized
+    #[inline]
+    pub fn to_angle_flipped_y(self) -> f32 {
+        -Vec2::signed_angle_between(self, Vec2::unit_x())
     }
 
     /// Returns an angle in [0, PI] with the following properties:

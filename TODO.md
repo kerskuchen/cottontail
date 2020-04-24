@@ -17,6 +17,9 @@
 ## Backlog:
 
 
+* Fix Vec2 to work with degrees only 
+* Fix Vec2 to work with flipped_y only and remove special suffixes
+
 * Pixie Stitch: 
   - Add custom launcher icon
 
