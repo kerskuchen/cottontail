@@ -1603,6 +1603,17 @@ impl Drawstate {
         self.debug_draw_triangle(point_tip, point_left, point_right, color, additivity);
     }
 
+    pub fn debug_draw_arrow_line(
+        &mut self,
+        start: Vec2,
+        end: Vec2,
+        color: Color,
+        additivity: Additivity,
+    ) {
+        let dir = end - start;
+        self.debug_draw_arrow(start, dir, color, additivity);
+    }
+
     pub fn debug_draw_triangle(
         &mut self,
         point_a: Vec2,
