@@ -27,6 +27,16 @@ impl Random {
 }
 
 impl Random {
+    // Picks a random element from given slice
+    #[inline]
+    pub fn pick_from_slice<ElemType>(&mut self, slice: &[ElemType]) -> ElemType
+    where
+        ElemType: Copy + Clone,
+    {
+        let index = self.gen_range(0, slice.len());
+        slice[index]
+    }
+
     /// Returns a uniformly distributed number in [min, max]
     #[inline]
     pub fn f32_in_range_closed(&mut self, min: f32, max: f32) -> f32 {
