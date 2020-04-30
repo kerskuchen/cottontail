@@ -1,5 +1,3 @@
-pub use ezing as easing;
-
 mod rect;
 mod recti;
 pub use rect::*;
@@ -19,6 +17,8 @@ pub use mat4::*;
 
 mod intersection;
 pub use intersection::*;
+
+pub mod easing;
 
 pub type Point = Vec2;
 pub type Pointi = Vec2i;
@@ -808,12 +808,16 @@ pub fn sample_integer_upper_exclusive_floored(
 pub enum EasingType {
     Linear,
     CubicInOut,
+    StepMiddle,
+    StepEnd,
 }
 
-pub fn ease(input: f32, easing_type: EasingType) -> f32 {
+pub fn ease(percent: f32, easing_type: EasingType) -> f32 {
     match easing_type {
-        EasingType::Linear => input,
-        EasingType::CubicInOut => easing::cubic_inout(input),
+        EasingType::Linear => percent,
+        EasingType::CubicInOut => easing::cubic_inout(percent),
+        EasingType::StepMiddle => easing::step_middle(percent),
+        EasingType::StepEnd => easing::step_end(percent),
     }
 }
 
