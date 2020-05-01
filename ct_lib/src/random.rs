@@ -75,6 +75,11 @@ impl Random {
         }
     }
 
+    #[inline]
+    pub fn vec2_in_disk(&mut self, center: Vec2, radius: f32) -> Vec2 {
+        center + radius * self.vec2_in_unit_disk()
+    }
+
     /// NOTE: Returns values in [-1, 1]x[-1, 1]
     #[inline]
     pub fn vec2_in_unit_rect(&mut self) -> Vec2 {
