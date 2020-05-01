@@ -1059,19 +1059,11 @@ impl Timer {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Special timers
 
-type TimerCountdown = TimerSimple;
-
 #[derive(Debug, Clone, Copy)]
 pub struct TriggerRepeating {
     timer: Timer,
     triggertime_initial: f32,
     triggertime_repeating: f32,
-}
-
-impl Default for TriggerRepeating {
-    fn default() -> Self {
-        TriggerRepeating::new(1.0)
-    }
 }
 
 impl TriggerRepeating {
@@ -1108,7 +1100,7 @@ impl TriggerRepeating {
 
     /// Returns true if actually triggered
     #[inline]
-    pub fn update(&mut self, deltatime: f32) -> bool {
+    pub fn update_and_check(&mut self, deltatime: f32) -> bool {
         match self.timer.update(deltatime) {
             Timerstate::Triggered { trigger_count, .. } => {
                 if trigger_count == 1 {
@@ -1118,6 +1110,30 @@ impl TriggerRepeating {
             }
             _ => false,
         }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct TimerStateSwitchBinary {
+    pub repeat_timer: TriggerRepeating,
+    pub active: bool,
+}
+
+impl TimerStateSwitchBinary {
+    pub fn new(start_active: bool, start_time: f32, phase_duration: f32) -> TimerStateSwitchBinary {
+        TimerStateSwitchBinary {
+            repeat_timer: TriggerRepeating::new_with_distinct_triggertimes(
+                start_time,
+                phase_duration,
+            ),
+            active: start_active,
+        }
+    }
+    pub fn update_and_check(&mut self, deltatime: f32) -> bool {
+        if self.repeat_timer.update_and_check(deltatime) {
+            self.active = !self.active;
+        }
+        self.active
     }
 }
 
@@ -1255,32 +1271,32 @@ pub enum Fadestate {
 
 #[derive(Clone)]
 pub struct Fader {
-    pub timer: TimerCountdown,
+    pub timer: TimerSimple,
     pub state: Fadestate,
 }
 
 impl Fader {
     pub fn new_faded_out() -> Fader {
         Fader {
-            timer: TimerCountdown::new_stopped(1.0),
+            timer: TimerSimple::new_stopped(1.0),
             state: Fadestate::FadedOut,
         }
     }
     pub fn new_faded_in() -> Fader {
         Fader {
-            timer: TimerCountdown::new_stopped(1.0),
+            timer: TimerSimple::new_stopped(1.0),
             state: Fadestate::FadedIn,
         }
     }
 
     pub fn start_fading_out(&mut self, fade_out_time: f32) {
         self.state = Fadestate::FadingOut;
-        self.timer = TimerCountdown::new_started(fade_out_time);
+        self.timer = TimerSimple::new_started(fade_out_time);
     }
 
     pub fn start_fading_in(&mut self, fade_in_time: f32) {
         self.state = Fadestate::FadingIn;
-        self.timer = TimerCountdown::new_started(fade_in_time);
+        self.timer = TimerSimple::new_started(fade_in_time);
     }
 
     pub fn opacity(&self) -> f32 {
@@ -1324,7 +1340,7 @@ impl Fader {
 pub struct ScreenFader {
     pub color_start: Color,
     pub color_end: Color,
-    pub timer: TimerCountdown,
+    pub timer: TimerSimple,
 }
 
 impl ScreenFader {
@@ -1332,7 +1348,7 @@ impl ScreenFader {
         ScreenFader {
             color_start,
             color_end,
-            timer: TimerCountdown::new_started(fade_time_seconds),
+            timer: TimerSimple::new_started(fade_time_seconds),
         }
     }
 

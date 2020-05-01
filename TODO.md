@@ -19,6 +19,8 @@
 
 * Fix Vec2 to work with degrees only 
 * Fix Vec2 to work with flipped_y only and remove special suffixes
+* Bytepath-tutorial:
+  - Rename the `size` variables to either radius or diameter because currently it is ambiguous
 
 * Pixie Stitch: 
   - Add custom launcher icon
