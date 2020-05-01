@@ -1431,6 +1431,7 @@ impl Drawstate {
         starting_origin: Vec2,
         starting_offset: Vec2,
         origin_is_baseline: bool,
+        color_background: Option<Color>,
         depth: Depth,
         color_modulate: Color,
         additivity: Additivity,
@@ -1444,6 +1445,26 @@ impl Drawstate {
             offset,
             origin_is_baseline,
             &mut |glyph, draw_pos, _codepoint| {
+                // Draw background
+                if let Some(color) = color_background {
+                    let sprite = self.get_sprite_by_index(glyph.sprite_index);
+                    let quad = sprite.get_quad_transformed(
+                        draw_pos.into(),
+                        Vec2::new(font_scale, font_scale),
+                        Vec2::unit_x(),
+                    );
+                    self.draw_quad(
+                        &quad,
+                        self.untextured_uv_center_coord,
+                        false,
+                        self.untextured_uv_center_atlas_page,
+                        depth,
+                        color,
+                        additivity,
+                    );
+                }
+
+                // Draw glyph
                 self.draw_sprite_pixel_snapped(
                     SpriteBy::Index(glyph.sprite_index),
                     draw_pos.into(),
