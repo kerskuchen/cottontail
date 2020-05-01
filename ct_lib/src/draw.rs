@@ -1438,15 +1438,15 @@ impl Drawstate {
     ) -> Vec2 {
         let origin = starting_origin.pixel_snapped_i32();
         let offset = starting_offset.pixel_snapped_i32();
-        font.iter_text_glyphs(
-            text,
-            font_scale as i32,
-            origin,
-            offset,
-            origin_is_baseline,
-            &mut |glyph, draw_pos, _codepoint| {
-                // Draw background
-                if let Some(color) = color_background {
+        if let Some(color_background) = color_background {
+            font.iter_text_glyphs(
+                text,
+                font_scale as i32,
+                origin,
+                offset,
+                origin_is_baseline,
+                &mut |glyph, draw_pos, _codepoint| {
+                    // Draw background
                     let sprite = self.get_sprite_by_index(glyph.sprite_index);
                     let quad = sprite.get_quad_transformed(
                         draw_pos.into(),
@@ -1459,26 +1459,49 @@ impl Drawstate {
                         false,
                         self.untextured_uv_center_atlas_page,
                         depth,
-                        color,
+                        color_background,
                         additivity,
                     );
-                }
 
-                // Draw glyph
-                self.draw_sprite_pixel_snapped(
-                    SpriteBy::Index(glyph.sprite_index),
-                    draw_pos.into(),
-                    Vec2::new(font_scale, font_scale),
-                    Vec2::unit_x(),
-                    false,
-                    false,
-                    depth,
-                    color_modulate,
-                    additivity,
-                );
-            },
-        )
-        .into()
+                    // Draw glyph
+                    self.draw_sprite_pixel_snapped(
+                        SpriteBy::Index(glyph.sprite_index),
+                        draw_pos.into(),
+                        Vec2::new(font_scale, font_scale),
+                        Vec2::unit_x(),
+                        false,
+                        false,
+                        depth,
+                        color_modulate,
+                        additivity,
+                    );
+                },
+            )
+            .into()
+        } else {
+            font.iter_text_glyphs(
+                text,
+                font_scale as i32,
+                origin,
+                offset,
+                origin_is_baseline,
+                &mut |glyph, draw_pos, _codepoint| {
+                    // Draw glyph
+                    self.draw_sprite_pixel_snapped(
+                        SpriteBy::Index(glyph.sprite_index),
+                        draw_pos.into(),
+                        Vec2::new(font_scale, font_scale),
+                        Vec2::unit_x(),
+                        false,
+                        false,
+                        depth,
+                        color_modulate,
+                        additivity,
+                    );
+                },
+            )
+            .into()
+        }
     }
 
     /// Draws a given utf8 text in a given font using a clipping rectangle
