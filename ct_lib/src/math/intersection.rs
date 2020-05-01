@@ -140,6 +140,44 @@ impl Recti {
             }
         }
     }
+
+    /// Returns the closest point the given rect needs to be moved to, to not overlap with any of
+    /// the other given rects
+    pub fn get_closest_position_without_overlapping(self, others: &[Recti]) -> Vec2i {
+        if !others
+            .iter()
+            .any(|&other| intersects_recti_recti(self, other))
+        {
+            // No intersections (also when `others` is empty)
+            return self.pos;
+        }
+
+        let search_directions = [
+            Vec2i::new(1, 0),
+            Vec2i::new(0, 1),
+            Vec2i::new(-1, 0),
+            Vec2i::new(0, -1),
+            Vec2i::new(1, 1),
+            Vec2i::new(-1, 1),
+            Vec2i::new(-1, -1),
+            Vec2i::new(1, -1),
+        ];
+
+        let mut multiplier = 1;
+        loop {
+            for &dir in &search_directions {
+                let test_rect = self.translated_by(multiplier * dir);
+                if !others
+                    .iter()
+                    .any(|&other| intersects_recti_recti(test_rect, other))
+                {
+                    // No intersections
+                    return test_rect.pos;
+                }
+            }
+            multiplier += 1;
+        }
+    }
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Intersection existence queries
