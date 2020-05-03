@@ -1422,16 +1422,14 @@ impl Drawstate {
 
     /// Draws a given utf8 text with a given font
     /// Returns the starting_offset for the next `draw_text`
-    pub fn draw_text_aligned(
+    pub fn draw_text(
         &mut self,
         text: &str,
         font: &SpriteFont,
         font_scale: f32,
         starting_origin: Vec2,
         starting_offset: Vec2,
-        origin_is_baseline: bool,
-        alignment_x: AlignmentHorizontal,
-        alignment_y: AlignmentVertical,
+        alignment: Option<TextAlignment>,
         color_background: Option<Color>,
         depth: Depth,
         color_modulate: Color,
@@ -1445,9 +1443,7 @@ impl Drawstate {
                 font_scale as i32,
                 origin,
                 offset,
-                origin_is_baseline,
-                alignment_x,
-                alignment_y,
+                alignment,
                 &mut |glyph, draw_pos, _codepoint| {
                     // Draw background
                     let sprite = self.get_sprite_by_index(glyph.sprite_index);
@@ -1487,9 +1483,7 @@ impl Drawstate {
                 font_scale as i32,
                 origin,
                 offset,
-                origin_is_baseline,
-                alignment_x,
-                alignment_y,
+                alignment,
                 &mut |glyph, draw_pos, _codepoint| {
                     // Draw glyph
                     self.draw_sprite_pixel_snapped(
@@ -1507,37 +1501,6 @@ impl Drawstate {
             )
             .into()
         }
-    }
-
-    /// Draws a given utf8 text with a given font
-    /// Returns the starting_offset for the next `draw_text`
-    pub fn draw_text(
-        &mut self,
-        text: &str,
-        font: &SpriteFont,
-        font_scale: f32,
-        starting_origin: Vec2,
-        starting_offset: Vec2,
-        origin_is_baseline: bool,
-        color_background: Option<Color>,
-        depth: Depth,
-        color_modulate: Color,
-        additivity: Additivity,
-    ) -> Vec2 {
-        self.draw_text_aligned(
-            text,
-            font,
-            font_scale,
-            starting_origin,
-            starting_offset,
-            origin_is_baseline,
-            AlignmentHorizontal::Left,
-            AlignmentVertical::Top,
-            color_background,
-            depth,
-            color_modulate,
-            additivity,
-        )
     }
 
     /// Draws a given utf8 text in a given font using a clipping rectangle

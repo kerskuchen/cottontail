@@ -36,6 +36,14 @@ const FIRST_VISIBLE_ASCII_CODE_POINT: Codepoint = 32;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Font and Glyph traits
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct TextAlignment {
+    pub x: AlignmentHorizontal,
+    pub y: AlignmentVertical,
+    pub origin_is_baseline: bool,
+    pub ignore_whitespace: bool,
+}
+
 pub trait Glyph {
     fn get_bitmap_rect(&self) -> Recti;
     fn horizontal_advance(&self) -> i32;
@@ -53,96 +61,97 @@ pub trait Font<GlyphType: Glyph> {
         format!("{}_codepoint_{}", fontname, codepoint)
     }
 
-    /// Returns the bounding rect for a given utf8 text for a given scale including whitespace.
-    fn get_text_bounding_rect(&self, text: &str, font_scale: i32) -> Recti {
+    /// Returns the bounding rect for a given utf8 text for a given scale.
+    /// For `ignore_whitespace = true` it ignores whitespace and tries to wrap the bounding rect to
+    /// the non-whitespace-glyphs as tight as possible.
+    fn get_text_bounding_rect(
+        &self,
+        text: &str,
+        font_scale: i32,
+        ignore_whitespace: bool,
+    ) -> Recti {
         if text.len() == 0 {
             return Recti::zero();
         }
 
-        let mut left = 0;
-        let mut top = 0;
-        let mut right = 0;
-        let mut bottom = 0;
+        if ignore_whitespace {
+            // NOTE: We don't start at (0,0) because the first glyph may be a whitespace which we don't
+            //       want contained in our rect
+            let mut left = std::i32::MAX;
+            let mut top = std::i32::MAX;
+            let mut right = -std::i32::MAX;
+            let mut bottom = -std::i32::MAX;
 
-        let final_pos = self.iter_text_glyphs(
-            text,
-            font_scale,
-            Vec2i::zero(),
-            Vec2i::zero(),
-            false,
-            &mut |glyph, draw_pos, _codepoint| {
-                left = left.min(draw_pos.x);
-                right = right.max(draw_pos.x + font_scale * glyph.horizontal_advance());
+            self.iter_text_glyphs(
+                text,
+                font_scale,
+                Vec2i::zero(),
+                Vec2i::zero(),
+                false,
+                &mut |glyph, draw_pos, codepoint| {
+                    // Ignore empty or whitespace glyphs
+                    if codepoint.is_whitespace() {
+                        return;
+                    }
+                    let glyph_rect = glyph.get_bitmap_rect();
+                    if glyph_rect == Recti::zero() {
+                        return;
+                    }
 
-                // NOTE: For top and bottom we need to look at the actual glyphs as they might be
-                //       weirdly positioned vertically. For example there are glyphs with
-                //       `y_offset = -1` so it is not always correct to have `rect.top >= 0`.
-                let rect = glyph.get_bitmap_rect();
-                top = top.min(draw_pos.y + font_scale * rect.top());
-                bottom = bottom
-                    .max(draw_pos.y + font_scale * self.baseline())
-                    .max(draw_pos.y + font_scale * rect.bottom());
-            },
-        );
+                    let glyph_rect_transformed = Recti::from_point_dimensions(
+                        draw_pos + font_scale * glyph_rect.pos,
+                        font_scale * glyph_rect.dim,
+                    );
+                    if glyph_rect_transformed.left() < left {
+                        left = glyph_rect_transformed.left();
+                    }
+                    if glyph_rect_transformed.top() < top {
+                        top = glyph_rect_transformed.top();
+                    }
+                    if glyph_rect_transformed.right() > right {
+                        right = glyph_rect_transformed.right();
+                    }
+                    if glyph_rect_transformed.bottom() > bottom {
+                        bottom = glyph_rect_transformed.bottom();
+                    }
+                },
+            );
 
-        // In case we got trailing newlines
-        bottom = bottom.max(final_pos.y);
-
-        Recti::from_bounds_left_top_right_bottom(left, top, right, bottom)
-    }
-
-    /// Returns the bounding rect of a given utf8 text for a given scale. This ignores whitespace
-    /// and tries to wrap the bounding rect to the non-whitespace-glyphs as tight as possible.
-    fn get_text_bounding_rect_ignore_whitespace(&self, text: &str, font_scale: i32) -> Recti {
-        if text.len() == 0 {
-            return Recti::zero();
-        }
-
-        // NOTE: We don't start at (0,0) because the first glyph may be a whitespace which we don't
-        //       want contained in our rect
-        let mut left = std::i32::MAX;
-        let mut top = std::i32::MAX;
-        let mut right = -std::i32::MAX;
-        let mut bottom = -std::i32::MAX;
-
-        self.iter_text_glyphs(
-            text,
-            font_scale,
-            Vec2i::zero(),
-            Vec2i::zero(),
-            false,
-            &mut |glyph, draw_pos, codepoint| {
-                // Ignore empty or whitespace glyphs
-                if codepoint.is_whitespace() {
-                    return;
-                }
-                let glyph_rect = glyph.get_bitmap_rect();
-                if glyph_rect == Recti::zero() {
-                    return;
-                }
-
-                let glyph_rect_transformed = Recti::from_point_dimensions(
-                    draw_pos + font_scale * glyph_rect.pos,
-                    font_scale * glyph_rect.dim,
-                );
-                if glyph_rect_transformed.left() < left {
-                    left = glyph_rect_transformed.left();
-                }
-                if glyph_rect_transformed.top() < top {
-                    top = glyph_rect_transformed.top();
-                }
-                if glyph_rect_transformed.right() > right {
-                    right = glyph_rect_transformed.right();
-                }
-                if glyph_rect_transformed.bottom() > bottom {
-                    bottom = glyph_rect_transformed.bottom();
-                }
-            },
-        );
-
-        if left >= right || top >= bottom {
-            Recti::zero()
+            if left >= right || top >= bottom {
+                Recti::zero()
+            } else {
+                Recti::from_bounds_left_top_right_bottom(left, top, right, bottom)
+            }
         } else {
+            let mut left = 0;
+            let mut top = 0;
+            let mut right = 0;
+            let mut bottom = 0;
+
+            let final_pos = self.iter_text_glyphs(
+                text,
+                font_scale,
+                Vec2i::zero(),
+                Vec2i::zero(),
+                false,
+                &mut |glyph, draw_pos, _codepoint| {
+                    left = left.min(draw_pos.x);
+                    right = right.max(draw_pos.x + font_scale * glyph.horizontal_advance());
+
+                    // NOTE: For top and bottom we need to look at the actual glyphs as they might be
+                    //       weirdly positioned vertically. For example there are glyphs with
+                    //       `y_offset = -1` so it is not always correct to have `rect.top >= 0`.
+                    let rect = glyph.get_bitmap_rect();
+                    top = top.min(draw_pos.y + font_scale * rect.top());
+                    bottom = bottom
+                        .max(draw_pos.y + font_scale * self.baseline())
+                        .max(draw_pos.y + font_scale * rect.bottom());
+                },
+            );
+
+            // In case we got trailing newlines
+            bottom = bottom.max(final_pos.y);
+
             Recti::from_bounds_left_top_right_bottom(left, top, right, bottom)
         }
     }
@@ -267,47 +276,27 @@ pub trait Font<GlyphType: Glyph> {
         font_scale: i32,
         origin: Vec2i,
         starting_offset: Vec2i,
-        origin_is_baseline: bool,
-        alignment_x: AlignmentHorizontal,
-        alignment_y: AlignmentVertical,
+        alignment: Option<TextAlignment>,
         operation: &mut Operation,
     ) -> Vec2i {
-        let text_dim = self.get_text_bounding_rect(text, font_scale);
-        let origin_aligned = Vec2i::new(
-            block_aligned_in_point(text_dim.dim.x, origin.x, alignment_x),
-            block_aligned_in_point(text_dim.dim.y, origin.y, alignment_y),
-        );
-        self.iter_text_glyphs(
-            text,
-            font_scale,
-            origin_aligned,
-            starting_offset.into(),
-            origin_is_baseline,
-            operation,
-        )
-    }
+        let (origin_aligned, origin_is_baseline) = if let Some(alignment) = alignment {
+            let rect = self.get_text_bounding_rect(text, font_scale, alignment.ignore_whitespace);
+            let origin_aligned = if alignment.ignore_whitespace {
+                Vec2i::new(
+                    block_aligned_in_point(rect.dim.x, origin.x, alignment.x),
+                    block_aligned_in_point(rect.dim.y, origin.y, alignment.y),
+                ) - rect.pos
+            } else {
+                Vec2i::new(
+                    block_aligned_in_point(rect.dim.x, origin.x, alignment.x),
+                    block_aligned_in_point(rect.dim.y, origin.y, alignment.y),
+                )
+            };
 
-    /// Same as iter_text_glyphs_aligned_in_point but ignoring whitespace and aligning glyphs as tight
-    /// as possible
-    fn iter_text_glyphs_aligned_in_point_exact<
-        Operation: core::ops::FnMut(&GlyphType, Vec2i, char) -> (),
-    >(
-        &self,
-        text: &str,
-        font_scale: i32,
-        origin: Vec2i,
-        starting_offset: Vec2i,
-        origin_is_baseline: bool,
-        alignment_x: AlignmentHorizontal,
-        alignment_y: AlignmentVertical,
-        operation: &mut Operation,
-    ) -> Vec2i {
-        let text_rect = self.get_text_bounding_rect_ignore_whitespace(text, font_scale);
-        let text_dim = text_rect.dim;
-        let origin_aligned = Vec2i::new(
-            block_aligned_in_point(text_dim.x, origin.x, alignment_x),
-            block_aligned_in_point(text_dim.y, origin.y, alignment_y),
-        ) - text_rect.pos;
+            (origin_aligned, alignment.origin_is_baseline)
+        } else {
+            (origin, false)
+        };
 
         self.iter_text_glyphs(
             text,
@@ -845,9 +834,12 @@ mod tests {
                     1,
                     Vec2i::new(bitmap_width / 2, 0),
                     Vec2i::zero(),
-                    false,
-                    AlignmentHorizontal::Center,
-                    AlignmentVertical::Top,
+                    Some(TextAlignment {
+                        x: AlignmentHorizontal::Center,
+                        y: AlignmentVertical::Top,
+                        origin_is_baseline: false,
+                        ignore_whitespace: false,
+                    }),
                 );
                 bitmap.draw_text_aligned_in_point(
                     &font,
@@ -855,9 +847,12 @@ mod tests {
                     1,
                     bitmap_center,
                     Vec2i::zero(),
-                    false,
-                    *alignment_x,
-                    *alignment_y,
+                    Some(TextAlignment {
+                        x: *alignment_x,
+                        y: *alignment_y,
+                        origin_is_baseline: false,
+                        ignore_whitespace: false,
+                    }),
                 );
                 bitmap.set(bitmap_center.x, bitmap_center.y, PixelRGBA::magenta());
                 bitmaps.push(bitmap);
@@ -901,19 +896,25 @@ mod tests {
                     1,
                     Vec2i::new(bitmap_width / 2, 0),
                     Vec2i::zero(),
-                    false,
-                    AlignmentHorizontal::Center,
-                    AlignmentVertical::Top,
+                    Some(TextAlignment {
+                        x: AlignmentHorizontal::Center,
+                        y: AlignmentVertical::Top,
+                        origin_is_baseline: false,
+                        ignore_whitespace: false,
+                    }),
                 );
-                bitmap.draw_text_aligned_in_point_exact(
+                bitmap.draw_text_aligned_in_point(
                     &font,
                     text,
                     1,
                     bitmap_center,
                     Vec2i::zero(),
-                    false,
-                    *alignment_x,
-                    *alignment_y,
+                    Some(TextAlignment {
+                        x: *alignment_x,
+                        y: *alignment_y,
+                        origin_is_baseline: false,
+                        ignore_whitespace: true,
+                    }),
                 );
                 bitmap.set(bitmap_center.x, bitmap_center.y, PixelRGBA::magenta());
                 bitmaps.push(bitmap);
@@ -954,19 +955,25 @@ mod tests {
                     1,
                     Vec2i::new(bitmap_width / 2, 0),
                     Vec2i::zero(),
-                    false,
-                    AlignmentHorizontal::Center,
-                    AlignmentVertical::Top,
+                    Some(TextAlignment {
+                        x: AlignmentHorizontal::Center,
+                        y: AlignmentVertical::Top,
+                        origin_is_baseline: false,
+                        ignore_whitespace: false,
+                    }),
                 );
-                bitmap.draw_text_aligned_in_point_exact(
+                bitmap.draw_text_aligned_in_point(
                     &font,
                     text,
                     1,
                     bitmap_center,
                     Vec2i::zero(),
-                    false,
-                    *alignment_x,
-                    *alignment_y,
+                    Some(TextAlignment {
+                        x: *alignment_x,
+                        y: *alignment_y,
+                        origin_is_baseline: false,
+                        ignore_whitespace: true,
+                    }),
                 );
                 bitmap.set(bitmap_center.x, bitmap_center.y, PixelRGBA::magenta());
                 bitmaps.push(bitmap);

@@ -2390,7 +2390,12 @@ impl Scene for SceneDebug {
             1.0,
             hp_rect_initial.pos,
             Vec2::filled_y(-5.0),
-            true,
+            Some(TextAlignment {
+                x: AlignmentHorizontal::Left,
+                y: AlignmentVertical::Top,
+                origin_is_baseline: true,
+                ignore_whitespace: false,
+            }),
             None,
             DEPTH_DRAW,
             Color::white(),
@@ -2468,7 +2473,7 @@ impl Scene for SceneDebug {
         // Text drawing test
         let test_font = draw.get_font(&self.loaded_font_name).clone();
         let text = "Loaded font test gorgeous!|\u{08A8}";
-        let text_width = test_font.get_text_bounding_rect(text, 1).dim.x;
+        let text_width = test_font.get_text_bounding_rect(text, 1, false).dim.x;
         // Draw origin is top-left
         let draw_pos = Vec2::new(5.0, globals.canvas_height - 40.0);
         draw.draw_text(
@@ -2477,7 +2482,7 @@ impl Scene for SceneDebug {
             1.0,
             draw_pos,
             Vec2::zero(),
-            false,
+            None,
             None,
             20.0,
             Color::magenta(),
@@ -2498,7 +2503,12 @@ impl Scene for SceneDebug {
             1.0,
             draw_pos,
             Vec2::zero(),
-            true,
+            Some(TextAlignment {
+                x: AlignmentHorizontal::Left,
+                y: AlignmentVertical::Top,
+                origin_is_baseline: true,
+                ignore_whitespace: false,
+            }),
             None,
             20.0,
             Color::magenta(),

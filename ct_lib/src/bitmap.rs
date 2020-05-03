@@ -1,5 +1,5 @@
 pub use super::color::{Color, PixelRGBA};
-pub use super::font::{BitmapFont, Font};
+pub use super::font::{BitmapFont, Font, TextAlignment};
 pub use super::grid::GluePosition;
 pub use super::math;
 pub use super::math::{AlignmentHorizontal, AlignmentVertical, Vec2i};
@@ -93,7 +93,7 @@ impl Bitmap {
         font_scale: i32,
         background_color: PixelRGBA,
     ) -> Bitmap {
-        let rect = font.get_text_bounding_rect(text, font_scale);
+        let rect = font.get_text_bounding_rect(text, font_scale, false);
         let mut result = Bitmap::new_filled(rect.dim.x as u32, rect.dim.y as u32, background_color);
 
         // NOTE: As it can happen that glyphs have negative vertical offset (i.e. due to being
@@ -154,51 +154,14 @@ impl Bitmap {
         font_scale: i32,
         origin: Vec2i,
         starting_offset: Vec2i,
-        origin_is_baseline: bool,
-        alignment_x: AlignmentHorizontal,
-        alignment_y: AlignmentVertical,
+        alignment: Option<TextAlignment>,
     ) -> Vec2i {
         font.iter_text_glyphs_aligned_in_point(
             text,
             font_scale,
             origin,
             starting_offset,
-            origin_is_baseline,
-            alignment_x,
-            alignment_y,
-            &mut |glyph, draw_pos, _codepoint| {
-                if let Some(glyph_bitmap) = &glyph.bitmap {
-                    glyph_bitmap.blit_to(
-                        self,
-                        draw_pos + glyph.offset,
-                        Some(PixelRGBA::transparent()),
-                    );
-                }
-            },
-        )
-    }
-
-    /// Same as draw_text_aligned_in_point but ignoring whitespace and aligning glyphs as tight
-    /// as possible
-    pub fn draw_text_aligned_in_point_exact(
-        &mut self,
-        font: &BitmapFont,
-        text: &str,
-        font_scale: i32,
-        origin: Vec2i,
-        starting_offset: Vec2i,
-        origin_is_baseline: bool,
-        alignment_x: AlignmentHorizontal,
-        alignment_y: AlignmentVertical,
-    ) -> Vec2i {
-        font.iter_text_glyphs_aligned_in_point_exact(
-            text,
-            font_scale,
-            origin,
-            starting_offset,
-            origin_is_baseline,
-            alignment_x,
-            alignment_y,
+            alignment,
             &mut |glyph, draw_pos, _codepoint| {
                 if let Some(glyph_bitmap) = &glyph.bitmap {
                     glyph_bitmap.blit_to(
