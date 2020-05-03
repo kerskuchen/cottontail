@@ -2466,7 +2466,7 @@ impl Scene for SceneDebug {
         );
 
         // Text drawing test
-        let test_font = draw.get_font(&self.loaded_font_name);
+        let test_font = draw.get_font(&self.loaded_font_name).clone();
         let text = "Loaded font test gorgeous!|\u{08A8}";
         let text_width = test_font.get_text_bounding_rect(text, 1).dim.x;
         // Draw origin is top-left
