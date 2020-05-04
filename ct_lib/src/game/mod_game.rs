@@ -902,6 +902,13 @@ impl TimerSimple {
         self.time_cur = f32::min(self.time_cur + deltatime, self.time_end);
     }
 
+    pub fn update_and_check_if_triggered(&mut self, deltatime: f32) -> bool {
+        let time_previous = self.time_cur;
+        self.time_cur = f32::min(self.time_cur + deltatime, self.time_end);
+
+        self.time_cur == self.time_end && time_previous != self.time_end
+    }
+
     pub fn is_running(&self) -> bool {
         self.time_cur < self.time_end
     }
