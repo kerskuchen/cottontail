@@ -43,6 +43,12 @@ impl Random {
         Uniform::new_inclusive(min, max).sample(self)
     }
 
+    /// Returns a uniformly distributed number in [min, max]
+    #[inline]
+    pub fn f32_in_range_open(&mut self, min: f32, max: f32) -> f32 {
+        min + (max - min) * self.sample::<f32, _>(rand::distributions::Open01)
+    }
+
     /// Returns a uniformly distributed number in [0.0, 1.0]
     #[inline]
     pub fn f32_in_01_closed(&mut self) -> f32 {
@@ -155,7 +161,24 @@ where
     }
 
     #[inline]
-    pub fn shufflebag_get_next(&mut self, random: &mut Random) -> ElemType {
+    pub fn new_with_counts(elems_and_counts: &[(ElemType, usize)]) -> Shufflebag<ElemType> {
+        let mut elems = Vec::new();
+
+        for (elem, count) in elems_and_counts {
+            for _ in 0..*count {
+                elems.push(*elem);
+            }
+        }
+
+        let elem_count = elems.len();
+        Shufflebag {
+            elems,
+            current_bagsize: elem_count,
+        }
+    }
+
+    #[inline]
+    pub fn get_next(&mut self, random: &mut Random) -> ElemType {
         if self.current_bagsize == 1 {
             self.current_bagsize = self.elems.len();
             self.elems[0]

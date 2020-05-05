@@ -248,6 +248,13 @@ pub fn common_resolutions(resolutions: &[(u32, u32)]) -> Vec<(u32, u32)> {
 // Snippets
 
 /*
+
+// Sort floats
+
+v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+v.sort_by(|a, b| a.partial_cmp(b).unwrap())
+
+
 // Quick random values
 
 use rand::Rng;

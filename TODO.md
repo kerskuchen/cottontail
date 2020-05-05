@@ -21,6 +21,7 @@
 * Fix Vec2 to work with flipped_y only and remove special suffixes
 * Bytepath-tutorial:
   - Rename the `size` variables to either radius or diameter because currently it is ambiguous
+  - Make slowmotion a build-in game concept similar to camera screenshake
 
 * Pixie Stitch: 
   - Add custom launcher icon
