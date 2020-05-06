@@ -82,7 +82,6 @@ pub struct GameMemory<GameStateType: GameStateInterface> {
     pub draw: Option<Drawstate>,
     pub audio: Option<Audiostate>,
     pub assets: Option<GameAssets>,
-
     pub splashscreen: Option<SplashScreen>,
 }
 
@@ -2054,6 +2053,10 @@ pub fn game_load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, Ve
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Scene Management
 
+pub enum GameEvent {
+    SwitchToScene { scene_name: String },
+}
+
 #[derive(Clone)]
 pub struct Globals {
     pub random: Random,
@@ -2079,6 +2082,7 @@ pub trait Scene: Clone {
         assets: &mut GameAssets,
         input: &GameInput,
         globals: &mut Globals,
+        out_game_events: &mut Vec<GameEvent>,
     );
 }
 
@@ -2165,6 +2169,7 @@ impl Scene for SceneDebug {
         _assets: &mut GameAssets,
         input: &GameInput,
         globals: &mut Globals,
+        _out_game_events: &mut Vec<GameEvent>,
     ) {
         const DEPTH_DRAW: Depth = 20.0;
 

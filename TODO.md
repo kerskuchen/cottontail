@@ -19,6 +19,9 @@
 
 * Fix Vec2 to work with degrees only 
 * Fix Vec2 to work with flipped_y only and remove special suffixes
+* Maybe we can decouple sprites and fonts from the drawstate by putting those into gameassets?
+  This would help with the font ownership/cloning problem and make the drawstate less bloaty?
+
 * Bytepath-tutorial:
   - Rename the `size` variables to either radius or diameter because currently it is ambiguous
   - Make slowmotion a build-in game concept similar to camera screenshake
