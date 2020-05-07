@@ -1012,6 +1012,8 @@ impl Drawstate {
     pub fn draw_rect_transformed(
         &mut self,
         rect_dim: Vec2,
+        filled: bool,
+        centered: bool,
         pivot: Vec2,
         pos: Vec2,
         scale: Vec2,
@@ -1020,16 +1022,28 @@ impl Drawstate {
         color: Color,
         additivity: Additivity,
     ) {
+        let pivot = pivot
+            + if centered {
+                rect_dim / 2.0
+            } else {
+                Vec2::zero()
+            };
+
         let quad = Quad::from_rect_transformed(rect_dim, pivot, pos, scale, rotation_dir);
-        self.draw_quad(
-            &quad,
-            self.untextured_uv_center_coord,
-            false,
-            self.untextured_uv_center_atlas_page,
-            depth,
-            color,
-            additivity,
-        );
+        if filled {
+            self.draw_quad(
+                &quad,
+                self.untextured_uv_center_coord,
+                false,
+                self.untextured_uv_center_atlas_page,
+                depth,
+                color,
+                additivity,
+            );
+        } else {
+            let linestrip = quad.to_linestrip();
+            self.draw_linestrip_bresenham(&linestrip, depth, color, additivity);
+        }
     }
 
     pub fn draw_circle_filled(

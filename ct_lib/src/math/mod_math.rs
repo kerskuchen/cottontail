@@ -402,6 +402,17 @@ pub struct Quad {
 
 impl Quad {
     #[inline]
+    pub fn to_linestrip(&self) -> [Vec2; 5] {
+        [
+            self.vert_right_top,
+            self.vert_right_bottom,
+            self.vert_left_bottom,
+            self.vert_left_top,
+            self.vert_right_top,
+        ]
+    }
+
+    #[inline]
     pub fn from_rect(rect: Rect) -> Quad {
         Quad {
             vert_right_top: Vec2::new(rect.right(), rect.top()),

@@ -1797,6 +1797,8 @@ impl ParticleSystem {
             );
             draw.draw_rect_transformed(
                 Vec2::ones(),
+                true,
+                true,
                 Vec2::zero(),
                 self.pos[index].pixel_snapped(),
                 Vec2::filled(scale),
