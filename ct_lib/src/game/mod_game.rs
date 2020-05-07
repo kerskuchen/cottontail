@@ -2513,6 +2513,7 @@ impl Scene for SceneDebug {
         draw.draw_line_bresenham(
             draw_pos + Vec2::new(0.0, test_font.baseline as f32),
             draw_pos + Vec2::new(text_width as f32, test_font.baseline as f32),
+            false,
             20.0,
             0.3 * Color::yellow(),
             ADDITIVITY_NONE,
@@ -2539,6 +2540,7 @@ impl Scene for SceneDebug {
         draw.draw_line_bresenham(
             draw_pos,
             draw_pos + Vec2::new(text_width as f32, 0.0),
+            false,
             20.0,
             0.3 * Color::yellow(),
             ADDITIVITY_NONE,

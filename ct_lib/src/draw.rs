@@ -962,45 +962,23 @@ impl Drawstate {
                 additivity,
             );
         } else {
-            let rect = rect.pixel_snapped_i32();
+            let rect = rect.pixel_snapped();
             let dim = rect.dim;
-            if dim.x == 0 || dim.y == 0 {
+            if dim.x == 0.0 || dim.y == 0.0 {
                 return;
             }
 
+            // NOTE We want to draw the lines in a way that the pixel at `rect.pos + rect.dim` is
+            //      empty. That way we can draw another rect at `rect.pos + rect.dim` without it
+            //      overlapping the previous rect or leaving a gap between both. Therefore we use
+            //      `dim.x - 1.0` and `dim.y - 1.0`
             let left_top = rect.pos;
-            let right_top = left_top + Vec2i::unit_x() * (dim.x - 1);
-            let right_bottom =
-                left_top + Vec2i::unit_x() * (dim.x - 1) + Vec2i::unit_y() * (dim.y - 1);
-            let left_bottom = left_top + Vec2i::unit_y() * (dim.y - 1);
-            self.draw_line_bresenham(
-                Vec2::from(left_top + Vec2i::unit_x()),
-                Vec2::from(right_top),
-                depth,
-                color,
-                additivity,
-            );
-            self.draw_line_bresenham(
-                Vec2::from(right_top + Vec2i::unit_y()),
-                Vec2::from(right_bottom),
-                depth,
-                color,
-                additivity,
-            );
-            self.draw_line_bresenham(
-                Vec2::from(right_bottom - Vec2i::unit_x()),
-                Vec2::from(left_bottom),
-                depth,
-                color,
-                additivity,
-            );
-            self.draw_line_bresenham(
-                Vec2::from(left_bottom - Vec2i::unit_y()),
-                Vec2::from(left_top),
-                depth,
-                color,
-                additivity,
-            );
+            let right_top = left_top + Vec2::filled_x(dim.x - 1.0);
+            let right_bottom = left_top + Vec2::new(dim.x - 1.0, dim.y - 1.0);
+            let left_bottom = left_top + Vec2::filled_y(dim.y - 1.0);
+
+            let linestrip = [left_top, right_top, right_bottom, left_bottom, left_top];
+            self.draw_linestrip_bresenham(&linestrip, true, depth, color, additivity);
         }
     }
 
@@ -1042,7 +1020,7 @@ impl Drawstate {
             );
         } else {
             let linestrip = quad.to_linestrip();
-            self.draw_linestrip_bresenham(&linestrip, depth, color, additivity);
+            self.draw_linestrip_bresenham(&linestrip, true, depth, color, additivity);
         }
     }
 
@@ -1290,29 +1268,38 @@ impl Drawstate {
     }
 
     /// WARNING: This can be slow if used often
+    /// NOTE: Skipping the last pixel is useful i.e. for drawing translucent line loops which start
+    ///       and end on the same pixel and pixels must not overlap
     pub fn draw_linestrip_bresenham(
         &mut self,
         points: &[Vec2],
+        skip_last_pixel: bool,
         depth: Depth,
         color: Color,
         additivity: Additivity,
     ) {
         for pair in points.windows(2) {
-            self.draw_line_bresenham(pair[0], pair[1], depth, color, additivity);
+            self.draw_line_bresenham(pair[0], pair[1], true, depth, color, additivity);
+        }
+        if !skip_last_pixel && !points.is_empty() {
+            self.draw_pixel(*points.last().unwrap(), depth, color, additivity);
         }
     }
 
     /// WARNING: This can be slow if used often
+    /// NOTE: Skipping the last pixel is useful i.e. for drawing translucent linestrips where pixels
+    ///       must not overlap
     pub fn draw_line_bresenham(
         &mut self,
         start: Vec2,
         end: Vec2,
+        skip_last_pixel: bool,
         depth: Depth,
         color: Color,
         additivity: Additivity,
     ) {
-        let mut start = Vec2i::from_vec2_floored(start);
-        let mut end = Vec2i::from_vec2_floored(end);
+        let mut start = start.pixel_snapped_i32();
+        let mut end = end.pixel_snapped_i32();
 
         let mut transpose = false;
         let mut w = i32::abs(end.x - start.x);
@@ -1328,6 +1315,13 @@ impl Drawstate {
         if start.x > end.x {
             std::mem::swap(&mut start.x, &mut end.x);
             std::mem::swap(&mut start.y, &mut end.y);
+            if skip_last_pixel {
+                start.x += 1;
+            }
+        } else {
+            if skip_last_pixel {
+                end.x -= 1;
+            }
         }
 
         let derror = 2 * h;
@@ -1657,7 +1651,7 @@ impl Drawstate {
         additivity: Additivity,
     ) {
         let end = start + dir;
-        self.draw_line_bresenham(start, end, DEPTH_MAX, color, additivity);
+        self.draw_line_bresenham(start, end, false, DEPTH_MAX, color, additivity);
 
         let size = clampf(dir.magnitude() / 10.0, 1.0, 5.0);
         let perp_left = size * (end - start).perpendicular().normalized();
