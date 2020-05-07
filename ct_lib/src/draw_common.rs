@@ -46,11 +46,11 @@ impl Worldpoint {
 
 impl Rect {
     pub fn pixel_snapped(self) -> Rect {
-        Rect::from_point_dimensions(self.pos.pixel_snapped(), self.dim.round())
+        Rect::from_pos_dim(self.pos.pixel_snapped(), self.dim.round())
     }
 
     pub fn pixel_snapped_i32(self) -> Recti {
-        Recti::from_point_dimensions(self.pos.pixel_snapped_i32(), self.dim.roundi())
+        Recti::from_pos_dim(self.pos.pixel_snapped_i32(), self.dim.roundi())
     }
 }
 

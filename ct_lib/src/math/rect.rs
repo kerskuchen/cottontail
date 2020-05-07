@@ -186,7 +186,7 @@ impl Rect {
     }
 
     #[inline]
-    pub fn from_xy_dimensions(x: f32, y: f32, dim: Vec2) -> Rect {
+    pub fn from_xy_dim(x: f32, y: f32, dim: Vec2) -> Rect {
         Rect {
             pos: Vec2::new(x, y),
             dim,
@@ -218,7 +218,7 @@ impl Rect {
     }
 
     #[inline]
-    pub fn from_dimensions(dim: Vec2) -> Rect {
+    pub fn from_dim(dim: Vec2) -> Rect {
         Rect {
             pos: Vec2::zero(),
             dim,
@@ -226,12 +226,12 @@ impl Rect {
     }
 
     #[inline]
-    pub fn from_point_dimensions(pos: Point, dim: Vec2) -> Rect {
+    pub fn from_pos_dim(pos: Point, dim: Vec2) -> Rect {
         Rect { pos, dim }
     }
 
     #[inline]
-    pub fn from_lefttop_rightbottom(left_top: Vec2, right_bottom: Vec2) -> Rect {
+    pub fn from_diagonal(left_top: Vec2, right_bottom: Vec2) -> Rect {
         assert!(left_top.x <= right_bottom.x);
         assert!(left_top.y <= right_bottom.y);
 
@@ -245,7 +245,7 @@ impl Rect {
     pub fn from_bounds_left_top_right_bottom(left: f32, top: f32, right: f32, bottom: f32) -> Rect {
         assert!(left <= right);
         assert!(top <= bottom);
-        Rect::from_lefttop_rightbottom(Vec2::new(left, top), Vec2::new(right, bottom))
+        Rect::from_diagonal(Vec2::new(left, top), Vec2::new(right, bottom))
     }
 
     #[inline]
@@ -274,7 +274,7 @@ impl Rect {
         let left_top = Vec2::new(left, top);
         let right_bottom = Vec2::new(right, bottom);
 
-        Rect::from_lefttop_rightbottom(left_top, right_bottom)
+        Rect::from_diagonal(left_top, right_bottom)
     }
 }
 
@@ -391,7 +391,7 @@ impl Rect {
     pub fn mirrored_horizontally_on_axis(self, axis_x: f32) -> Rect {
         let axis_diff = self.pos.x - axis_x;
         let new_pos_x = self.pos.x - 2.0 * axis_diff - self.dim.x;
-        Rect::from_xy_dimensions(new_pos_x, self.pos.y, self.dim)
+        Rect::from_xy_dim(new_pos_x, self.pos.y, self.dim)
     }
 
     #[must_use]
@@ -399,7 +399,7 @@ impl Rect {
     pub fn mirrored_vertically_on_axis(self, axis_y: f32) -> Rect {
         let axis_diff = self.pos.y - axis_y;
         let new_pos_y = self.pos.y - 2.0 * axis_diff - self.dim.y;
-        Rect::from_xy_dimensions(self.pos.x, new_pos_y, self.dim)
+        Rect::from_xy_dim(self.pos.x, new_pos_y, self.dim)
     }
 
     #[must_use]
@@ -431,7 +431,7 @@ impl Rect {
         let top = self.top() * scale.y;
         let right = self.right() * scale.x;
         let bottom = self.bottom() * scale.y;
-        Rect::from_lefttop_rightbottom(Vec2::new(left, top), Vec2::new(right, bottom))
+        Rect::from_diagonal(Vec2::new(left, top), Vec2::new(right, bottom))
     }
 
     #[must_use]
@@ -440,7 +440,7 @@ impl Rect {
         debug_assert!(scale.x > 0.0);
         debug_assert!(scale.y > 0.0);
 
-        Rect::from_point_dimensions(self.pos, self.dim * scale)
+        Rect::from_pos_dim(self.pos, self.dim * scale)
     }
 
     #[must_use]
@@ -459,7 +459,7 @@ impl Rect {
         let top = self.top() - extension;
         let right = self.right() + extension;
         let bottom = self.bottom() + extension;
-        Rect::from_lefttop_rightbottom(Vec2::new(left, top), Vec2::new(right, bottom))
+        Rect::from_diagonal(Vec2::new(left, top), Vec2::new(right, bottom))
     }
 
     /// Returns a version of the rectangle that is centered in a given rect
@@ -475,7 +475,7 @@ impl Rect {
     #[inline]
     pub fn centered_in_rect_horizontally(self, target: Rect) -> Rect {
         let pos_x = block_centered_in_point(self.dim.x, target.center().x);
-        Rect::from_xy_dimensions(pos_x, self.pos.y, self.dim)
+        Rect::from_xy_dim(pos_x, self.pos.y, self.dim)
     }
 
     /// Returns a version of the rectangle that is centered vertically in a given rect, leaving
@@ -484,7 +484,7 @@ impl Rect {
     #[inline]
     pub fn centered_in_rect_vertically(self, target: Rect) -> Rect {
         let pos_y = block_centered_in_point(self.dim.y, target.center().y);
-        Rect::from_xy_dimensions(self.pos.x, pos_y, self.dim)
+        Rect::from_xy_dim(self.pos.x, pos_y, self.dim)
     }
 
     /// Returns the biggest proportionally stretched version of the rectangle that can fit

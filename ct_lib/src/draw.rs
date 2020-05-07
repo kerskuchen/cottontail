@@ -942,17 +942,66 @@ impl Drawstate {
 
     /// This fills the following pixels:
     /// [left, right[ x [top, bottom[
-    pub fn draw_rect(&mut self, rect: Rect, depth: Depth, color: Color, additivity: Additivity) {
-        let quad = Quad::from_rect(rect);
-        self.draw_quad(
-            &quad,
-            self.untextured_uv_center_coord,
-            false,
-            self.untextured_uv_center_atlas_page,
-            depth,
-            color,
-            additivity,
-        );
+    pub fn draw_rect(
+        &mut self,
+        rect: Rect,
+        filled: bool,
+        depth: Depth,
+        color: Color,
+        additivity: Additivity,
+    ) {
+        if filled {
+            let quad = Quad::from_rect(rect);
+            self.draw_quad(
+                &quad,
+                self.untextured_uv_center_coord,
+                false,
+                self.untextured_uv_center_atlas_page,
+                depth,
+                color,
+                additivity,
+            );
+        } else {
+            let rect = rect.pixel_snapped_i32();
+            let dim = rect.dim;
+            if dim.x == 0 || dim.y == 0 {
+                return;
+            }
+
+            let left_top = rect.pos;
+            let right_top = left_top + Vec2i::unit_x() * (dim.x - 1);
+            let right_bottom =
+                left_top + Vec2i::unit_x() * (dim.x - 1) + Vec2i::unit_y() * (dim.y - 1);
+            let left_bottom = left_top + Vec2i::unit_y() * (dim.y - 1);
+            self.draw_line_bresenham(
+                Vec2::from(left_top + Vec2i::unit_x()),
+                Vec2::from(right_top),
+                depth,
+                color,
+                additivity,
+            );
+            self.draw_line_bresenham(
+                Vec2::from(right_top + Vec2i::unit_y()),
+                Vec2::from(right_bottom),
+                depth,
+                color,
+                additivity,
+            );
+            self.draw_line_bresenham(
+                Vec2::from(right_bottom - Vec2i::unit_x()),
+                Vec2::from(left_bottom),
+                depth,
+                color,
+                additivity,
+            );
+            self.draw_line_bresenham(
+                Vec2::from(left_bottom - Vec2i::unit_y()),
+                Vec2::from(left_top),
+                depth,
+                color,
+                additivity,
+            );
+        }
     }
 
     /// Draws a rotated rectangle where `rotation_dir` = (1,0) corresponds to angle zero.
@@ -1218,7 +1267,8 @@ impl Drawstate {
     /// WARNING: This can be slow if used often
     pub fn draw_pixel(&mut self, pos: Vec2, depth: Depth, color: Color, additivity: Additivity) {
         self.draw_rect(
-            Rect::from_point_dimensions(pos.pixel_snapped(), Vec2::ones()),
+            Rect::from_pos_dim(pos.pixel_snapped(), Vec2::ones()),
+            true,
             depth,
             color,
             additivity,
@@ -1521,7 +1571,7 @@ impl Drawstate {
     ) {
         let origin = starting_origin.pixel_snapped_i32();
         let offset = starting_offset.pixel_snapped_i32();
-        let clipping_recti = Recti::from_point_dimensions(
+        let clipping_recti = Recti::from_pos_dim(
             clipping_rect.pos.pixel_snapped_i32(),
             clipping_rect.dim.roundi(),
         );
@@ -1563,10 +1613,11 @@ impl Drawstate {
             for x in 0..cells_per_side {
                 let pos = origin.pixel_snapped() + Vec2::new(x as f32, y as f32) * cell_size;
                 let dim = Vec2::filled(cell_size as f32);
-                let cell_rect = Rect::from_point_dimensions(pos, dim);
+                let cell_rect = Rect::from_pos_dim(pos, dim);
                 if y % 2 == 0 {
                     self.draw_rect(
                         cell_rect,
+                        true,
                         depth,
                         if x % 2 == 0 { color_a } else { color_b },
                         ADDITIVITY_NONE,
@@ -1574,6 +1625,7 @@ impl Drawstate {
                 } else {
                     self.draw_rect(
                         cell_rect,
+                        true,
                         depth,
                         if x % 2 == 0 { color_b } else { color_a },
                         ADDITIVITY_NONE,
@@ -1581,48 +1633,6 @@ impl Drawstate {
                 }
             }
         }
-    }
-
-    pub fn debug_draw_rect_outline(
-        &mut self,
-        rect: Recti,
-        depth: Depth,
-        color: Color,
-        additivity: Additivity,
-    ) {
-        let dim = rect.dim;
-        let left_top = rect.pos;
-        let right_top = left_top + Vec2i::unit_x() * (dim.x - 1);
-        let right_bottom = left_top + Vec2i::unit_x() * (dim.x - 1) + Vec2i::unit_y() * (dim.y - 1);
-        let left_bottom = left_top + Vec2i::unit_y() * (dim.y - 1);
-        self.draw_line_bresenham(
-            Vec2::from(left_top + Vec2i::unit_x()),
-            Vec2::from(right_top),
-            depth,
-            color,
-            additivity,
-        );
-        self.draw_line_bresenham(
-            Vec2::from(right_top + Vec2i::unit_y()),
-            Vec2::from(right_bottom),
-            depth,
-            color,
-            additivity,
-        );
-        self.draw_line_bresenham(
-            Vec2::from(right_bottom - Vec2i::unit_x()),
-            Vec2::from(left_bottom),
-            depth,
-            color,
-            additivity,
-        );
-        self.draw_line_bresenham(
-            Vec2::from(left_bottom - Vec2i::unit_y()),
-            Vec2::from(left_top),
-            depth,
-            color,
-            additivity,
-        );
     }
 
     pub fn debug_draw_arrow(

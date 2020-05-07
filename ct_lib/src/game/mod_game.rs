@@ -1376,6 +1376,7 @@ impl ScreenFader {
         if color.a > 0.0 {
             draw.draw_rect(
                 Rect::from_width_height(canvas_width as f32, canvas_height as f32),
+                true,
                 DEPTH_SCREEN_FADER,
                 color,
                 ADDITIVITY_NONE,
@@ -1474,6 +1475,7 @@ impl SplashScreen {
         for letterbox_rect in &letterbox_rects {
             draw.draw_rect(
                 Rect::from(*letterbox_rect),
+                true,
                 DEPTH_SCREEN_FADER,
                 opacity * Color::white(),
                 ADDITIVITY_NONE,
@@ -2190,6 +2192,7 @@ impl Scene for SceneDebug {
 
         draw.draw_rect(
             Rect::from_width_height(globals.canvas_width, globals.canvas_height),
+            true,
             DEPTH_DRAW,
             Color::greyscale(0.5),
             ADDITIVITY_NONE,
@@ -2324,8 +2327,8 @@ impl Scene for SceneDebug {
         })();
         let rect1 = rect1_initial.with_new_width(rect1_width, AlignmentHorizontal::Center);
         let rect2 = rect2_initial.with_new_height(rect2_height, AlignmentVertical::Center);
-        draw.draw_rect(rect1, DEPTH_DRAW, Color::white(), ADDITIVITY_NONE);
-        draw.draw_rect(rect2, DEPTH_DRAW, Color::white(), ADDITIVITY_NONE);
+        draw.draw_rect(rect1, true, DEPTH_DRAW, Color::white(), ADDITIVITY_NONE);
+        draw.draw_rect(rect2, true, DEPTH_DRAW, Color::white(), ADDITIVITY_NONE);
 
         // HP BAR
         //
@@ -2415,12 +2418,14 @@ impl Scene for SceneDebug {
         );
         draw.draw_rect(
             hp_back_rect,
+            true,
             DEPTH_DRAW,
             Color::from_hex_rgba(0x884242ff),
             ADDITIVITY_NONE,
         );
         draw.draw_rect(
             hp_front_rect,
+            true,
             DEPTH_DRAW,
             Color::from_hex_rgba(0xf06969ff),
             ADDITIVITY_NONE,
@@ -2459,12 +2464,14 @@ impl Scene for SceneDebug {
 
         draw.draw_rect(
             Rect::from_xy_width_height(5.0, 220.0, beat_completion_ratio * 30.0, 5.0),
+            true,
             DEPTH_DEBUG,
             Color::magenta(),
             ADDITIVITY_NONE,
         );
         draw.draw_rect(
             Rect::from_xy_width_height(5.0, 225.0, measure_completion_ratio * 30.0, 5.0),
+            true,
             DEPTH_DEBUG,
             Color::blue(),
             ADDITIVITY_NONE,
@@ -2477,6 +2484,7 @@ impl Scene for SceneDebug {
                 measure_completion_ratio * globals.canvas_width,
                 10.0,
             ),
+            true,
             DEPTH_DEBUG,
             Color::blue(),
             ADDITIVITY_NONE,

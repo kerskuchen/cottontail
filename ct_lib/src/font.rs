@@ -98,7 +98,7 @@ pub trait Font<GlyphType: Glyph> {
                         return;
                     }
 
-                    let glyph_rect_transformed = Recti::from_point_dimensions(
+                    let glyph_rect_transformed = Recti::from_pos_dim(
                         draw_pos + font_scale * glyph_rect.pos,
                         font_scale * glyph_rect.dim,
                     );
@@ -708,7 +708,7 @@ pub struct SpriteGlyph {
 
 impl Glyph for SpriteGlyph {
     fn get_bitmap_rect(&self) -> Recti {
-        Recti::from_point_dimensions(self.sprite_draw_offset, self.sprite_dimensions)
+        Recti::from_pos_dim(self.sprite_draw_offset, self.sprite_dimensions)
     }
 
     fn horizontal_advance(&self) -> i32 {
