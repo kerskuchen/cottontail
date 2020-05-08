@@ -1334,46 +1334,39 @@ impl Drawstate {
         color: Color,
         additivity: Additivity,
     ) {
-        let mut start = start.pixel_snapped_i32();
-        let mut end = end.pixel_snapped_i32();
+        // Based on (the last one of)
+        // https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm#All_cases
+        let start = start.pixel_snapped_i32();
+        let end = end.pixel_snapped_i32();
 
-        let mut transpose = false;
-        let mut w = i32::abs(end.x - start.x);
-        let mut h = i32::abs(end.y - start.y);
+        let width = (end.x - start.x).abs();
+        let height = -(end.y - start.y).abs();
 
-        if h > w {
-            transpose = true;
-            std::mem::swap(&mut start.x, &mut start.y);
-            std::mem::swap(&mut end.x, &mut end.y);
-            std::mem::swap(&mut w, &mut h);
-        }
+        let increment_x = if start.x < end.x { 1 } else { -1 };
+        let increment_y = if start.y < end.y { 1 } else { -1 };
 
-        if start.x > end.x {
-            std::mem::swap(&mut start.x, &mut end.x);
-            std::mem::swap(&mut start.y, &mut end.y);
-            if skip_last_pixel {
-                start.x += 1;
-            }
-        } else {
-            if skip_last_pixel {
-                end.x -= 1;
-            }
-        }
+        let mut err = width + height;
 
-        let derror = 2 * h;
-        let mut error = 0;
+        let mut x = start.x;
         let mut y = start.y;
-        for x in (start.x)..=(end.x) {
-            if transpose {
-                self.draw_pixel(Vec2::new(y as f32, x as f32), depth, color, additivity);
-            } else {
-                self.draw_pixel(Vec2::new(x as f32, y as f32), depth, color, additivity);
+        loop {
+            if x == end.x && y == end.y {
+                if !skip_last_pixel {
+                    self.draw_pixel(Vec2::new(x as f32, y as f32), depth, color, additivity);
+                }
+                break;
             }
 
-            error += derror;
-            if error > w {
-                y += if start.y < end.y { 1 } else { -1 };
-                error -= 2 * w;
+            self.draw_pixel(Vec2::new(x as f32, y as f32), depth, color, additivity);
+
+            let err_previous = 2 * err;
+            if err_previous >= height {
+                err += height;
+                x += increment_x;
+            }
+            if err_previous <= width {
+                err += width;
+                y += increment_y;
             }
         }
     }
