@@ -1024,6 +1024,42 @@ impl Drawstate {
         }
     }
 
+    /// Expects vertices in the form [v_a0, v_a1, v_a2, v_b0, v_b1, v_b2, ...]
+    pub fn draw_polygon(
+        &mut self,
+        vertices: &[Vec2],
+        pivot: Vec2,
+        pos: Vec2,
+        scale: Vec2,
+        rotation_dir: Vec2,
+        depth: Depth,
+        color: Color,
+        additivity: Additivity,
+    ) {
+        let vertices = Vec2::multiple_transformed(vertices, pos, pivot, scale, rotation_dir);
+        let indices = (0..vertices.len() as u32).collect();
+        let uvs = vec![
+            Vec2::new(
+                self.untextured_uv_center_coord.left,
+                self.untextured_uv_center_coord.top
+            );
+            vertices.len()
+        ];
+
+        self.simple_drawables.push(Drawable {
+            texture_index: self.untextured_uv_center_atlas_page,
+            uv_region_contains_translucency: false,
+            depth,
+            color_modulate: color,
+            additivity,
+            geometry: Geometry::PolygonMesh {
+                vertices,
+                uvs,
+                indices,
+            },
+        });
+    }
+
     pub fn draw_circle_filled(
         &mut self,
         center: Vec2,

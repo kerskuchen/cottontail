@@ -418,6 +418,37 @@ impl Vec2 {
         rotated_scaled + translation
     }
 
+    #[inline]
+    pub fn multiple_transform(
+        coordinates: &mut [Vec2],
+        pos: Vec2,
+        pivot: Vec2,
+        scale: Vec2,
+        rotationdir: Vec2,
+    ) {
+        for point in coordinates {
+            *point = point.transformed(pivot, pos, scale, rotationdir);
+        }
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn multiple_transformed<CoordType>(
+        coordinates: &[CoordType],
+        pos: Vec2,
+        pivot: Vec2,
+        scale: Vec2,
+        rotation_dir: Vec2,
+    ) -> Vec<Vec2>
+    where
+        CoordType: Into<Vec2> + Copy + Clone,
+    {
+        coordinates
+            .iter()
+            .map(|&point| Vec2::from(point.into()).transformed(pivot, pos, scale, rotation_dir))
+            .collect()
+    }
+
     /// Spherical interpolation
     #[inline]
     pub fn slerp(start: Vec2, end: Vec2, percent: f32) -> Vec2 {
