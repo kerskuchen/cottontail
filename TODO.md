@@ -17,6 +17,8 @@
 ## Backlog:
 
 
+* Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 
+  sized rectangle drawing and the `skip_last_vertex` 
 * Fix Vec2 to work with degrees only 
 * Fix Vec2 to work with flipped_y only and remove special suffixes
 * Maybe we can decouple sprites and fonts from the drawstate by putting those into gameassets?
