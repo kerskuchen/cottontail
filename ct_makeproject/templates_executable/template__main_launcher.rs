@@ -34,9 +34,9 @@ pub struct GameState {
 impl GameStateInterface for GameState {
     fn get_game_config() -> GameInfo {
         GameInfo {
-            game_window_title: game_info::LAUNCHER_WINDOW_TITLE.to_owned(),
-            game_save_folder_name: game_info::LAUNCHER_SAVE_FOLDER_NAME.to_owned(),
-            game_company_name: game_info::LAUNCHER_COMPANY_NAME.to_owned(),
+            game_window_title: main_launcher_info::LAUNCHER_WINDOW_TITLE.to_owned(),
+            game_save_folder_name: main_launcher_info::LAUNCHER_SAVE_FOLDER_NAME.to_owned(),
+            game_company_name: main_launcher_info::LAUNCHER_COMPANY_NAME.to_owned(),
         }
     }
     fn get_window_config() -> WindowConfig {
@@ -62,8 +62,8 @@ impl GameStateInterface for GameState {
             CANVAS_HEIGHT as u32,
         );
 
-        let font_default = draw.get_font("default_tiny_bordered");
-        let font_default_no_border = draw.get_font("default_tiny");
+        let font_default = draw.get_font("default_tiny_bordered").clone();
+        let font_default_no_border = draw.get_font("default_tiny").clone();
 
         let globals = Globals {
             random,
@@ -146,8 +146,15 @@ impl GameStateInterface for GameState {
             &mouse_coords,
         );
 
-        self.scene_debug
-            .update_and_draw(draw, audio, assets, input, &mut self.globals);
+        let mut out_game_events = Vec::new();
+        self.scene_debug.update_and_draw(
+            draw,
+            audio,
+            assets,
+            input,
+            &mut self.globals,
+            &mut out_game_events,
+        );
 
         let deltatime = self.globals.deltatime;
         self.globals.camera.update(deltatime);
