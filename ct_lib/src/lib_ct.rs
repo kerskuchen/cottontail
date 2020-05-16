@@ -16,6 +16,7 @@ pub mod math;
 
 pub use bincode;
 pub use indexmap;
+pub use lodepng;
 pub use log;
 pub use serde;
 pub use serde_derive;

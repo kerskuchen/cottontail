@@ -1,21 +1,11 @@
 ## Done today
 
-* Fixed pixie stitch to work with new shipping workflow
-* Windows shipping build does not crash when resources tool is not available
-* Adds installation instructions to pixie stitch 
-* Adds template instructions for new projects
-* Re-add old gamecode from previous bytepath implementation to our current project
-* Reads display index and controller deadzone thresholds from config file
-* Moved WINDOW_TITLE, SAVE_FOLDER_NAME and COMPANY_NAME to its own generated file 
-* Pixie Stitch: 
-  - Implement origin based coordinate marker system
-  - Adds additional ouput folder for center based coordinate patterns
-  - Showing of edge coordinate labels
-
 ## Next:
 
 ## Backlog:
 
+* Repeaty:
+  - support PNG,JPG,GIF
 
 * Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 
   sized rectangle drawing and the `skip_last_vertex` 
