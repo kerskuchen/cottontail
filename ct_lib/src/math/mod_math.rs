@@ -45,11 +45,6 @@ pub fn deg_to_rad(x: f32) -> f32 {
 }
 
 #[inline]
-pub fn have_same_sign(x: f32, y: f32) -> bool {
-    x * y >= 0.0
-}
-
-#[inline]
 pub fn lerp(start: f32, end: f32, percent: f32) -> f32 {
     start + percent * (end - start)
 }
@@ -146,25 +141,6 @@ pub fn clampf(x: f32, min: f32, max: f32) -> f32 {
 #[inline]
 pub fn clampi(x: i32, min: i32, max: i32) -> i32 {
     i32::min(max, i32::max(min, x))
-}
-
-/// Adds `to_add` to the value of a given number `x`. Returns 0 if adding `to_add` to `x` changes
-/// the sign of x
-///
-/// Example:
-/// abs_add(5, 3) = 8
-/// abs_add(-2, 4) = 0
-/// abs_add(4, -2) = 2
-/// abs_add(4, -5) = 0
-#[inline]
-pub fn add_or_zero_when_changing_sign(x: f32, to_add: f32) -> f32 {
-    let sum = x + to_add;
-    if have_same_sign(sum, x) {
-        // Adding did not change the sign of x
-        sum
-    } else {
-        0.0
-    }
 }
 
 /// Wraps an angle to the range [-2*PI, 2*PI]. Note that this operation does not change the cos and
@@ -707,6 +683,8 @@ pub fn linear_motion_integrate(
     vel_max_abs: f32,
     deltatime: f32,
 ) {
+    debug_assert!(vel_max_abs >= 0.0);
+
     // This uses velocity-verlet integration because euler integration has a huge error even for
     // fixed delta times
     // https://jdickinsongames.wordpress.com/2015/01/22/numerical-integration-in-games-development-2/
@@ -724,15 +702,56 @@ pub fn linear_motion_integrate(
     *inout_vel = vel;
 }
 
+fn vel_quantized(vel: f32, ticks_per_second: f32) -> f32 {
+    let result = if vel >= ticks_per_second {
+        round_to_multiple_of_target(vel, ticks_per_second)
+    } else if vel <= -ticks_per_second {
+        round_to_multiple_of_target(vel, ticks_per_second)
+    } else {
+        round_to_multiple_of_target(vel, ticks_per_second / 2.0)
+    };
+
+    if result == 0.0 && !is_effectively_zero(vel) {
+        vel.signum() * ticks_per_second / 2.0
+    } else {
+        result
+    }
+}
+
+/// Adds `to_add` to the value of a given number `x`. Returns 0 if adding `to_add` to `x` changes
+/// the sign of x or was already 0
+///
+/// Example:
+/// add_or_zero_when_changing_sign(5, 3) = 8
+/// add_or_zero_when_changing_sign(-2, 4) = 0
+/// add_or_zero_when_changing_sign(4, -2) = 2
+/// add_or_zero_when_changing_sign(4, -5) = 0
+/// add_or_zero_when_changing_sign(0, 2) = 0
+/// add_or_zero_when_changing_sign(0, -3) = 0
+fn add_or_zero_when_changing_sign(x: f32, to_add: f32) -> f32 {
+    let sum = x + to_add;
+    let have_same_sign = sum * x > 0.0;
+
+    if have_same_sign {
+        // Adding did not change the sign of x
+        sum
+    } else {
+        0.0
+    }
+}
+
 #[inline]
 pub fn linear_motion_integrate_with_drag(
     inout_pos: &mut f32,
     inout_vel: &mut f32,
     acc: f32,
     drag: f32,
-    vel_max: f32,
+    vel_max_abs: f32,
     deltatime: f32,
 ) {
+    debug_assert!(vel_max_abs >= 0.0);
+    debug_assert!(drag >= 0.0);
+
     // This uses velocity-verlet integration because euler integration has a huge error even for
     // fixed delta times
     // https://jdickinsongames.wordpress.com/2015/01/22/numerical-integration-in-games-development-2/
@@ -745,18 +764,18 @@ pub fn linear_motion_integrate_with_drag(
         // Prevent velocity sign flips if we decelerate via drag forces
         let acc_final = acc + drag_final;
         let mut vel_halfstep = add_or_zero_when_changing_sign(vel, acc_final * deltatime / 2.0);
-        vel_halfstep = clampf_absolute(vel_halfstep, vel_max);
+        vel_halfstep = clampf_absolute(vel_halfstep, vel_max_abs);
         pos += vel_halfstep * deltatime;
         vel = add_or_zero_when_changing_sign(vel_halfstep, acc_final * deltatime / 2.0);
-        vel = clampf_absolute(vel, vel_max);
+        vel = clampf_absolute(vel, vel_max_abs);
     } else {
         // Normal acceleration with possible velocity sign-flip
         let acc_final = acc + drag_final;
         let mut vel_halfstep = vel + (acc_final * deltatime / 2.0);
-        vel_halfstep = clampf_absolute(vel_halfstep, vel_max);
+        vel_halfstep = clampf_absolute(vel_halfstep, vel_max_abs);
         pos += vel_halfstep * deltatime;
         vel = vel_halfstep + acc_final * deltatime / 2.0;
-        vel = clampf_absolute(vel, vel_max);
+        vel = clampf_absolute(vel, vel_max_abs);
     }
 
     *inout_pos = pos;
@@ -783,6 +802,126 @@ pub fn linear_motion_integrate_v2(
     pos += vel_halfstep * deltatime;
     vel = vel_halfstep + acc * deltatime / 2.0;
     vel = Vec2::clamped_abs(vel, vel_max);
+
+    *inout_pos = pos;
+    *inout_vel = vel;
+}
+
+#[inline]
+pub fn linear_motion_integrate_with_drag_v2(
+    inout_pos: &mut Vec2,
+    inout_vel: &mut Vec2,
+    acc: Vec2,
+    drag: f32,
+    vel_max: f32,
+    deltatime: f32,
+) {
+    let mut vel = *inout_vel;
+    let mut pos = *inout_pos;
+
+    linear_motion_integrate_with_drag(&mut pos.x, &mut vel.x, acc.x, drag, vel_max, deltatime);
+    linear_motion_integrate_with_drag(&mut pos.y, &mut vel.y, acc.y, drag, vel_max, deltatime);
+    vel = Vec2::clamped_abs(vel, vel_max);
+
+    *inout_pos = pos;
+    *inout_vel = vel;
+}
+
+/// Same as `linear_motion_integrate` but makes sure that the position is updated at either
+/// 0.5 or n pixels per tick where n is an integer. This gets rid of movement stutter where objects
+/// for example move 1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 2, ... pixels because `deltatime * vel = 1.25`
+#[inline]
+pub fn linear_motion_integrate_quantized_vel(
+    inout_pos: &mut f32,
+    inout_vel: &mut f32,
+    acc: f32,
+    vel_max_abs: f32,
+    deltatime: f32,
+    ticks_per_second: f32,
+) {
+    debug_assert!(vel_max_abs >= 0.0);
+
+    let mut vel = *inout_vel;
+    let mut pos = *inout_pos;
+
+    vel = vel + acc * deltatime;
+    vel = clampf_absolute(vel, vel_max_abs);
+    pos += vel_quantized(vel, ticks_per_second) * deltatime;
+
+    *inout_pos = pos;
+    *inout_vel = vel;
+}
+
+/// Same as `linear_motion_integrate_with_drag` but makes sure that the position is updated at either
+/// 0.5 or n pixels per tick where n is an integer. This gets rid of movement stutter where objects
+/// for example move 1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 2, ... pixels because `deltatime * vel = 1.25`
+#[inline]
+pub fn linear_motion_integrate_with_drag_quantized_vel(
+    inout_pos: &mut f32,
+    inout_vel: &mut f32,
+    acc: f32,
+    drag: f32,
+    vel_max_abs: f32,
+    deltatime: f32,
+    ticks_per_second: f32,
+) {
+    debug_assert!(vel_max_abs >= 0.0);
+    debug_assert!(drag >= 0.0);
+
+    let mut vel = *inout_vel;
+    let mut pos = *inout_pos;
+
+    let drag_final = -f32::signum(vel) * drag;
+    let acc_final = acc + drag_final;
+    if f32::abs(drag_final) > f32::abs(acc) {
+        // Prevent velocity sign flips if we decelerate via drag forces
+        vel = add_or_zero_when_changing_sign(vel, acc_final * deltatime);
+    } else {
+        // Normal acceleration with possible velocity sign-flip
+        vel = vel + acc_final * deltatime;
+    }
+    vel = clampf_absolute(vel, vel_max_abs);
+    pos += vel_quantized(vel, ticks_per_second) * deltatime;
+
+    *inout_pos = pos;
+    *inout_vel = vel;
+}
+
+#[inline]
+pub fn linear_motion_integrate_with_drag_quantized_vel_v2(
+    inout_pos: &mut Vec2,
+    inout_vel: &mut Vec2,
+    acc: Vec2,
+    drag: f32,
+    vel_max_abs: f32,
+    deltatime: f32,
+    ticks_per_second: f32,
+) {
+    debug_assert!(vel_max_abs >= 0.0);
+    debug_assert!(drag >= 0.0);
+
+    let mut vel = *inout_vel;
+    let mut pos = *inout_pos;
+
+    let drag_final = -Vec2::new(vel.x.signum(), vel.y.signum()) * drag;
+    let acc_final = acc + drag_final;
+    if f32::abs(drag_final.x) > f32::abs(acc.x) {
+        // Prevent velocity sign flips if we decelerate via drag forces
+        vel.x = add_or_zero_when_changing_sign(vel.x, acc_final.x * deltatime);
+    } else {
+        // Normal acceleration with possible velocity sign-flip
+        vel.x = vel.x + acc_final.x * deltatime;
+    }
+    if f32::abs(drag_final.y) > f32::abs(acc.y) {
+        // Prevent velocity sign flips if we decelerate via drag forces
+        vel.y = add_or_zero_when_changing_sign(vel.y, acc_final.y * deltatime);
+    } else {
+        // Normal acceleration with possible velocity sign-flip
+        vel.y = vel.y + acc_final.y * deltatime;
+    }
+    vel = Vec2::clamped_abs(vel, vel_max_abs);
+    pos.x += vel_quantized(vel.x, ticks_per_second) * deltatime;
+    pos.y += vel_quantized(vel.y, ticks_per_second) * deltatime;
 
     *inout_pos = pos;
     *inout_vel = vel;
