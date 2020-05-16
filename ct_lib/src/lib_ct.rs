@@ -36,6 +36,7 @@ macro_rules! dformat {
 }
 
 pub struct TimerScoped {
+    use_logger: bool,
     log_message: String,
     creation_time: std::time::Instant,
 }
@@ -45,17 +46,26 @@ impl Drop for TimerScoped {
         let duration_since_creation = std::time::Instant::now()
             .duration_since(self.creation_time)
             .as_secs_f32();
-        log::debug!(
-            "{}: {:.3}ms",
-            self.log_message,
-            duration_since_creation * 1000.0
-        );
+        if self.use_logger {
+            log::debug!(
+                "{}: {:.3}ms",
+                self.log_message,
+                duration_since_creation * 1000.0
+            );
+        } else {
+            println!(
+                "{}: {:.3}ms",
+                self.log_message,
+                duration_since_creation * 1000.0
+            );
+        }
     }
 }
 
 impl TimerScoped {
-    pub fn new_scoped(output_text: &str) -> TimerScoped {
+    pub fn new_scoped(output_text: &str, use_logger: bool) -> TimerScoped {
         TimerScoped {
+            use_logger,
             log_message: output_text.to_owned(),
             creation_time: std::time::Instant::now(),
         }

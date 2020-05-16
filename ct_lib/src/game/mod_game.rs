@@ -105,7 +105,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
         out_systemcommands: &mut Vec<SystemCommand>,
     ) {
         if self.draw.is_none() {
-            let _drawstate_setup_timer = TimerScoped::new_scoped("Drawstate setup time");
+            let _drawstate_setup_timer = TimerScoped::new_scoped("Drawstate setup time", true);
 
             let window_config = GameStateType::get_window_config();
             let atlas = game_load_atlas("resources");
@@ -176,7 +176,8 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
             SplashscreenState::IsFadingIn => {}
             SplashscreenState::FinishedFadingIn => {
                 {
-                    let _audiostate_setup_timer = TimerScoped::new_scoped("Audiostate setup time");
+                    let _audiostate_setup_timer =
+                        TimerScoped::new_scoped("Audiostate setup time", true);
 
                     let audiorecordings_mono = game_load_audiorecordings_mono("resources");
                     for (recording_name, buffer) in audiorecordings_mono.into_iter() {
@@ -185,7 +186,8 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
                 }
 
                 {
-                    let _gamestate_setup_timer = TimerScoped::new_scoped("Gamestate setup time");
+                    let _gamestate_setup_timer =
+                        TimerScoped::new_scoped("Gamestate setup time", true);
 
                     assert!(self.game.is_none());
                     self.game = Some(GameStateType::new(draw, audio, assets, &input));
