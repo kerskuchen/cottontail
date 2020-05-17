@@ -5,7 +5,13 @@
 ## Backlog:
 
 * Repeaty:
-  - support PNG,JPG,GIF
+  - support PNG,JPG,GIF input (gif without ppi)
+  - save png with ppi info
+  - use multihtreaded png writer (https://github.com/brion/mtpng). For this one we need to find out
+    how we write the ppi info (see lodepng)
+  - make gui for row/columns entry
+  - make gui for millimeter width/height entry
+    
 
 * Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 
   sized rectangle drawing and the `skip_last_vertex` 

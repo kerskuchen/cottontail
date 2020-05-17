@@ -139,10 +139,13 @@ pub fn panic_message_split_to_message_and_location(
     panic_info: &std::panic::PanicInfo<'_>,
 ) -> (String, String) {
     let panic_info_content = format!("{}", panic_info).replace("panicked at '", "");
-    let split_pos = panic_info_content.rfind("', ").unwrap();
-    let (message, location) = panic_info_content.split_at(split_pos);
-    let location = location.replace("', ", "");
-    (message.to_owned(), location)
+    if let Some(split_pos) = panic_info_content.rfind("', ") {
+        let (message, location) = panic_info_content.split_at(split_pos);
+        let location = location.replace("', ", "");
+        (message.to_string(), location)
+    } else {
+        ("Panicked".to_string(), panic_info_content)
+    }
 }
 
 pub fn panic_set_hook_wait_for_keypress() {
