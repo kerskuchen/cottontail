@@ -1,12 +1,7 @@
-## Done today
-
-## Next:
-
-## Backlog:
-
 * Repeaty:
-  - handle the case when there is no input image or it is broken
-  - support PNG,JPG,GIF input (gif without ppi)???
+  - Code cleanup (warnings and simplification) 
+  - Maybe don't show text inputs when no image is loaded?
+  - When pressing start button and text input is empty (but previously valid) refill text input
     
 
 * Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 
