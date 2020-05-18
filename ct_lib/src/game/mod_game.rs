@@ -1996,7 +1996,7 @@ pub fn game_load_atlas(assets_folder: &str) -> SpriteAtlas {
     let mut textures = Vec::new();
     for texture_filepath_relative in &textures_list {
         let texture_filepath = system::path_join(assets_folder, texture_filepath_relative);
-        textures.push(Bitmap::create_from_png_file(&texture_filepath));
+        textures.push(Bitmap::from_png_file_or_panic(&texture_filepath));
     }
 
     let sprites_filepath = system::path_join(assets_folder, "sprites.data");

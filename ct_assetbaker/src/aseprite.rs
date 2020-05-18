@@ -37,7 +37,7 @@ pub fn create_sheet_animations(
     assert!(framecount > 0);
 
     // Check for translucent pixels
-    let output_bitmap = Bitmap::create_from_png_file(&output_path_image);
+    let output_bitmap = Bitmap::from_png_file_or_panic(&output_path_image);
     let has_translucency = output_bitmap
         .data
         .iter()

@@ -527,7 +527,7 @@ pub fn atlas_create_from_pngs(
     let (atlas_textures, result_sprite_positions) = {
         let mut packer = BitmapMultiAtlas::new(atlas_texture_size as i32);
         for image_path in sprite_imagepaths.into_iter() {
-            let image = Bitmap::create_from_png_file(&image_path);
+            let image = Bitmap::from_png_file_or_panic(&image_path);
             let sprite_name = system::path_without_extension(&image_path)
                 .replace(&format!("{}/", png_search_dir), "");
             packer.pack_bitmap(&sprite_name, &image);
@@ -716,7 +716,7 @@ fn load_existing_launcher_icon_images(search_dir: &str) -> HashMap<i32, Bitmap> 
     let mut result = HashMap::new();
     let image_paths = system::collect_files_by_extension_recursive(search_dir, ".png");
     for image_path in &image_paths {
-        let image = Bitmap::create_from_png_file(image_path);
+        let image = Bitmap::from_png_file_or_panic(image_path);
         let size = system::path_to_filename_without_extension(image_path)
             .parse()
             .expect(&format!(

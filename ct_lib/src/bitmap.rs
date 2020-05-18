@@ -73,9 +73,11 @@ impl Bitmap {
         result
     }
 
-    pub fn create_from_png_file(png_filepath: &str) -> Bitmap {
-        let image = lodepng::decode32_file(png_filepath)
-            .expect(&format!("Could not decode png file '{}'", png_filepath));
+    pub fn from_png_file(png_filepath: &str) -> Result<Bitmap, String> {
+        let file_bytes = std::fs::read(png_filepath)
+            .map_err(|error| format!("Could not open png file '{}': {}", png_filepath, error))?;
+        let image = lodepng::decode32(file_bytes)
+            .map_err(|error| format!("Could not decode png file '{}': {}", png_filepath, error))?;
 
         let buffer: Vec<PixelRGBA> = image
             .buffer
@@ -84,7 +86,15 @@ impl Bitmap {
             .map(|color| unsafe { std::mem::transmute::<lodepng::RGBA, PixelRGBA>(color) })
             .collect();
 
-        Bitmap::new_from_buffer(image.width as u32, image.height as u32, buffer)
+        Ok(Bitmap::new_from_buffer(
+            image.width as u32,
+            image.height as u32,
+            buffer,
+        ))
+    }
+
+    pub fn from_png_file_or_panic(png_filepath: &str) -> Bitmap {
+        Bitmap::from_png_file(png_filepath).unwrap()
     }
 
     pub fn create_from_text(
