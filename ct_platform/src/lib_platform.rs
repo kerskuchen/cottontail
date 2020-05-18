@@ -235,7 +235,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         .apply();
     if let Err(error) = logger_create_result {
         sdl_window::Window::show_error_messagebox(&format!(
-            "Could not remove previous logfile at '{}' : {}",
+            "Could not initialize logger at '{}' : {}",
             &logfile_path, error,
         ));
     }
