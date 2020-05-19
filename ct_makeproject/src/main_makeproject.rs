@@ -193,7 +193,10 @@ fn project_refresh() {
         let current_working_dir =
             std::env::current_dir().expect("Cannot determine current working directory");
 
-        let working_dir = current_working_dir.file_name().unwrap().to_string_owned();
+        let working_dir = current_working_dir
+            .file_name()
+            .unwrap()
+            .to_string_owned_or_panic();
         if working_dir.starts_with("ct_") {
             // NOTE: We want to reserve the `ct_` folder-name-prefix for ourselves
             working_dir.replacen("ct_", "", 1)

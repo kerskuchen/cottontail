@@ -110,39 +110,6 @@ impl<GameStateType: GameStateInterface + Clone> InputRecorder<GameStateType> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Appdata path
-
-#[cfg(not(target_os = "windows"))]
-fn platform_get_appdata_dir(company_name: &str, game_save_folder_name: &str) -> String {
-    sdl2::filesystem::pref_path(company_name, game_save_folder_name)
-        .expect("Cannot find suitable path to write data")
-        .to_owned()
-}
-
-#[cfg(target_os = "windows")]
-fn platform_get_appdata_dir(company_name: &str, game_save_folder_name: &str) -> String {
-    let user_home_path = std::env::var("userprofile").expect("Cannot find user home path");
-    let savegame_path =
-        user_home_path + "\\Saved Games\\" + company_name + "\\" + game_save_folder_name;
-    std::fs::create_dir_all(&savegame_path).expect(&format!(
-        "Cannot create savegame directory at '{}'",
-        &savegame_path
-    ));
-    savegame_path
-}
-
-fn platform_get_savegame_dir(company_name: &str, game_save_folder_name: &str) -> String {
-    // Try local path first: Write test file to see if we even have writing permissions for './'
-    if std::fs::write("test.txt", "test").is_ok() {
-        if std::fs::remove_file("test.txt").is_ok() {
-            return "".to_owned();
-        }
-    }
-
-    platform_get_appdata_dir(company_name, game_save_folder_name)
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main event loop
 
 struct SDLAudioCallback {
@@ -190,10 +157,46 @@ fn log_frametimes(
 pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     let launcher_start_time = std::time::Instant::now();
     let game_config = GameStateType::get_game_config();
-    let savedata_dir = platform_get_savegame_dir(
+    let savedata_dir = system::get_savegame_dir(
         &game_config.game_company_name,
         &game_config.game_save_folder_name,
-    );
+        true,
+    )
+    .unwrap_or_else(|error| {
+        sdl_window::Window::show_error_messagebox(&format!(
+            "Could not get savegame location: {}",
+            error,
+        ));
+        panic!()
+    });
+
+    // ---------------------------------------------------------------------------------------------
+    // Logging and error handling
+
+    let logfile_path = ct_lib::system::path_join(&savedata_dir, "logging.txt");
+    if let Err(error) = ct_lib::init_logging(&logfile_path, log::LevelFilter::Trace) {
+        sdl_window::Window::show_error_messagebox(&format!(
+            "Could not initialize logger at '{}' : {}",
+            &logfile_path, error,
+        ));
+    }
+
+    std::panic::set_hook(Box::new(move |panic_info| {
+        log::error!("{}", panic_info);
+
+        if ENABLE_PANIC_MESSAGES {
+            let logfile_path_canonicalized =
+                system::path_canonicalize(&logfile_path).unwrap_or(logfile_path.to_string());
+            let messagebox_text = format!(
+                "A Fatal error has occured:\n{}\nLogfile written to '{}'",
+                &panic_info, &logfile_path_canonicalized,
+            );
+            sdl_window::Window::show_error_messagebox(&messagebox_text);
+        }
+    }));
+
+    // ---------------------------------------------------------------------------------------------
+    // Config
 
     // Get launcher config
     let launcher_config: LauncherConfig = {
@@ -210,74 +213,6 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             config
         }
     };
-
-    // ---------------------------------------------------------------------------------------------
-    // Logging and error handling
-
-    let logfile_path = ct_lib::system::path_join(&savedata_dir, "logging.txt");
-    if ct_lib::system::path_exists(&logfile_path) {
-        let remove_result = std::fs::remove_file(&logfile_path);
-        if let Err(error) = remove_result {
-            sdl_window::Window::show_error_messagebox(&format!(
-                "Could not remove previous logfile at '{}' : {}",
-                logfile_path, error,
-            ));
-        }
-    }
-
-    let logger_create_result = fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!("{}: {}\r", record.level(), message))
-        })
-        .level(log::LevelFilter::Trace)
-        .chain(std::io::stdout())
-        .chain(fern::log_file(&logfile_path).expect("Could not open logfile"))
-        .apply();
-    if let Err(error) = logger_create_result {
-        sdl_window::Window::show_error_messagebox(&format!(
-            "Could not initialize logger at '{}' : {}",
-            &logfile_path, error,
-        ));
-    }
-
-    if ENABLE_PANIC_MESSAGES {
-        std::panic::set_hook(Box::new(|panic_info| {
-            log::error!("{}", &panic_info);
-            let backtrace = backtrace::Backtrace::new();
-            log::error!("BACKTRACE:\r\n{:?}", backtrace);
-
-            let game_config = GameStateType::get_game_config();
-            let logfile_path = ct_lib::system::path_join(
-                &platform_get_savegame_dir(
-                    &game_config.game_company_name,
-                    &game_config.game_save_folder_name,
-                ),
-                "logging.txt",
-            )
-            .replace("/", "\\");
-            let logfile_path_canonicalized = std::path::Path::new(&logfile_path).canonicalize();
-
-            let messagebox_text = if let Ok(logfile_path_canonicalized) = logfile_path_canonicalized
-            {
-                let logfile_path_canonicalized_without_extended_length_path_syntax =
-                    logfile_path_canonicalized
-                        .to_string_lossy()
-                        .replace("\\\\?\\", "");
-
-                format!(
-                    "A Fatal error has occured:\n{}\nLogfile written to '{}'",
-                    &panic_info, &logfile_path_canonicalized_without_extended_length_path_syntax,
-                )
-            } else {
-                format!(
-                    "A Fatal error has occured:\n{}\nLogfile written to '{}'",
-                    &panic_info, &logfile_path,
-                )
-            };
-
-            sdl_window::Window::show_error_messagebox(&messagebox_text);
-        }));
-    }
 
     // ---------------------------------------------------------------------------------------------
     // SDL subsystems

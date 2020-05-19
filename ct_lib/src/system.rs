@@ -4,33 +4,36 @@ use std::path::Path;
 pub use easy_process;
 
 pub trait PathHelper {
-    fn to_string_owned(&self) -> String;
-    fn to_string_borrowed(&self) -> &str;
+    fn to_string_borrowed(&self) -> Result<&str, String>;
+
+    fn to_string_owned(&self) -> Result<String, String> {
+        self.to_string_borrowed().map(|result| result.to_string())
+    }
+    fn to_string_owned_or_panic(&self) -> String {
+        self.to_string_owned().unwrap()
+    }
+    fn to_string_borrowed_or_panic(&self) -> &str {
+        self.to_string_borrowed().unwrap()
+    }
 }
 
 impl PathHelper for Path {
-    fn to_string_owned(&self) -> String {
-        self.to_str()
-            .unwrap_or_else(|| panic!("Could not convert path to String {:?}", self))
-            .to_owned()
-    }
-
-    fn to_string_borrowed(&self) -> &str {
-        self.to_str()
-            .unwrap_or_else(|| panic!("Could not convert path to &str {:?}", self))
+    fn to_string_borrowed(&self) -> Result<&str, String> {
+        if let Some(result) = self.to_str() {
+            Ok(result)
+        } else {
+            Err(format!("Could not convert path to String {:?}", self))
+        }
     }
 }
 
 impl PathHelper for OsStr {
-    fn to_string_owned(&self) -> String {
-        self.to_str()
-            .unwrap_or_else(|| panic!("Could not convert path to String {:?}", self))
-            .to_owned()
-    }
-
-    fn to_string_borrowed(&self) -> &str {
-        self.to_str()
-            .unwrap_or_else(|| panic!("Could not convert path to &str {:?}", self))
+    fn to_string_borrowed(&self) -> Result<&str, String> {
+        if let Some(result) = self.to_str() {
+            Ok(result)
+        } else {
+            Err(format!("Could not convert path to String {:?}", self))
+        }
     }
 }
 
@@ -38,11 +41,21 @@ pub fn path_exists(path: &str) -> bool {
     Path::new(path).exists()
 }
 
+pub fn path_canonicalize(path: &str) -> Result<String, String> {
+    let canonicalized = std::path::Path::new(path)
+        .canonicalize()
+        .map_err(|error| format!("Cannot canonocalize path '{}' : {}", path, error))?;
+    let canonicalized_string = canonicalized.to_string_borrowed()?;
+
+    // Remove extendet length path syntax on windows
+    Ok(canonicalized_string.replace("\\\\?\\", ""))
+}
+
 pub fn path_dir_empty(dir_path: &str) -> bool {
     walkdir::WalkDir::new(dir_path)
         .into_iter()
         .filter_map(|maybe_entry| maybe_entry.ok())
-        .filter(|entry| entry.file_name().to_string_borrowed() != dir_path)
+        .filter(|entry| entry.file_name().to_string_borrowed_or_panic() != dir_path)
         .count()
         == 0
 }
@@ -51,7 +64,7 @@ pub fn path_dir_empty(dir_path: &str) -> bool {
 pub fn path_join(first: &str, second: &str) -> String {
     Path::new(first)
         .join(second)
-        .to_string_owned()
+        .to_string_owned_or_panic()
         .replace("\\", "/")
 }
 
@@ -59,7 +72,7 @@ pub fn path_join(first: &str, second: &str) -> String {
 pub fn path_with_extension(filepath: &str, new_extension: &str) -> String {
     Path::new(filepath)
         .with_extension(new_extension)
-        .to_string_owned()
+        .to_string_owned_or_panic()
         .replace("\\", "/")
 }
 
@@ -67,7 +80,7 @@ pub fn path_with_extension(filepath: &str, new_extension: &str) -> String {
 pub fn path_without_extension(filepath: &str) -> String {
     Path::new(filepath)
         .with_extension("")
-        .to_string_owned()
+        .to_string_owned_or_panic()
         .replace("\\", "/")
 }
 
@@ -75,7 +88,7 @@ pub fn path_without_extension(filepath: &str) -> String {
 pub fn path_without_filename(filepath: &str) -> String {
     Path::new(filepath)
         .with_file_name("")
-        .to_string_owned()
+        .to_string_owned_or_panic()
         .replace("\\", "/")
 }
 
@@ -84,7 +97,7 @@ pub fn path_to_extension(filepath: &str) -> String {
     Path::new(filepath)
         .extension()
         .unwrap_or_else(|| panic!("Could not retrieve filename from path {}", filepath))
-        .to_string_owned()
+        .to_string_owned_or_panic()
         .replace("\\", "/")
 }
 
@@ -93,7 +106,7 @@ pub fn path_to_filename(filepath: &str) -> String {
     Path::new(filepath)
         .file_name()
         .unwrap_or_else(|| panic!("Could not retrieve filename from path {}", filepath))
-        .to_string_owned()
+        .to_string_owned_or_panic()
         .replace("\\", "/")
 }
 
@@ -107,7 +120,7 @@ pub fn path_to_filename_without_extension(filepath: &str) -> String {
                 filepath
             )
         })
-        .to_string_owned()
+        .to_string_owned_or_panic()
         .replace("\\", "/")
 }
 
@@ -145,8 +158,13 @@ pub fn collect_files_by_extension_recursive(root_folder: &str, extension: &str) 
     walkdir::WalkDir::new(root_folder)
         .into_iter()
         .filter_map(|maybe_entry| maybe_entry.ok())
-        .filter(|entry| entry.file_name().to_string_borrowed().ends_with(extension))
-        .map(|entry| entry.path().to_string_owned().replace("\\", "/"))
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_borrowed_or_panic()
+                .ends_with(extension)
+        })
+        .map(|entry| entry.path().to_string_owned_or_panic().replace("\\", "/"))
         .collect()
 }
 
@@ -156,7 +174,7 @@ pub fn collect_files_recursive(root_folder: &str) -> Vec<String> {
         .into_iter()
         .filter_map(|maybe_entry| maybe_entry.ok())
         .filter(|entry| !entry.path().is_dir())
-        .map(|entry| entry.path().to_string_owned().replace("\\", "/"))
+        .map(|entry| entry.path().to_string_owned_or_panic().replace("\\", "/"))
         .collect()
 }
 
@@ -168,7 +186,7 @@ pub fn collect_files_by_glob_pattern(root_folder: &str, glob_pattern: &str) -> V
         .unwrap()
         .into_iter()
         .filter_map(|maybe_entry| maybe_entry.ok())
-        .map(|entry| entry.to_string_owned().replace("\\", "/"))
+        .map(|entry| entry.to_string_owned_or_panic().replace("\\", "/"))
         .collect()
 }
 
@@ -198,4 +216,86 @@ pub fn run_systemcommand_fail_on_error(command: &str, print_command: bool) -> ea
             }
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Appdata
+
+pub fn get_home_dir() -> Result<String, String> {
+    directories::UserDirs::new()
+        .ok_or("Could not find home directory".to_string())?
+        .home_dir()
+        .to_string_owned()
+}
+
+pub fn get_appdata_dir(company_name: &str, application_name: &str) -> Result<String, String> {
+    let project_dirs = directories::ProjectDirs::from("", company_name, application_name)
+        .ok_or("Could not get appdata dir - home directory not found".to_string())?;
+
+    let appdata_dir_path = project_dirs.data_dir();
+    if let Some(appdata_dir) = appdata_dir_path.to_str() {
+        let appdata_dir = appdata_dir.replace("\\data", "");
+        std::fs::create_dir_all(&appdata_dir)
+            .map_err(|error| format!("Could not get appdata dir - {}", error))?;
+        // NOTE: On Windows `data_dir()` returns "{RoamingAppData}\_project_path_\data"
+        //       which is not what we want
+        Ok(appdata_dir)
+    } else {
+        Err(format!(
+            "Could not get appdata dir - path '{:?}' is invalid",
+            appdata_dir_path
+        ))
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_savegame_dir(
+    company_name: &str,
+    application_name: &str,
+    prefer_working_dir: bool,
+) -> Result<String, String> {
+    // Try working dir first: Write test file to see if we even have writing permissions for './'
+    if prefer_working_dir {
+        if std::fs::write("test.txt", "test").is_ok() {
+            if std::fs::remove_file("test.txt").is_ok() {
+                return Ok("".to_owned());
+            }
+        }
+    }
+
+    // Check canonical savegame dir
+    if let Ok(user_home_path) = get_home_dir() {
+        let savegame_path =
+            user_home_path + "\\Saved Games\\" + company_name + "\\" + application_name;
+        if let Err(error) = std::fs::create_dir_all(&savegame_path) {
+            log::info!(
+                "Cannot create savegame directory at '{}' : {}",
+                &savegame_path,
+                error
+            )
+        } else {
+            return Ok(savegame_path);
+        }
+    }
+
+    get_appdata_dir(company_name, application_name)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn get_savegame_dir(
+    company_name: &str,
+    application_name: &str,
+    prefer_working_dir: bool,
+) -> Result<String, String> {
+    // Try working dir first: Write test file to see if we even have writing permissions for './'
+    if prefer_working_dir {
+        if std::fs::write("test.txt", "test").is_ok() {
+            if std::fs::remove_file("test.txt").is_ok() {
+                return Ok("".to_owned());
+            }
+        }
+    }
+
+    // We don't have a standardized savegame directory
+    get_appdata_dir(company_name, application_name)
 }
