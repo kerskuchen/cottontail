@@ -106,37 +106,6 @@ pub fn init_logging(logfile_path: &str, loglevel: log::LevelFilter) -> Result<()
     Ok(())
 }
 
-/*
-// ---------------------------------------------------------------------------------------------
-// Logging and error handling
-
-let logfile_path = ct_lib::system::path_join(&savedata_dir, "logging.txt");
-if ct_lib::system::path_exists(&logfile_path) {
-    let remove_result = std::fs::remove_file(&logfile_path);
-    if let Err(error) = remove_result {
-        sdl_window::Window::show_error_messagebox(&format!(
-            "Could not remove previous logfile at '{}' : {}",
-            logfile_path, error,
-        ));
-    }
-}
-
-let logger_create_result = fern::Dispatch::new()
-    .format(|out, message, record| {
-        out.finish(format_args!("{}: {}\r", record.level(), message))
-    })
-    .level(log::LevelFilter::Trace)
-    .chain(std::io::stdout())
-    .chain(fern::log_file(&logfile_path).expect("Could not open logfile"))
-    .apply();
-if let Err(error) = logger_create_result {
-    sdl_window::Window::show_error_messagebox(&format!(
-        "Could not initialize logger at '{}' : {}",
-        &logfile_path, error,
-    ));
-}
-*/
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Convenience Serialization / Deserialization
 
