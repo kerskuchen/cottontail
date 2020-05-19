@@ -299,3 +299,37 @@ pub fn get_savegame_dir(
     // We don't have a standardized savegame directory
     get_appdata_dir(company_name, application_name)
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Quick messagebox
+
+#[cfg(windows)]
+pub fn show_messagebox(caption: &str, message: &str, is_error: bool) {
+    use std::iter::once;
+    use std::os::windows::ffi::OsStrExt;
+    use std::ptr::null_mut;
+    use winapi::um::winuser::{MessageBoxW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK};
+
+    let caption_wide: Vec<u16> = std::ffi::OsStr::new(caption)
+        .encode_wide()
+        .chain(once(0))
+        .collect();
+    let message_wide: Vec<u16> = std::ffi::OsStr::new(message)
+        .encode_wide()
+        .chain(once(0))
+        .collect();
+
+    unsafe {
+        MessageBoxW(
+            null_mut(),
+            message_wide.as_ptr(),
+            caption_wide.as_ptr(),
+            MB_OK
+                | if is_error {
+                    MB_ICONERROR
+                } else {
+                    MB_ICONINFORMATION
+                },
+        )
+    };
+}

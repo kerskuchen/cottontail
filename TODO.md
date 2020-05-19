@@ -1,6 +1,7 @@
 * Repeaty:
-  - Code cleanup (warnings and simplification) 
-  - Maybe don't show text inputs when no image is loaded?
+  - Check if we can automatically log on exit with fern?
+  - Add readme
+  - Add launcher icon
   - When pressing start button and text input is empty (but previously valid) refill text input
     
 
