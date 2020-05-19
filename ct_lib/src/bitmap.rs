@@ -14,6 +14,14 @@ use rect_packer;
 pub type Bitmap = super::grid::Grid<PixelRGBA>;
 
 impl Bitmap {
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            let len = self.data.len() * std::mem::size_of::<PixelRGBA>();
+            let ptr = self.data.as_ptr() as *const u8;
+            std::slice::from_raw_parts(ptr, len)
+        }
+    }
+
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut result = Vec::new();
         for pixel in &self.data {
