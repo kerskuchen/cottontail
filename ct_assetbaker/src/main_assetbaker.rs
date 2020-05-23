@@ -133,7 +133,14 @@ fn bake_graphics_resources() {
     )> = imagepaths
         .par_iter()
         .map(|imagepath| {
-            aseprite::create_sheet_animations(imagepath, "assets", "target/assets_temp")
+            let sheet_name = system::path_without_extension(imagepath).replace("assets/", "");
+            let output_path_without_extension =
+                system::path_without_extension(imagepath).replace("assets", "target/assets_temp");
+            aseprite::create_sheet_animations(
+                imagepath,
+                &sheet_name,
+                &output_path_without_extension,
+            )
         })
         .collect();
     for (sprites, animations) in sprites_and_animations {

@@ -1570,10 +1570,10 @@ impl Animation {
 pub struct AnimationPlayer {
     current_frametime: f32,
     current_frame_index: usize,
-    playback_speed: f32,
-    stop_after_finish: bool,
-    play_reversed: bool,
-    is_paused: bool,
+    pub playback_speed: f32,
+    pub stop_after_finish: bool,
+    pub play_reversed: bool,
+    pub is_paused: bool,
     animation: Animation,
 }
 

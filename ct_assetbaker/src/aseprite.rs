@@ -9,21 +9,163 @@ use ct_lib::indexmap::IndexMap;
 use ct_lib::serde_derive::Deserialize;
 use ct_lib::serde_json;
 
+use rayon::prelude::*;
+
 pub fn create_sheet_animations(
     image_filepath: &str,
-    root_dir_source: &str,
-    root_dir_dest: &str,
+    sheet_name: &str,
+    output_filepath_without_extension: &str,
 ) -> (
     IndexMap<Spritename, AssetSprite>,
     IndexMap<Animationname, AssetAnimation>,
 ) {
-    let sheet_name = system::path_without_extension(image_filepath)
-        .replace(&format!("{}/", root_dir_source), "");
+    if image_filepath.ends_with("_3d.ase") {
+        create_sheet_animations_3d(
+            image_filepath,
+            sheet_name,
+            output_filepath_without_extension,
+        )
+    } else {
+        create_sheet_animations_2d(
+            image_filepath,
+            sheet_name,
+            output_filepath_without_extension,
+        )
+    }
+}
 
-    let output_path_without_extension =
-        system::path_without_extension(image_filepath).replace(root_dir_source, root_dir_dest);
-    let output_path_image = output_path_without_extension.clone() + ".png";
-    let output_path_meta = output_path_without_extension.clone() + ".json";
+pub fn create_sheet_animations_3d(
+    image_filepath: &str,
+    sheet_name: &str,
+    output_filepath_without_extension: &str,
+) -> (
+    IndexMap<Spritename, AssetSprite>,
+    IndexMap<Animationname, AssetAnimation>,
+) {
+    let stack_layer_count = {
+        // NOTE: This block is mainly for validation
+        let mut layers = Vec::new();
+        for layer_name in &aseprite_list_layers_of_file(image_filepath) {
+            if layer_name != "pivot"
+                && layer_name != "attachment_0"
+                && layer_name != "attachment_1"
+                && layer_name != "attachment_2"
+                && layer_name != "attachment_3"
+            {
+                let layer_index = layer_name.parse::<usize>().expect(&format!(
+                    "Found layer named '{}' in 3D sprite '{}', expected layernumber.\n
+            NOTE: 3D sprites only support layer names 0,1,2,.., `pivot` and 'attachment_*'",
+                    image_filepath, layer_name
+                ));
+                layers.push(layer_index);
+            }
+        }
+        assert!(
+            !layers.is_empty(),
+            "No layer found in 3D sprite '{}'",
+            image_filepath
+        );
+        layers.sort();
+        for index in 0..layers.len() {
+            assert!(
+                index == layers[index],
+                "Layers in 3D sprite '{}' do not go continuously from 0-{}",
+                image_filepath,
+                layers.len() - 1
+            );
+        }
+        layers.len()
+    };
+
+    // Split out each of the 3D sprites stack layer into its own file and process each separately
+    let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
+    let mut result_animations: IndexMap<Animationname, AssetAnimation> = IndexMap::new();
+    let sprites_and_animations: Vec<(
+        IndexMap<Spritename, AssetSprite>,
+        IndexMap<Animationname, AssetAnimation>,
+    )> = (0..stack_layer_count)
+        .into_par_iter()
+        .map(|current_stack_layer| {
+            let stack_layer_sheet_name =
+                sheet_name.to_string() + "#" + &current_stack_layer.to_string();
+            let stack_layer_output_filepath_without_extension = output_filepath_without_extension
+                .to_string()
+                + "#"
+                + &current_stack_layer.to_string();
+            let stack_layer_image_filepath =
+                stack_layer_output_filepath_without_extension.clone() + ".ase";
+
+            let mut command = String::from("aseprite") + " --batch";
+            for ignored_stack_layer in 0..stack_layer_count {
+                if current_stack_layer != ignored_stack_layer {
+                    command += &format!(" --ignore-layer \"{}\" ", ignored_stack_layer);
+                }
+            }
+            command += &image_filepath;
+            command += " --save-as ";
+            command += &stack_layer_image_filepath;
+
+            system::run_systemcommand_fail_on_error(&command, false);
+
+            assert!(
+                system::path_exists(&stack_layer_image_filepath),
+                "Failed to generate 3D sprite stack layer for '{}' - '{}' is missing",
+                image_filepath,
+                stack_layer_image_filepath
+            );
+
+            create_sheet_animations_2d(
+                &stack_layer_image_filepath,
+                &stack_layer_sheet_name,
+                &stack_layer_output_filepath_without_extension,
+            )
+        })
+        .collect();
+
+    for (sprites, animations) in sprites_and_animations {
+        result_sprites.extend(sprites);
+        result_animations.extend(animations);
+    }
+
+    /*
+    (0..stack_layer_count)
+        .into_par_iter()
+        .for_each(|current_stack_layer| {
+            let image_filepath_stackindex = system::path_without_extension(image_filepath)
+                .replace(root_dir_source, root_dir_dest)
+                + "#"
+                + &current_stack_layer.to_string()
+                + ".ase";
+
+        });
+    let sprites_and_animations: Vec<(
+        IndexMap<Spritename, AssetSprite>,
+        IndexMap<Animationname, AssetAnimation>,
+    )> = imagepaths
+        .par_iter()
+        .map(|imagepath| {
+            aseprite::create_sheet_animations(imagepath, "assets", "target/assets_temp")
+        })
+        .collect();
+    for (sprites, animations) in sprites_and_animations {
+        result_sprites.extend(sprites);
+        result_animations.extend(animations);
+    }
+    */
+
+    (result_sprites, result_animations)
+}
+
+pub fn create_sheet_animations_2d(
+    image_filepath: &str,
+    sheet_name: &str,
+    output_path_without_extension: &str,
+) -> (
+    IndexMap<Spritename, AssetSprite>,
+    IndexMap<Animationname, AssetAnimation>,
+) {
+    let output_path_image = output_path_without_extension.to_string() + ".png";
+    let output_path_meta = output_path_without_extension.to_string() + ".json";
 
     aseprite_run_sheet_packer(image_filepath, &output_path_image, &output_path_meta);
 
@@ -56,25 +198,25 @@ pub fn create_sheet_animations(
     {
         let layers = aseprite_list_layers_of_file(image_filepath);
 
-        let output_path_pivots_image = output_path_without_extension.clone() + "_pivots.png";
-        let output_path_pivots_meta = output_path_without_extension.clone() + "_pivots.json";
+        let output_path_pivots_image = output_path_without_extension.to_string() + "_pivots.png";
+        let output_path_pivots_meta = output_path_without_extension.to_string() + "_pivots.json";
 
         let output_path_attachment_0_image =
-            output_path_without_extension.clone() + "_attachment_0.png";
+            output_path_without_extension.to_string() + "_attachment_0.png";
         let output_path_attachment_0_meta =
-            output_path_without_extension.clone() + "_attachment_0.json";
+            output_path_without_extension.to_string() + "_attachment_0.json";
         let output_path_attachment_1_image =
-            output_path_without_extension.clone() + "_attachment_1.png";
+            output_path_without_extension.to_string() + "_attachment_1.png";
         let output_path_attachment_1_meta =
-            output_path_without_extension.clone() + "_attachment_1.json";
+            output_path_without_extension.to_string() + "_attachment_1.json";
         let output_path_attachment_2_image =
-            output_path_without_extension.clone() + "_attachment_2.png";
+            output_path_without_extension.to_string() + "_attachment_2.png";
         let output_path_attachment_2_meta =
-            output_path_without_extension.clone() + "_attachment_2.json";
+            output_path_without_extension.to_string() + "_attachment_2.json";
         let output_path_attachment_3_image =
-            output_path_without_extension.clone() + "_attachment_3.png";
+            output_path_without_extension.to_string() + "_attachment_3.png";
         let output_path_attachment_3_meta =
-            output_path_without_extension.clone() + "_attachment_3.json";
+            output_path_without_extension.to_string() + "_attachment_3.json";
 
         for layername in layers {
             if layername == "pivot" {
@@ -159,9 +301,9 @@ pub fn create_sheet_animations(
     let mut result_animations: IndexMap<Animationname, AssetAnimation> = IndexMap::new();
     for frametag in frametags {
         let animation_name = if frametag.name == "" {
-            sheet_name.clone()
+            sheet_name.to_string()
         } else {
-            sheet_name.clone() + ":" + &frametag.name
+            sheet_name.to_string() + ":" + &frametag.name
         };
 
         // NOTE: `sprite_indices` will be set later to a real value when we collected all sprites
