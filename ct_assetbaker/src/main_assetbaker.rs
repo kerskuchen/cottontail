@@ -21,14 +21,14 @@ use rayon::prelude::*;
 
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 type Spritename = String;
 type Fontname = String;
 type Animationname = String;
 
-#[derive(Clone, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct AssetSprite {
     pub name: Spritename,
     pub name_hash: u64,
@@ -144,17 +144,17 @@ fn bake_graphics_resources() {
     // Create texture atlas and Adjust positions of our sprites according to the final packed
     // atlas positions
     let result_atlas = atlas_create_from_pngs("target/assets_temp", "resources", 1024);
-    for (sprite_name, sprite_pos) in &result_atlas.sprite_positions {
-        if result_sprites.contains_key(sprite_name) {
+    for (packed_sprite_name, sprite_pos) in &result_atlas.sprite_positions {
+        if result_sprites.contains_key(packed_sprite_name) {
             // Atlas-sprite is a regular sprite
-            let mut sprite = result_sprites.get_mut(sprite_name).unwrap();
+            let mut sprite = result_sprites.get_mut(packed_sprite_name).unwrap();
             sprite.atlas_texture_index = sprite_pos.atlas_texture_index;
             sprite.trimmed_uvs = sprite
                 .trimmed_uvs
                 .translated_by(sprite_pos.atlas_texture_pixel_offset);
-        } else if result_fonts.contains_key(sprite_name) {
+        } else if result_fonts.contains_key(packed_sprite_name) {
             // Atlas-sprite is a glyph-sheet of some font
-            let font = &result_fonts[sprite_name];
+            let font = &result_fonts[packed_sprite_name];
             for sprite_glyph_name in font.glyphs.values().map(|glyph| &glyph.sprite_name) {
                 let mut sprite = result_sprites.get_mut(sprite_glyph_name).unwrap();
                 sprite.atlas_texture_index = sprite_pos.atlas_texture_index;
@@ -166,7 +166,9 @@ fn bake_graphics_resources() {
             // AssetSprite must be an animation-sheet of some animation(s)
             let mut found_anim = false;
             for (animation_name, animation) in &result_animations {
-                if animation_name.starts_with(&(sprite_name.to_owned() + ".")) {
+                if animation_name.starts_with(&(packed_sprite_name.to_owned() + "."))
+                    || animation_name == packed_sprite_name
+                {
                     found_anim = true;
                     for sprite_frame_name in &animation.sprite_names {
                         let mut sprite = result_sprites.get_mut(sprite_frame_name).unwrap();
@@ -181,7 +183,7 @@ fn bake_graphics_resources() {
             assert!(
                 found_anim,
                 "Packed unknown sprite name '{}' into atlas at position ({},{},{})",
-                sprite_name,
+                packed_sprite_name,
                 sprite_pos.atlas_texture_index,
                 sprite_pos.atlas_texture_pixel_offset.x,
                 sprite_pos.atlas_texture_pixel_offset.y,
