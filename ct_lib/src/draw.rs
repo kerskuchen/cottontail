@@ -1083,7 +1083,7 @@ impl Drawstate {
         vertices.push(center);
 
         let mut angle_current = 0.0;
-        let angle_increment = deg_to_rad(360.0 / segment_count as f32);
+        let angle_increment = DEGREE_TO_RADIANS * (360.0 / segment_count as f32);
         for _ in 0..segment_count {
             let pos = center
                 + Vec2::new(
@@ -1251,19 +1251,14 @@ impl Drawstate {
         let radius_inner = radius - 0.5 * thickness;
         assert!(0.0 < radius_inner && radius_inner < radius_outer);
 
-        let angle_increment = 360.0 / segment_count as f32;
+        let angle_increment = DEGREE_TO_RADIANS * 360.0 / segment_count as f32;
         let mut angle_current = 0.0;
-        let mut last_unit_circle_point = Vec2::new(
-            f32::cos(deg_to_rad(angle_current)),
-            f32::sin(deg_to_rad(angle_current)),
-        );
+        let mut last_unit_circle_point =
+            Vec2::new(f32::cos(angle_current), f32::sin(angle_current));
 
         angle_current += angle_increment;
         for _ in 0..segment_count {
-            let unit_circle_point = Vec2::new(
-                f32::cos(deg_to_rad(angle_current)),
-                f32::sin(deg_to_rad(angle_current)),
-            );
+            let unit_circle_point = Vec2::new(f32::cos(angle_current), f32::sin(angle_current));
 
             let last_outer_point = center + radius_outer * last_unit_circle_point;
             let last_inner_point = center + radius_inner * last_unit_circle_point;
