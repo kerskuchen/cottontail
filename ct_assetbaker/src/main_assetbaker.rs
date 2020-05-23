@@ -19,7 +19,7 @@ use fern;
 use ico;
 use rayon::prelude::*;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 type Spritename = String;
 type Fontname = String;
@@ -802,16 +802,22 @@ fn create_credits_file(
         "\r\n\r\n\r\nThe following free assetes, open source software libraries and \
          frameworks went into the making of this software:\r\n\r\n\r\n";
 
-    let mut license_files = vec![];
+    let mut license_files = Vec::new();
     for searchdir in license_searchdirs {
         license_files.append(&mut system::collect_files_by_extension_recursive(
             searchdir, ".license",
         ));
     }
 
+    let mut license_texts = HashSet::new();
     for license_file in license_files {
+        let license_text = std::fs::read_to_string(license_file).unwrap();
+        license_texts.insert(license_text);
+    }
+
+    for license_text in license_texts {
         credits_content += "===============\r\n";
-        credits_content += &std::fs::read_to_string(license_file).unwrap();
+        credits_content += &license_text;
         credits_content += "\r\n\r\n\r\n";
     }
 
@@ -863,7 +869,7 @@ fn main() {
         if system::path_exists("assets/credits.txt") {
             create_credits_file(
                 "assets/credits.txt",
-                &["assets", "assets_copy", "assets_executable"],
+                &["assets", "assets_copy", "assets_executable", "cottontail"],
                 "resources/credits.txt",
             );
         } else {
