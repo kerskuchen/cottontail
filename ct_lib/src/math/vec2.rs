@@ -144,24 +144,27 @@ impl Vec2 {
 // Creation Special
 
 impl Vec2 {
-    /// Returns a unit vector constructed from a given angle in range [-PI, PI]
+    /// Returns a unit vector constructed from a given angle in range [-180, 180]
     /// which represents the angle between the resulting vector and the vector (1,0) in the
     /// 2D cartesian coordinate system.
-    pub fn from_angle(angle_rad: f32) -> Vec2 {
+    pub fn from_angle(angle_deg: f32) -> Vec2 {
+        let angle_rad = DEGREE_TO_RADIANS * angle_deg;
         Vec2::new(f32::cos(angle_rad), f32::sin(angle_rad))
     }
 
-    /// Returns a unit vector constructed from a given angle in range [-PI, PI]
+    /// Returns a unit vector constructed from a given angle in range [-180, 180]
     /// which represents the angle between the resulting vector and the vector (1,0) in a y-flipped
     /// 2D cartesian coordinate system.
-    pub fn from_angle_flipped_y(angle_rad: f32) -> Vec2 {
+    pub fn from_angle_flipped_y(angle_deg: f32) -> Vec2 {
+        let angle_rad = DEGREE_TO_RADIANS * angle_deg;
         Vec2::new(f32::cos(-angle_rad), f32::sin(-angle_rad))
     }
 
-    /// Returns a vector constructed from a given magnitude and an angle in range [-PI, PI]
+    /// Returns a vector constructed from a given magnitude and an angle in range [-180, 180]
     /// which represents the angle between the resulting vector and the vector (1,0) in the
     /// 2D cartesian coordinate system.
-    pub fn from_angle_magnitude(angle_rad: f32, magnitude: f32) -> Vec2 {
+    pub fn from_angle_magnitude(angle_deg: f32, magnitude: f32) -> Vec2 {
+        let angle_rad = DEGREE_TO_RADIANS * angle_deg;
         Vec2::new(
             magnitude * f32::cos(angle_rad),
             magnitude * f32::sin(angle_rad),
@@ -303,7 +306,7 @@ impl Vec2 {
         Vec2::new(-z * v.y, z * v.x)
     }
 
-    /// Returns an angle in [-PI, PI] with the following properties:
+    /// Returns an angle in [-180, 180] with the following properties:
     /// If v and u are parallel and pointing into the same direction it returns zero
     /// If v is "left" of u then a positive value is returned, otherwise a negative
     /// If v and u are almost parallel and pointing into different directions it returns almost PI
@@ -315,10 +318,10 @@ impl Vec2 {
     pub fn signed_angle_between(v: Vec2, u: Vec2) -> f32 {
         let dot = Vec2::dot(v, u);
         let cross = -Vec2::cross_z(v, u);
-        f32::atan2(cross, dot)
+        RADIANS_TO_DEGREE * f32::atan2(cross, dot)
     }
 
-    /// Returns an angle in [-PI, PI] which represents the angle between the given vector and
+    /// Returns an angle in [-180, 180] which represents the angle between the given vector and
     /// the vector (1,0) in the 2D cartesian coordinate system.
     /// NOTE: This function does not need for v and u to be normalized
     #[inline]
@@ -326,7 +329,7 @@ impl Vec2 {
         Vec2::signed_angle_between(self, Vec2::unit_x())
     }
 
-    /// Returns an angle in [-PI, PI] which represents the angle between the given vector and
+    /// Returns an angle in [-180, 180] which represents the angle between the given vector and
     /// the vector (1,0) in the y-flipped 2D cartesian coordinate system.
     /// NOTE: This function does not need for v and u to be normalized
     #[inline]
@@ -334,7 +337,7 @@ impl Vec2 {
         -Vec2::signed_angle_between(self, Vec2::unit_x())
     }
 
-    /// Returns an angle in [0, PI] with the following properties:
+    /// Returns an angle in [0, 180] with the following properties:
     /// If u and v are parallel and pointing into the same direction it returns zero
     /// If u and v are parallel and pointing into different directions it returns PI
     /// NOTE: This function does not need for v and u to be normalized
@@ -346,13 +349,15 @@ impl Vec2 {
     /// Same as v2_abs_angle_between but faster and needs normalized v and u to work
     #[inline]
     pub fn abs_angle_between_fast(v_normalized: Vec2, u_normalized: Vec2) -> f32 {
-        f32::acos(Vec2::dot(v_normalized, u_normalized))
+        RADIANS_TO_DEGREE * f32::acos(Vec2::dot(v_normalized, u_normalized))
     }
 
     /// For a given vector this returns a rotated vector by given angle
     #[must_use]
     #[inline]
-    pub fn rotated(self, angle_rad: f32) -> Vec2 {
+    pub fn rotated(self, angle_deg: f32) -> Vec2 {
+        let angle_rad = DEGREE_TO_RADIANS * angle_deg;
+
         let cos_angle = f32::cos(angle_rad);
         let sin_angle = f32::sin(angle_rad);
         Vec2::new(
@@ -364,7 +369,9 @@ impl Vec2 {
     /// For a given vector this returns a rotated vector by given angle in a y-flipped coordinate system
     #[must_use]
     #[inline]
-    pub fn rotated_flipped_y(self, angle_rad: f32) -> Vec2 {
+    pub fn rotated_flipped_y(self, angle_deg: f32) -> Vec2 {
+        let angle_rad = DEGREE_TO_RADIANS * angle_deg;
+
         let cos_angle = f32::cos(-angle_rad);
         let sin_angle = f32::sin(-angle_rad);
         Vec2::new(
