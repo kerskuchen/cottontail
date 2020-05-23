@@ -19,7 +19,10 @@ use fern;
 use ico;
 use rayon::prelude::*;
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+};
 
 type Spritename = String;
 type Fontname = String;
@@ -827,17 +830,40 @@ fn create_credits_file(
 fn recreate_directory(path: &str) {
     if system::path_exists(path) {
         loop {
-            if std::fs::remove_dir_all(path).is_ok() {
+            let dir_content = system::collect_files_recursive(path);
+
+            let mut has_error = false;
+            for path_to_delete in dir_content {
+                if PathBuf::from(&path_to_delete).is_dir() {
+                    if let Err(error) = std::fs::remove_dir_all(&path_to_delete) {
+                        has_error = true;
+                        log::warn!(
+                            "Unable to delete '{}' dir, are files from this folder still open? : {}",
+                            path_to_delete,
+                            error,
+                        );
+                    }
+                } else {
+                    if let Err(error) = std::fs::remove_file(&path_to_delete) {
+                        has_error = true;
+                        log::warn!(
+                            "Unable to delete file '{}', is it still open? : {}",
+                            path_to_delete,
+                            error,
+                        );
+                    }
+                }
+            }
+
+            if has_error {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            } else {
                 break;
             }
-            log::warn!(
-                "Unable to delete '{}' dir, are files from this folder still open?",
-                path
-            );
-            std::thread::sleep(std::time::Duration::from_secs(1));
         }
+    } else {
+        std::fs::create_dir_all(path).expect(&format!("Unable to create '{}' dir", path));
     }
-    std::fs::create_dir_all(path).expect(&format!("Unable to create '{}' dir", path));
 }
 
 fn main() {
