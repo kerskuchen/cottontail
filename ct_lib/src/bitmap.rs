@@ -275,27 +275,8 @@ impl BitmapMultiAtlas {
         }
     }
 
-    pub fn pack_bitmap(&mut self, name: &str, image: &Bitmap) -> Option<BitmapAtlasPosition> {
-        for (atlas_index, packer) in self.atlas_packers.iter_mut().enumerate() {
-            if let Some(position) = packer.pack_bitmap(name, image) {
-                let atlas_position = BitmapAtlasPosition {
-                    atlas_texture_index: atlas_index as u32,
-                    atlas_texture_pixel_offset: position,
-                };
-                self.sprite_positions
-                    .insert(name.to_owned(), atlas_position);
-                return Some(atlas_position);
-            }
-        }
-        None
-    }
-
-    pub fn pack_bitmap_allow_growing(
-        &mut self,
-        sprite_name: &str,
-        image: &Bitmap,
-    ) -> BitmapAtlasPosition {
-        if let Some(atlas_position) = self.pack_bitmap(sprite_name, image) {
+    pub fn pack_bitmap(&mut self, sprite_name: &str, image: &Bitmap) -> BitmapAtlasPosition {
+        if let Some(atlas_position) = self.pack_bitmap_internal(sprite_name, image) {
             return atlas_position;
         }
 
@@ -303,7 +284,7 @@ impl BitmapMultiAtlas {
         //       create a new atlas texture and try again
         self.atlas_packers
             .push(BitmapAtlas::new(self.atlas_texture_size));
-        if let Some(atlas_position) = self.pack_bitmap(sprite_name, image) {
+        if let Some(atlas_position) = self.pack_bitmap_internal(sprite_name, image) {
             atlas_position
         } else {
             panic!(
@@ -321,5 +302,20 @@ impl BitmapMultiAtlas {
             .collect();
 
         (atlas_textures, self.sprite_positions)
+    }
+
+    fn pack_bitmap_internal(&mut self, name: &str, image: &Bitmap) -> Option<BitmapAtlasPosition> {
+        for (atlas_index, packer) in self.atlas_packers.iter_mut().enumerate() {
+            if let Some(position) = packer.pack_bitmap(name, image) {
+                let atlas_position = BitmapAtlasPosition {
+                    atlas_texture_index: atlas_index as u32,
+                    atlas_texture_pixel_offset: position,
+                };
+                self.sprite_positions
+                    .insert(name.to_owned(), atlas_position);
+                return Some(atlas_position);
+            }
+        }
+        None
     }
 }

@@ -161,7 +161,7 @@ pub fn create_sheet_animations(
         let animation_name = if frametag.name == "" {
             sheet_name.clone()
         } else {
-            sheet_name.clone() + "." + &frametag.name
+            sheet_name.clone() + ":" + &frametag.name
         };
 
         // NOTE: `sprite_indices` will be set later to a real value when we collected all sprites
@@ -200,7 +200,7 @@ fn sprite_name_for_frameindex(
         // For the one-frame special case we omit the frame index in the sprite name
         sheet_name.to_owned()
     } else {
-        sheet_name.to_owned() + "_" + &frame_index.to_string()
+        sheet_name.to_owned() + "." + &frame_index.to_string()
     }
 }
 

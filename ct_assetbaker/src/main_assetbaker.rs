@@ -166,7 +166,7 @@ fn bake_graphics_resources() {
             // AssetSprite must be an animation-sheet of some animation(s)
             let mut found_anim = false;
             for (animation_name, animation) in &result_animations {
-                if animation_name.starts_with(&(packed_sprite_name.to_owned() + "."))
+                if animation_name.starts_with(&(packed_sprite_name.to_owned() + ":"))
                     || animation_name == packed_sprite_name
                 {
                     found_anim = true;
