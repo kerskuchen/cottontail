@@ -130,8 +130,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
             self.draw = Some(draw);
         }
         if self.assets.is_none() {
-            let animations = game_load_animations("resources");
-            self.assets = Some(GameAssets::new(animations));
+            self.assets = Some(GameAssets::new("resources"));
         }
         if self.audio.is_none() {
             self.audio = Some(Audiostate::new());
@@ -2026,19 +2025,6 @@ pub fn game_load_fonts(assets_folder: &str) -> HashMap<String, SpriteFont> {
     ));
 
     fonts
-}
-
-pub fn game_load_animations(assets_folder: &str) -> HashMap<String, Animation<SpriteIndex>> {
-    let animations_filepath = system::path_join(assets_folder, "animations.data");
-    let animations = bincode::deserialize(&std::fs::read(&animations_filepath).expect(&format!(
-        "Could not read '{}' - Gamedata corrupt?",
-        animations_filepath
-    )))
-    .expect(&format!(
-        "Could not deserialize '{}' - Gamedata corrupt?",
-        animations_filepath
-    ));
-    animations
 }
 
 pub fn game_load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, Vec<AudioSample>> {
