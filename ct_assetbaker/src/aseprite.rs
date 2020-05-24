@@ -93,7 +93,8 @@ pub fn create_sheet_animations_3d(
         layers.len()
     };
 
-    // Split out each of the 3D sprites stack layer into its own file and process each separately
+    // Split out each of the 3D sprites stack layers into their own files and process each
+    // separately
     let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
     let mut result_animations: IndexMap<Animationname, AssetAnimation> = IndexMap::new();
     let sprites_and_animations: Vec<(
@@ -142,10 +143,8 @@ pub fn create_sheet_animations_3d(
         result_animations.extend(animations);
     }
 
-    // Create dedicated 3D sprite and animation assets
+    // 3D-Sprites
     let mut result_sprites_3d: IndexMap<Spritename3D, AssetSprite3D> = IndexMap::new();
-    let mut result_animations_3d: IndexMap<Animationname3D, AssetAnimation3D> = IndexMap::new();
-
     assert!(
         result_sprites.len() % stack_layer_count == 0,
         "Sprite count {} is not a multiple of stack layer count {} in 3D sprite '{}'",
@@ -153,17 +152,7 @@ pub fn create_sheet_animations_3d(
         stack_layer_count,
         image_filepath
     );
-    assert!(
-        result_animations.len() % stack_layer_count == 0,
-        "Animation count {} is not a multiple of stack layer count {} in 3D sprite '{}'",
-        result_sprites.len(),
-        stack_layer_count,
-        image_filepath
-    );
     let frame_count_3d = result_sprites.len() / stack_layer_count;
-    let anim_count_3d = result_animations.len() / stack_layer_count;
-
-    // 3D-Sprites
     for frame_index in 0..frame_count_3d {
         let mut layer_sprite_names = Vec::new();
         for stack_layer in 0..stack_layer_count {
@@ -182,25 +171,49 @@ pub fn create_sheet_animations_3d(
     }
 
     // 3D-Animations
+    let mut result_animations_3d: IndexMap<Animationname3D, AssetAnimation3D> = IndexMap::new();
+    assert!(
+        result_animations.len() % stack_layer_count == 0,
+        "Animation count {} is not a multiple of stack layer count {} in 3D sprite '{}'",
+        result_sprites.len(),
+        stack_layer_count,
+        image_filepath
+    );
+    let anim_count_3d = result_animations.len() / stack_layer_count;
     let mut tag_names = HashSet::new();
     for animation_name in result_animations.keys() {
         tag_names.insert(animation_name.rsplit(":").next().unwrap());
     }
+    assert_eq!(
+        tag_names.len(),
+        anim_count_3d,
+        "Animation count {} is not the same as the animation count {} in 3D sprite '{}'",
+        tag_names.len(),
+        anim_count_3d,
+        image_filepath
+    );
     for tag_name in &tag_names {
-        let animation_2d = &result_animations[&format!("{}#{}:{}", sheet_name, 0, tag_name)];
-        let framecount = animation_2d.framecount;
-        let frame_durations_ms = animation_2d.frame_durations_ms.clone();
-        let frame_indices: Vec<usize> = animation_2d
-            .sprite_names
-            .iter()
-            .map(|sprite_name_2d| sprite_name_2d.rsplit(".").next().unwrap().parse().unwrap())
-            .collect();
+        let (framecount, frame_durations_ms, frame_indices) = {
+            let animation_2d = &result_animations[&format!("{}#{}:{}", sheet_name, 0, tag_name)];
+            (
+                animation_2d.framecount,
+                animation_2d.frame_durations_ms.clone(),
+                animation_2d
+                    .sprite_names
+                    .iter()
+                    .map(|sprite_name_2d| {
+                        sprite_name_2d.rsplit(".").next().unwrap().parse().unwrap()
+                    })
+                    .collect::<Vec<usize>>(),
+            )
+        };
 
         let animation_name_3d = format!("{}:{}", sheet_name, tag_name);
-        let mut sprite_names = Vec::new();
-        for frame_index in &frame_indices {
-            sprite_names.push(format!("{}.{}", sheet_name, frame_index));
-        }
+        let sprite_names = frame_indices
+            .iter()
+            .map(|frame_index| format!("{}.{}", sheet_name, frame_index))
+            .collect();
+
         result_animations_3d.insert(
             animation_name_3d.clone(),
             AssetAnimation3D {
