@@ -13,9 +13,6 @@
 * Fix Vec2 to work with flipped_y only and remove special suffixes
 * Maybe we can decouple sprites and fonts from the drawstate by putting those into gameassets?
   This would help with the font ownership/cloning problem and make the drawstate less bloaty?
-* Change color mode of asefiles to rgb via `--color-mode rgb` to have correct color blending on 
-  sheet export. This could be done as preprocess step and could include the preprocessing of the 
-  3d sprites.
 
 
 * We need a production/develop version where we enable/disable i.e. panic messageboxes. It would be 

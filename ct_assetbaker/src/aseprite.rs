@@ -95,7 +95,7 @@ pub fn create_sheet_animations_3d(
             let stack_layer_image_filepath =
                 stack_layer_output_filepath_without_extension.clone() + ".ase";
 
-            let mut command = String::from("aseprite") + " --batch";
+            let mut command = String::from("aseprite") + " --batch ";
             for ignored_stack_layer in 0..stack_layer_count {
                 if current_stack_layer != ignored_stack_layer {
                     command += &format!(" --ignore-layer \"{}\" ", ignored_stack_layer);
@@ -121,37 +121,10 @@ pub fn create_sheet_animations_3d(
             )
         })
         .collect();
-
     for (sprites, animations) in sprites_and_animations {
         result_sprites.extend(sprites);
         result_animations.extend(animations);
     }
-
-    /*
-    (0..stack_layer_count)
-        .into_par_iter()
-        .for_each(|current_stack_layer| {
-            let image_filepath_stackindex = system::path_without_extension(image_filepath)
-                .replace(root_dir_source, root_dir_dest)
-                + "#"
-                + &current_stack_layer.to_string()
-                + ".ase";
-
-        });
-    let sprites_and_animations: Vec<(
-        IndexMap<Spritename, AssetSprite>,
-        IndexMap<Animationname, AssetAnimation>,
-    )> = imagepaths
-        .par_iter()
-        .map(|imagepath| {
-            aseprite::create_sheet_animations(imagepath, "assets", "target/assets_temp")
-        })
-        .collect();
-    for (sprites, animations) in sprites_and_animations {
-        result_sprites.extend(sprites);
-        result_animations.extend(animations);
-    }
-    */
 
     (result_sprites, result_animations)
 }
@@ -167,7 +140,7 @@ pub fn create_sheet_animations_2d(
     let output_path_image = output_path_without_extension.to_string() + ".png";
     let output_path_meta = output_path_without_extension.to_string() + ".json";
 
-    aseprite_run_sheet_packer(image_filepath, &output_path_image, &output_path_meta);
+    aseprite_run_sheet_packer(&image_filepath, &output_path_image, &output_path_meta);
 
     let metadata_string = std::fs::read_to_string(&output_path_meta).unwrap();
     let meta: AsepriteJSON = serde_json::from_str(&metadata_string).expect(&format!(
@@ -196,7 +169,7 @@ pub fn create_sheet_animations_2d(
     let mut offsets_attachment_2 = vec![Vec2i::zero(); framecount];
     let mut offsets_attachment_3 = vec![Vec2i::zero(); framecount];
     {
-        let layers = aseprite_list_layers_of_file(image_filepath);
+        let layers = aseprite_list_layers_of_file(&image_filepath);
 
         let output_path_pivots_image = output_path_without_extension.to_string() + "_pivots.png";
         let output_path_pivots_meta = output_path_without_extension.to_string() + "_pivots.json";
@@ -370,6 +343,7 @@ fn aseprite_run_sheet_packer(
         + " --sheet-pack"
         + " --trim "
         + image_filepath
+        + " --color-mode rgb "
         + " --sheet "
         + output_filepath_image
         + " --data "
