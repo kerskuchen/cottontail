@@ -69,9 +69,11 @@ pub fn create_sheet_animations_3d(
         for index in 0..layers.len() {
             assert!(
                 index == layers[index],
-                "Layers in 3D sprite '{}' do not go continuously from 0-{}",
+                "Layer {} in 3D sprite '{}' has index {} - expected index {}",
+                index,
                 image_filepath,
-                layers.len() - 1
+                layers[index],
+                index
             );
         }
         layers.len()
