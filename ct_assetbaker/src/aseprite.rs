@@ -156,11 +156,16 @@ pub fn create_sheet_animations_3d(
     for frame_index in 0..frame_count_3d {
         let mut layer_sprite_names = Vec::new();
         for stack_layer in 0..stack_layer_count {
-            let sprite_name_2d = format!("{}#{}.{}", sheet_name, stack_layer, frame_index);
+            let sprite_name_2d = sprite_name_for_frameindex_and_stack_layer(
+                sheet_name,
+                stack_layer,
+                frame_index,
+                frame_count_3d,
+            );
             layer_sprite_names.push(sprite_name_2d);
         }
 
-        let sprite_name_3d = format!("{}.{}", sheet_name, frame_index);
+        let sprite_name_3d = sprite_name_for_frameindex(sheet_name, frame_index, frame_count_3d);
         result_sprites_3d.insert(
             sprite_name_3d.clone(),
             AssetSprite3D {
@@ -202,7 +207,12 @@ pub fn create_sheet_animations_3d(
                     .sprite_names
                     .iter()
                     .map(|sprite_name_2d| {
-                        sprite_name_2d.rsplit(".").next().unwrap().parse().unwrap()
+                        if frame_count_3d == 1 {
+                            // NOTE: There is no frame suffix for sheets that have only one frame
+                            0
+                        } else {
+                            sprite_name_2d.rsplit(".").next().unwrap().parse().unwrap()
+                        }
                     })
                     .collect::<Vec<usize>>(),
             )
@@ -211,7 +221,7 @@ pub fn create_sheet_animations_3d(
         let animation_name_3d = format!("{}:{}", sheet_name, tag_name);
         let sprite_names = frame_indices
             .iter()
-            .map(|frame_index| format!("{}.{}", sheet_name, frame_index))
+            .map(|&frame_index| sprite_name_for_frameindex(sheet_name, frame_index, frame_count_3d))
             .collect();
 
         result_animations_3d.insert(
@@ -411,6 +421,20 @@ fn sprite_name_for_frameindex(
         sheet_name.to_owned()
     } else {
         sheet_name.to_owned() + "." + &frame_index.to_string()
+    }
+}
+
+fn sprite_name_for_frameindex_and_stack_layer(
+    sheet_name: &str,
+    stack_layer_index: usize,
+    frame_index: usize,
+    framecount: usize,
+) -> Spritename {
+    if framecount == 1 {
+        // For the one-frame special case we omit the frame index in the sprite name
+        format!("{}#{}", sheet_name, stack_layer_index)
+    } else {
+        format!("{}#{}.{}", sheet_name, stack_layer_index, frame_index)
     }
 }
 
