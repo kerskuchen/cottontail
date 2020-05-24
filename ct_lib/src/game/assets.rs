@@ -24,7 +24,7 @@ impl GameAssets {
         self.atlas = load_atlas(&self.assets_folder);
         self.animations = load_animations(&self.assets_folder);
         self.fonts = load_fonts(&self.assets_folder);
-        //self.animations_3d = load_animations_3d(&self.assets_folder);
+        self.animations_3d = load_animations_3d(&self.assets_folder);
         self.sprites_3d = load_sprites_3d(&self.assets_folder);
     }
 

@@ -227,11 +227,21 @@ fn bake_graphics_resources() {
             )
         })
         .collect();
+    let final_sprites_by_name_3d: IndexMap<Spritename3D, Sprite3D> = result_sprites_3d
+        .iter()
+        .map(|(name, sprite)| {
+            (
+                name.clone(),
+                convert_sprite_3d(&sprite, &final_sprites_by_name),
+            )
+        })
+        .collect();
 
-    serialize_sprites(&result_sprites, result_atlas.texture_size);
-    serialize_sprites_3d(&result_sprites_3d, &final_sprites_by_name);
+    serialize_sprites(&result_sprites, &final_sprites_by_name);
+    serialize_sprites_3d(&result_sprites_3d, &final_sprites_by_name_3d);
     serialize_fonts(&result_fonts, &final_sprites_by_name);
     serialize_animations(&result_animations, &final_sprites_by_name);
+    serialize_animations_3d(&result_animations_3d, &final_sprites_by_name_3d);
     serialize_atlas(&result_atlas);
 }
 
@@ -681,49 +691,60 @@ fn convert_animation(
     anim_result
 }
 
+fn convert_animation_3d(
+    anim_3d: &AssetAnimation3D,
+    final_sprites_by_name_3d: &IndexMap<Spritename3D, Sprite3D>,
+) -> Animation<Sprite3D> {
+    assert!(anim_3d.sprite_names.len() == anim_3d.frame_durations_ms.len());
+    let mut anim_result = Animation::new_empty(&anim_3d.name);
+    for (&frame_duration_ms, sprite_name) in anim_3d
+        .frame_durations_ms
+        .iter()
+        .zip(anim_3d.sprite_names.iter())
+    {
+        anim_result.add_frame(
+            frame_duration_ms as f32 / 1000.0,
+            final_sprites_by_name_3d[sprite_name].clone(),
+        );
+    }
+    anim_result
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Serialization
 
-fn serialize_sprites(sprite_map: &IndexMap<Spritename, AssetSprite>, atlas_texture_size: u32) {
+fn serialize_sprites(
+    sprite_map: &IndexMap<Spritename, AssetSprite>,
+    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
+) {
+    let human_readable: Vec<AssetSprite> = sprite_map.values().cloned().collect();
     std::fs::write(
         "resources/sprites.json",
-        serde_json::to_string_pretty(sprite_map).unwrap(),
+        serde_json::to_string_pretty(&human_readable).unwrap(),
     )
     .unwrap();
 
-    let binary: IndexMap<Spritename, Sprite> = sprite_map
-        .iter()
-        .map(|(name, sprite)| (name.clone(), convert_sprite(sprite, atlas_texture_size)))
-        .collect();
     std::fs::write(
         "resources/sprites.data",
-        bincode::serialize(&binary).unwrap(),
+        bincode::serialize(&final_sprites_by_name).unwrap(),
     )
     .unwrap();
 }
 
 fn serialize_sprites_3d(
-    sprite_map: &IndexMap<Spritename3D, AssetSprite3D>,
-    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
+    sprite_map_3d: &IndexMap<Spritename3D, AssetSprite3D>,
+    final_sprites_by_name_3d: &IndexMap<Spritename3D, Sprite3D>,
 ) {
+    let human_readable: Vec<AssetSprite3D> = sprite_map_3d.values().cloned().collect();
     std::fs::write(
         "resources/sprites_3d.json",
-        serde_json::to_string_pretty(sprite_map).unwrap(),
+        serde_json::to_string_pretty(&human_readable).unwrap(),
     )
     .unwrap();
 
-    let binary: IndexMap<Spritename3D, Sprite3D> = sprite_map
-        .iter()
-        .map(|(name, sprite)| {
-            (
-                name.clone(),
-                convert_sprite_3d(sprite, final_sprites_by_name),
-            )
-        })
-        .collect();
     std::fs::write(
         "resources/sprites_3d.data",
-        bincode::serialize(&binary).unwrap(),
+        bincode::serialize(&final_sprites_by_name_3d).unwrap(),
     )
     .unwrap();
 }
@@ -763,6 +784,33 @@ fn serialize_animations(
         .collect();
     std::fs::write(
         "resources/animations.data",
+        bincode::serialize(&binary).unwrap(),
+    )
+    .unwrap();
+}
+
+fn serialize_animations_3d(
+    animation_map_3d: &IndexMap<Animationname3D, AssetAnimation3D>,
+    final_sprites_by_name_3d: &IndexMap<Spritename3D, Sprite3D>,
+) {
+    let human_readable: Vec<AssetAnimation3D> = animation_map_3d.values().cloned().collect();
+    std::fs::write(
+        "resources/animations_3d.json",
+        serde_json::to_string_pretty(&human_readable).unwrap(),
+    )
+    .unwrap();
+
+    let binary: HashMap<String, Animation<Sprite3D>> = animation_map_3d
+        .iter()
+        .map(|(name, anim)| {
+            (
+                name.clone(),
+                convert_animation_3d(anim, final_sprites_by_name_3d),
+            )
+        })
+        .collect();
+    std::fs::write(
+        "resources/animations_3d.data",
         bincode::serialize(&binary).unwrap(),
     )
     .unwrap();

@@ -13,6 +13,7 @@ use ct_lib::serde_derive::Deserialize;
 use ct_lib::serde_json;
 
 use rayon::prelude::*;
+use std::collections::HashSet;
 
 pub fn create_sheet_animations(
     image_filepath: &str,
@@ -180,18 +181,36 @@ pub fn create_sheet_animations_3d(
         );
     }
 
-    /*
-    let mut anim_base = Animation::new_empty("susi_base_3d");
-    anim_base.add_frame(0.1, assets.get_sprite_3d("susi_base_3d.0").clone());
-    anim_base.add_frame(0.1, assets.get_sprite_3d("susi_base_3d.1").clone());
-    anim_base.add_frame(0.1, assets.get_sprite_3d("susi_base_3d.2").clone());
-    anim_base.add_frame(0.1, assets.get_sprite_3d("susi_base_3d.3").clone());
-    */
     // 3D-Animations
-    //for (name, sprite) in &result_sprites {
-    //    let mut layers = Vec::new();
-    //}
-    //for layer_index in 0..stack_layer_count {}
+    let mut tag_names = HashSet::new();
+    for animation_name in result_animations.keys() {
+        tag_names.insert(animation_name.rsplit(":").next().unwrap());
+    }
+    for tag_name in &tag_names {
+        let animation_2d = &result_animations[&format!("{}#{}:{}", sheet_name, 0, tag_name)];
+        let framecount = animation_2d.framecount;
+        let frame_durations_ms = animation_2d.frame_durations_ms.clone();
+        let frame_indices: Vec<usize> = animation_2d
+            .sprite_names
+            .iter()
+            .map(|sprite_name_2d| sprite_name_2d.rsplit(".").next().unwrap().parse().unwrap())
+            .collect();
+
+        let animation_name_3d = format!("{}:{}", sheet_name, tag_name);
+        let mut sprite_names = Vec::new();
+        for frame_index in &frame_indices {
+            sprite_names.push(format!("{}.{}", sheet_name, frame_index));
+        }
+        result_animations_3d.insert(
+            animation_name_3d.clone(),
+            AssetAnimation3D {
+                name: animation_name_3d,
+                framecount,
+                sprite_names,
+                frame_durations_ms,
+            },
+        );
+    }
 
     (
         result_sprites,
