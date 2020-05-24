@@ -50,7 +50,7 @@ pub struct AssetAnimation {
     pub name_hash: u64,
     pub framecount: u32,
     pub sprite_names: Vec<Spritename>,
-    pub sprite_indices: Vec<u32>,
+    pub sprite_indices: Vec<SpriteIndex>,
     pub frame_durations_ms: Vec<u32>,
 }
 
@@ -639,7 +639,7 @@ fn convert_font(font: &AssetFont) -> SpriteFont {
     }
 }
 
-fn convert_animation(anim: &AssetAnimation) -> Animation {
+fn convert_animation(anim: &AssetAnimation) -> Animation<SpriteIndex> {
     assert!(anim.sprite_indices.len() == anim.frame_durations_ms.len());
     let mut anim_result = Animation::new_empty(&anim.name);
     for (&frame_duration_ms, &sprite_index) in anim
@@ -647,7 +647,7 @@ fn convert_animation(anim: &AssetAnimation) -> Animation {
         .iter()
         .zip(anim.sprite_indices.iter())
     {
-        anim_result.add_frame(frame_duration_ms as f32 / 1000.0, sprite_index as f32);
+        anim_result.add_frame(frame_duration_ms as f32 / 1000.0, sprite_index);
     }
     anim_result
 }
@@ -698,7 +698,7 @@ fn serialize_animations(animation_map: &IndexMap<Animationname, AssetAnimation>)
     )
     .unwrap();
 
-    let binary: HashMap<String, Animation> = animation_map
+    let binary: HashMap<String, Animation<SpriteIndex>> = animation_map
         .iter()
         .map(|(name, anim)| (name.clone(), convert_animation(anim)))
         .collect();

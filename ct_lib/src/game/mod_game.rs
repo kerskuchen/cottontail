@@ -1531,54 +1531,53 @@ impl SplashScreen {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Animations
 
-const ANIMATION_MAX_FRAME_COUNT: usize = 32;
-
-#[derive(Copy, Clone, Serialize, Deserialize)]
-pub struct AnimationFrame {
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct AnimationFrame<FrameType: Clone> {
     pub duration_seconds: f32,
-    pub value: f32,
+    #[serde(bound(deserialize = "FrameType: serde::de::DeserializeOwned"))]
+    pub value: FrameType,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Animation {
+pub struct Animation<FrameType: Clone> {
     pub name: String,
-    pub frame_count: usize,
-    pub frames: [AnimationFrame; ANIMATION_MAX_FRAME_COUNT],
+    #[serde(bound(deserialize = "FrameType: serde::de::DeserializeOwned"))]
+    pub frames: Vec<AnimationFrame<FrameType>>,
 }
 
-impl Animation {
-    pub fn new_empty(name: &str) -> Animation {
+impl<FrameType: Clone> Animation<FrameType> {
+    pub fn new_empty(name: &str) -> Animation<FrameType> {
         Animation {
             name: name.to_owned(),
-            frame_count: 0,
-            frames: [AnimationFrame {
-                duration_seconds: 0.0,
-                value: 0.0,
-            }; ANIMATION_MAX_FRAME_COUNT],
+            frames: Vec::with_capacity(32),
         }
     }
 
-    pub fn add_frame(&mut self, duration_seconds: f32, value: f32) {
-        assert!(self.frame_count < ANIMATION_MAX_FRAME_COUNT);
-        self.frames[self.frame_count].duration_seconds = duration_seconds;
-        self.frames[self.frame_count].value = value;
-        self.frame_count += 1;
+    pub fn add_frame(&mut self, duration_seconds: f32, value: FrameType) {
+        self.frames.push(AnimationFrame {
+            duration_seconds,
+            value,
+        })
     }
 }
 
 #[derive(Clone)]
-pub struct AnimationPlayer {
+pub struct AnimationPlayer<FrameType: Clone> {
     current_frametime: f32,
     current_frame_index: usize,
     pub playback_speed: f32,
     pub stop_after_finish: bool,
     pub play_reversed: bool,
     pub is_paused: bool,
-    animation: Animation,
+    animation: Animation<FrameType>,
 }
 
-impl AnimationPlayer {
-    pub fn new(anim: Animation, playback_speed: f32, stop_after_finished: bool) -> AnimationPlayer {
+impl<FrameType: Clone> AnimationPlayer<FrameType> {
+    pub fn new(
+        anim: Animation<FrameType>,
+        playback_speed: f32,
+        stop_after_finished: bool,
+    ) -> AnimationPlayer<FrameType> {
         AnimationPlayer {
             current_frame_index: 0,
             current_frametime: 0.0,
@@ -1591,11 +1590,11 @@ impl AnimationPlayer {
     }
 
     pub fn new_reversed(
-        anim: &Animation,
+        anim: &Animation<FrameType>,
         playback_speed: f32,
         stop_after_finished: bool,
-    ) -> AnimationPlayer {
-        let last_frame_index = anim.frame_count - 1;
+    ) -> AnimationPlayer<FrameType> {
+        let last_frame_index = anim.frames.len() - 1;
         let current_frame_index = last_frame_index;
         let current_frametime = anim.frames[last_frame_index].duration_seconds;
 
@@ -1621,7 +1620,7 @@ impl AnimationPlayer {
             }
             return self.current_frametime == 0.0;
         } else {
-            if self.current_frame_index < self.animation.frame_count - 1 {
+            if self.current_frame_index < self.animation.frames.len() - 1 {
                 return false;
             }
 
@@ -1653,7 +1652,7 @@ impl AnimationPlayer {
                         // correct values
                         self.current_frametime = 0.0;
                     } else {
-                        let next_frameindex = self.animation.frame_count - 1;
+                        let next_frameindex = self.animation.frames.len() - 1;
                         let frametime = self.animation.frames[next_frameindex].duration_seconds;
                         self.current_frame_index = next_frameindex;
                         self.current_frametime -= frametime;
@@ -1665,7 +1664,7 @@ impl AnimationPlayer {
             self.current_frametime += deltatime * self.playback_speed;
 
             if self.current_frametime > max_frametime {
-                let framecount = self.animation.frame_count;
+                let framecount = self.animation.frames.len();
                 let next_frameindex = self.current_frame_index + 1;
                 if next_frameindex < framecount {
                     self.current_frame_index = next_frameindex;
@@ -1685,21 +1684,24 @@ impl AnimationPlayer {
         }
     }
 
-    pub fn value_fixed_for_percentage(&self, percentage: f32) -> f32 {
-        let frame_index = floori(percentage * self.animation.frame_count as f32);
-        self.animation.frames[frame_index as usize].value
+    pub fn value_fixed_for_percentage(&self, percentage: f32) -> &FrameType {
+        let frame_index = floori(percentage * self.animation.frames.len() as f32) as usize;
+        let frame_index = usize::min(frame_index, self.animation.frames.len() - 1);
+        &self.animation.frames[frame_index].value
     }
 
-    pub fn value_current(&self) -> f32 {
-        self.animation.frames[self.current_frame_index].value
+    pub fn value_current(&self) -> &FrameType {
+        &self.animation.frames[self.current_frame_index].value
     }
+}
 
+impl AnimationPlayer<f32> {
     pub fn value_current_interpolated_linear(&self) -> f32 {
         let max_frametime = self.animation.frames[self.current_frame_index].duration_seconds;
         let frametime_percent = self.current_frametime / max_frametime;
 
         let current_index = self.current_frame_index;
-        let next_index = (current_index + 1) % self.animation.frame_count;
+        let next_index = (current_index + 1) % self.animation.frames.len();
 
         let value_start = self.animation.frames[current_index].value;
         let value_end = self.animation.frames[next_index].value;
@@ -2026,7 +2028,7 @@ pub fn game_load_fonts(assets_folder: &str) -> HashMap<String, SpriteFont> {
     fonts
 }
 
-pub fn game_load_animations(assets_folder: &str) -> HashMap<String, Animation> {
+pub fn game_load_animations(assets_folder: &str) -> HashMap<String, Animation<SpriteIndex>> {
     let animations_filepath = system::path_join(assets_folder, "animations.data");
     let animations = bincode::deserialize(&std::fs::read(&animations_filepath).expect(&format!(
         "Could not read '{}' - Gamedata corrupt?",
