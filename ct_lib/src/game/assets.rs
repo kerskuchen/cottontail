@@ -83,17 +83,34 @@ impl GameAssets {
     }
 
     pub fn get_sprite(&self, sprite_name: &str) -> &Sprite {
-        self.atlas.sprites.get(sprite_name).expect(&format!(
-            "Sprite with name '{}' does not exist",
-            sprite_name
-        ))
+        if let Some(result) = self.atlas.sprites.get(sprite_name) {
+            result
+        } else {
+            // NOTE: By adding ".0" automatically we can conveniently call the first (or only) frame
+            //       of a sprite without the ".0" suffix
+            self.atlas
+                .sprites
+                .get(&format!("{}.0", sprite_name))
+                .expect(&format!(
+                    "Sprite with name '{}' does not exist",
+                    sprite_name
+                ))
+        }
     }
 
     pub fn get_sprite_3d(&self, sprite_name: &str) -> &Sprite3D {
-        self.sprites_3d.get(sprite_name).expect(&format!(
-            "Sprite3D with name '{}' does not exist",
-            sprite_name
-        ))
+        if let Some(result) = self.sprites_3d.get(sprite_name) {
+            result
+        } else {
+            // NOTE: By adding ".0" automatically we can conveniently call the first (or only) frame
+            //       of a sprite without the ".0" suffix
+            self.sprites_3d
+                .get(&format!("{}.0", sprite_name))
+                .expect(&format!(
+                    "Sprite with name '{}' does not exist",
+                    sprite_name
+                ))
+        }
     }
 
     pub fn debug_get_sprite_as_bitmap(&self, sprite_name: &str) -> Bitmap {

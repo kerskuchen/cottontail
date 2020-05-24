@@ -156,16 +156,12 @@ pub fn create_sheet_animations_3d(
     for frame_index in 0..frame_count_3d {
         let mut layer_sprite_names = Vec::new();
         for stack_layer in 0..stack_layer_count {
-            let sprite_name_2d = sprite_name_for_frameindex_and_stack_layer(
-                sheet_name,
-                stack_layer,
-                frame_index,
-                frame_count_3d,
-            );
+            let sprite_name_2d =
+                sprite_name_for_frameindex_and_stack_layer(sheet_name, stack_layer, frame_index);
             layer_sprite_names.push(sprite_name_2d);
         }
 
-        let sprite_name_3d = sprite_name_for_frameindex(sheet_name, frame_index, frame_count_3d);
+        let sprite_name_3d = sprite_name_for_frameindex(sheet_name, frame_index);
         result_sprites_3d.insert(
             sprite_name_3d.clone(),
             AssetSprite3D {
@@ -207,12 +203,7 @@ pub fn create_sheet_animations_3d(
                     .sprite_names
                     .iter()
                     .map(|sprite_name_2d| {
-                        if frame_count_3d == 1 {
-                            // NOTE: There is no frame suffix for sheets that have only one frame
-                            0
-                        } else {
-                            sprite_name_2d.rsplit(".").next().unwrap().parse().unwrap()
-                        }
+                        sprite_name_2d.rsplit(".").next().unwrap().parse().unwrap()
                     })
                     .collect::<Vec<usize>>(),
             )
@@ -221,7 +212,7 @@ pub fn create_sheet_animations_3d(
         let animation_name_3d = format!("{}:{}", sheet_name, tag_name);
         let sprite_names = frame_indices
             .iter()
-            .map(|&frame_index| sprite_name_for_frameindex(sheet_name, frame_index, frame_count_3d))
+            .map(|&frame_index| sprite_name_for_frameindex(sheet_name, frame_index))
             .collect();
 
         result_animations_3d.insert(
@@ -353,7 +344,7 @@ pub fn create_sheet_animations_2d(
     // Create sprites
     let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
     for (frame_index, frame) in meta.frames.iter().enumerate() {
-        let sprite_name = sprite_name_for_frameindex(&sheet_name, frame_index, framecount);
+        let sprite_name = sprite_name_for_frameindex(&sheet_name, frame_index);
 
         let attachment_points = [
             offsets_attachment_0[frame_index],
@@ -392,8 +383,7 @@ pub fn create_sheet_animations_2d(
         let mut sprite_names: Vec<Spritename> = Vec::new();
         let mut frame_durations_ms: Vec<u32> = Vec::new();
         for frame_index in frametag.from..=frametag.to {
-            let sprite_name =
-                sprite_name_for_frameindex(&sheet_name, frame_index as usize, framecount);
+            let sprite_name = sprite_name_for_frameindex(&sheet_name, frame_index as usize);
             sprite_names.push(sprite_name);
             frame_durations_ms.push(meta.frames[frame_index as usize].duration);
         }
@@ -411,31 +401,16 @@ pub fn create_sheet_animations_2d(
     (result_sprites, result_animations)
 }
 
-fn sprite_name_for_frameindex(
-    sheet_name: &str,
-    frame_index: usize,
-    framecount: usize,
-) -> Spritename {
-    if framecount == 1 {
-        // For the one-frame special case we omit the frame index in the sprite name
-        sheet_name.to_owned()
-    } else {
-        sheet_name.to_owned() + "." + &frame_index.to_string()
-    }
+fn sprite_name_for_frameindex(sheet_name: &str, frame_index: usize) -> Spritename {
+    format!("{}.{}", sheet_name, frame_index)
 }
 
 fn sprite_name_for_frameindex_and_stack_layer(
     sheet_name: &str,
     stack_layer_index: usize,
     frame_index: usize,
-    framecount: usize,
 ) -> Spritename {
-    if framecount == 1 {
-        // For the one-frame special case we omit the frame index in the sprite name
-        format!("{}#{}", sheet_name, stack_layer_index)
-    } else {
-        format!("{}#{}.{}", sheet_name, stack_layer_index, frame_index)
-    }
+    format!("{}#{}.{}", sheet_name, stack_layer_index, frame_index)
 }
 
 fn aseprite_run_sheet_packer(

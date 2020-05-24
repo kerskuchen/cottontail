@@ -8,9 +8,6 @@
 * Pixie Stitch: 
   - Add custom launcher icon
 
-* Get rid of the index drop for one frame animations. We can still put some logic into sprite query
-  and turn a "spritename" -> "spritename.0" if we don't find the first one and a "spritename.1" 
-  does not exist
 * Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 
   sized rectangle drawing and the `skip_last_vertex` 
 * Fix Vec2 to work with flipped_y only and remove special suffixes
