@@ -215,8 +215,14 @@ fn bake_graphics_resources() {
         }
     }
 
+    let final_sprites_by_index: Vec<Sprite> = result_sprites
+        .values()
+        .enumerate()
+        .map(|(index, sprite)| convert_sprite(sprite, index as u32, result_atlas.texture_size))
+        .collect();
+
     serialize_sprites(&result_sprites, result_atlas.texture_size);
-    serialize_fonts(&result_fonts);
+    serialize_fonts(&result_fonts, &final_sprites_by_index);
     serialize_animations(&result_animations);
     serialize_atlas(&result_atlas);
 }
@@ -604,23 +610,23 @@ fn convert_sprite(
     }
 }
 
-fn convert_glyph(glyph: &AssetGlyph) -> SpriteGlyph {
+fn convert_glyph(glyph: &AssetGlyph, final_sprites_by_index: &Vec<Sprite>) -> SpriteGlyph {
     SpriteGlyph {
         horizontal_advance: glyph.horizontal_advance,
-        sprite_index: glyph.sprite_index,
+        sprite: final_sprites_by_index[glyph.sprite_index as usize].clone(),
         sprite_dimensions: glyph.sprite_dimensions,
         sprite_draw_offset: glyph.sprite_draw_offset,
     }
 }
 
-fn convert_font(font: &AssetFont) -> SpriteFont {
+fn convert_font(font: &AssetFont, final_sprites_by_index: &Vec<Sprite>) -> SpriteFont {
     let mut ascii_glyphs: Vec<SpriteGlyph> =
         vec![SpriteGlyph::default(); FONT_MAX_NUM_FASTPATH_CODEPOINTS];
     let mut unicode_glyphs: HashMap<Codepoint, SpriteGlyph> = HashMap::new();
 
     for glyph in font.glyphs.values() {
         let codepoint = glyph.codepoint;
-        let converted_glyph = convert_glyph(glyph);
+        let converted_glyph = convert_glyph(glyph, final_sprites_by_index);
         if codepoint < FONT_MAX_NUM_FASTPATH_CODEPOINTS as i32 {
             ascii_glyphs[codepoint as usize] = converted_glyph;
         } else {
@@ -675,7 +681,7 @@ fn serialize_sprites(sprite_map: &IndexMap<Spritename, AssetSprite>, atlas_textu
     .unwrap();
 }
 
-fn serialize_fonts(font_map: &IndexMap<Fontname, AssetFont>) {
+fn serialize_fonts(font_map: &IndexMap<Fontname, AssetFont>, final_sprites_by_index: &Vec<Sprite>) {
     let human_readable: Vec<AssetFont> = font_map.values().cloned().collect();
     std::fs::write(
         "resources/fonts.json",
@@ -685,7 +691,7 @@ fn serialize_fonts(font_map: &IndexMap<Fontname, AssetFont>) {
 
     let binary: HashMap<String, SpriteFont> = font_map
         .iter()
-        .map(|(name, font)| (name.clone(), convert_font(font)))
+        .map(|(name, font)| (name.clone(), convert_font(font, final_sprites_by_index)))
         .collect();
     std::fs::write("resources/fonts.data", bincode::serialize(&binary).unwrap()).unwrap();
 }

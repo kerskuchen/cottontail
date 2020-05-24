@@ -693,12 +693,10 @@ fn draw_glyph_border(image: &mut Bitmap, color_glyph: PixelRGBA, color_border: P
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // SpriteFont
 
-/// NOTE: We cannot store the Sprite here directly because the borrowchecker won't allow the
-///       `Drawstate` to borrow the glyphs sprite and draw it at the same time
-#[derive(Default, Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SpriteGlyph {
     pub horizontal_advance: i32,
-    pub sprite_index: SpriteIndex,
+    pub sprite: Sprite,
 
     /// This is mainly used for text dimension calculations
     pub sprite_dimensions: Vec2i,
@@ -746,16 +744,16 @@ impl Font<SpriteGlyph> for SpriteFont {
     }
     fn get_glyph_for_codepoint_copy(&self, codepoint: Codepoint) -> SpriteGlyph {
         if codepoint < FONT_MAX_NUM_FASTPATH_CODEPOINTS as i32 {
-            self.ascii_glyphs[codepoint as usize]
+            self.ascii_glyphs[codepoint as usize].clone()
         } else {
-            let result = *self
+            let result = self
                 .unicode_glyphs
                 .get(&codepoint)
                 .unwrap_or(&self.ascii_glyphs[0usize]);
-            if result.sprite_index != 0 {
-                result
+            if result.sprite.index != 0 {
+                result.clone()
             } else {
-                self.ascii_glyphs['?' as usize]
+                self.ascii_glyphs['?' as usize].clone()
             }
         }
     }
@@ -767,7 +765,7 @@ impl Font<SpriteGlyph> for SpriteFont {
                 .unicode_glyphs
                 .get(&codepoint)
                 .unwrap_or(&self.ascii_glyphs[0usize]);
-            if result.sprite_index != 0 {
+            if result.sprite.index != 0 {
                 result
             } else {
                 &self.ascii_glyphs['?' as usize]

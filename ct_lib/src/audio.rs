@@ -195,8 +195,6 @@ pub struct Audiostate {
     /// This is can be used for interpolating time-based things that are dependent on music / beats
     current_frame_index: AudioFrameIndex,
 
-    recordings: HashMap<String, Vec<AudioFrame>>,
-
     streams: HashMap<AudioStreamId, AudioStream>,
     next_stream_id: AudioStreamId,
 
@@ -207,8 +205,6 @@ impl Audiostate {
     pub fn new() -> Audiostate {
         Audiostate {
             current_frame_index: 0,
-
-            recordings: HashMap::new(),
 
             streams: HashMap::new(),
             next_stream_id: 1,
@@ -221,7 +217,11 @@ impl Audiostate {
         self.current_frame_index = current_frame_index;
     }
 
-    pub fn stream_completion_ratio(&self, stream_id: AudioStreamId) -> Option<f32> {
+    pub fn stream_completion_ratio(
+        &self,
+        stream_id: AudioStreamId,
+        recordings: &HashMap<String, Vec<AudioFrame>>,
+    ) -> Option<f32> {
         let stream = self
             .streams
             .get(&stream_id)
@@ -235,7 +235,7 @@ impl Audiostate {
             if self.current_frame_index < start_frame_index {
                 return None;
             }
-            let stream_frames = self.recordings.get(&stream.recording_name).unwrap();
+            let stream_frames = recordings.get(&stream.recording_name).unwrap();
             let stream_len = stream_frames.len() as AudioFrameIndex;
 
             // NOTE: We use modulus here to account for repeating streams
@@ -304,20 +304,6 @@ impl Audiostate {
         id
     }
 
-    pub fn add_recording_mono(&mut self, name: &str, data: Vec<AudioSample>) {
-        assert!(!self.recordings.contains_key(name));
-
-        let recording_frames = data
-            .into_iter()
-            .map(|mono_sample| AudioFrame {
-                left: mono_sample,
-                right: mono_sample,
-            })
-            .collect();
-
-        self.recordings.insert(name.to_owned(), recording_frames);
-    }
-
     /// NOTE: This method needs to be fast because we are effectively blocking our audio callback
     ///       thread here
     pub fn render_audio(
@@ -325,6 +311,7 @@ impl Audiostate {
         first_chunk_index: AudioChunkIndex,
         out_chunk_count: usize,
         out_chunks: &mut Vec<Audiochunk>,
+        recordings: &HashMap<String, Vec<AudioFrame>>,
     ) {
         // NOTE: We just want to make sure that the caller works with the same buffersize as we do
         assert!(out_chunk_count == AUDIO_BUFFERSIZE_IN_CHUNKS);
@@ -375,7 +362,7 @@ impl Audiostate {
             let volume_left = stream.volume * f32::cos((PI / 2.0) * pan);
             let volume_right = stream.volume * f32::sin((PI / 2.0) * pan);
 
-            let stream_frames = self.recordings.get(&stream.recording_name).unwrap();
+            let stream_frames = recordings.get(&stream.recording_name).unwrap();
             stream.has_finished = if stream.is_repeating {
                 audio_add_stream_repeated(
                     out_start_frame,

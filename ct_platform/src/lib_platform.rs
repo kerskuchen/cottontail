@@ -780,15 +780,20 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         {
             let mut audio_output = audio_output.lock().unwrap();
             let first_chunk_index = audio_output.next_chunk_index;
-            game_memory
+            let audio = game_memory
                 .audio
                 .as_mut()
-                .expect("No audiostate initialized")
-                .render_audio(
-                    first_chunk_index,
-                    AUDIO_BUFFERSIZE_IN_CHUNKS,
-                    &mut audiochunks,
-                );
+                .expect("No audiostate initialized");
+            let assets = game_memory
+                .assets
+                .as_ref()
+                .expect("No audio assets initialized");
+            audio.render_audio(
+                first_chunk_index,
+                AUDIO_BUFFERSIZE_IN_CHUNKS,
+                &mut audiochunks,
+                assets.get_audio_recordings(),
+            );
             audio_output.replace_chunks(first_chunk_index, &mut audiochunks);
         }
 

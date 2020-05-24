@@ -104,13 +104,32 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
         current_audio_frame_index: AudioFrameIndex,
         out_systemcommands: &mut Vec<SystemCommand>,
     ) {
+        if self.assets.is_none() {
+            let mut assets = GameAssets::new("resources");
+            assets.load_graphics();
+            self.assets = Some(assets);
+        }
+
         if self.draw.is_none() {
             let _drawstate_setup_timer = TimerScoped::new_scoped("Drawstate setup time", true);
 
+            let textures = self.assets.as_ref().unwrap().get_atlas_textures().to_vec();
+            let untextured_sprite = self
+                .assets
+                .as_ref()
+                .unwrap()
+                .get_sprite_by_name("untextured")
+                .clone();
+            let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
+            let debug_log_font = self
+                .assets
+                .as_ref()
+                .unwrap()
+                .get_font(&debug_log_font_name)
+                .clone();
+
             let window_config = GameStateType::get_window_config();
-            let atlas = game_load_atlas("resources");
-            let fonts = game_load_fonts("resources");
-            let mut draw = Drawstate::new(atlas, fonts);
+            let mut draw = Drawstate::new(textures, untextured_sprite, debug_log_font);
             game_setup_window(
                 &mut draw,
                 &window_config,
@@ -129,9 +148,6 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
             );
             self.draw = Some(draw);
         }
-        if self.assets.is_none() {
-            self.assets = Some(GameAssets::new("resources"));
-        }
         if self.audio.is_none() {
             self.audio = Some(Audiostate::new());
         }
@@ -144,7 +160,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
         draw.begin_frame();
 
         if self.splashscreen.is_none() {
-            let splash_sprite = draw.get_sprite_by_name("splash").clone();
+            let splash_sprite = assets.get_sprite_by_name("splash").clone();
             self.splashscreen = Some(SplashScreen::new(
                 splash_sprite,
                 SPLASHSCREEN_FADEIN_TIME,
@@ -178,10 +194,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
                     let _audiostate_setup_timer =
                         TimerScoped::new_scoped("Audiostate setup time", true);
 
-                    let audiorecordings_mono = game_load_audiorecordings_mono("resources");
-                    for (recording_name, buffer) in audiorecordings_mono.into_iter() {
-                        audio.add_recording_mono(&recording_name, buffer);
-                    }
+                    assets.load_audio();
                 }
 
                 {
@@ -834,11 +847,6 @@ pub fn game_handle_system_keys(
     }
 }
 
-pub fn game_debug_save_sprite_as_png(draw: &Drawstate, sprite: SpriteBy, filepath: &str) {
-    let sprite_bitmap = draw.debug_get_sprite_as_bitmap(sprite);
-    Bitmap::write_to_png_file(&sprite_bitmap, filepath);
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Gate
 
@@ -1462,7 +1470,7 @@ impl SplashScreen {
             canvas_height as i32,
         );
         draw.draw_sprite_pixel_snapped(
-            SpriteBy::Ref(&self.sprite),
+            &self.sprite,
             Vec2::new(splash_rect.left() as f32, splash_rect.top() as f32),
             Vec2::ones(),
             Vec2::unit_x(),
@@ -1936,7 +1944,13 @@ impl Afterimage {
         }
     }
 
-    pub fn update_and_draw(&mut self, draw: &mut Drawstate, deltatime: f32, draw_depth: f32) {
+    pub fn update_and_draw(
+        &mut self,
+        draw: &mut Drawstate,
+        assets: &GameAssets,
+        deltatime: f32,
+        draw_depth: f32,
+    ) {
         for index in 0..self.sprite.len() {
             let age_percentage = self.age[index] / self.lifetime;
             let additivity = lerp(
@@ -1950,8 +1964,9 @@ impl Afterimage {
                 age_percentage,
             );
 
+            let sprite = assets.get_sprite_by_index(self.sprite[index]);
             draw.draw_sprite_pixel_snapped(
-                SpriteBy::Index(self.sprite[index]),
+                sprite,
                 self.pos[index],
                 self.scale[index],
                 self.rotation_dir[index],
@@ -1978,70 +1993,6 @@ impl Afterimage {
             }
         }
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Asset loading
-
-pub fn game_load_atlas(assets_folder: &str) -> SpriteAtlas {
-    let textures_list_filepath = system::path_join(assets_folder, "atlas.data");
-    let textures_list: Vec<String> =
-        bincode::deserialize(&std::fs::read(&textures_list_filepath).expect(&format!(
-            "Could not read '{}' - Gamedata corrupt?",
-            &textures_list_filepath
-        )))
-        .expect(&format!(
-            "Could not deserialize '{}' - Gamedata corrupt?",
-            &textures_list_filepath
-        ));
-    let mut textures = Vec::new();
-    for texture_filepath_relative in &textures_list {
-        let texture_filepath = system::path_join(assets_folder, texture_filepath_relative);
-        textures.push(Bitmap::from_png_file_or_panic(&texture_filepath));
-    }
-
-    let sprites_filepath = system::path_join(assets_folder, "sprites.data");
-    let sprites = bincode::deserialize(&std::fs::read(&sprites_filepath).expect(&format!(
-        "Could not read '{}' - Gamedata corrupt?",
-        sprites_filepath
-    )))
-    .expect(&format!(
-        "Could not deserialize '{}' - Gamedata corrupt?",
-        sprites_filepath
-    ));
-
-    SpriteAtlas::new(textures, sprites)
-}
-
-pub fn game_load_fonts(assets_folder: &str) -> HashMap<String, SpriteFont> {
-    let fonts_filepath = system::path_join(assets_folder, "fonts.data");
-    let fonts = bincode::deserialize(&std::fs::read(&fonts_filepath).expect(&format!(
-        "Could not read '{}' - Gamedata corrupt?",
-        fonts_filepath
-    )))
-    .expect(&format!(
-        "Could not deserialize '{}' - Gamedata corrupt?",
-        fonts_filepath
-    ));
-
-    fonts
-}
-
-pub fn game_load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, Vec<AudioSample>> {
-    let mut audiorecordings = HashMap::new();
-
-    let wav_filepaths = system::collect_files_by_extension_recursive(assets_folder, ".wav");
-    for wav_filepath in &wav_filepaths {
-        let mut wav_file = audrey::open(&wav_filepath).expect(&format!(
-            "Could not open audio file for reading: '{}'",
-            wav_filepath
-        ));
-        let wav_buffer: Vec<AudioSample> = wav_file.samples().map(Result::unwrap).collect();
-        let recording_name = system::path_to_filename_without_extension(wav_filepath);
-        audiorecordings.insert(recording_name, wav_buffer);
-    }
-
-    audiorecordings
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2160,7 +2111,7 @@ impl Scene for SceneDebug {
         &mut self,
         draw: &mut Drawstate,
         audio: &mut Audiostate,
-        _assets: &mut GameAssets,
+        assets: &mut GameAssets,
         input: &GameInput,
         globals: &mut Globals,
         _out_game_events: &mut Vec<GameEvent>,
@@ -2439,7 +2390,7 @@ impl Scene for SceneDebug {
         })();
 
         let measure_completion_ratio = audio
-            .stream_completion_ratio(self.music_stream_id)
+            .stream_completion_ratio(self.music_stream_id, assets.get_audio_recordings())
             .unwrap_or(0.0);
         let beat_completion_ratio = (4.0 * measure_completion_ratio) % 1.0;
 
@@ -2483,7 +2434,7 @@ impl Scene for SceneDebug {
         );
 
         // Text drawing test
-        let test_font = draw.get_font(&self.loaded_font_name).clone();
+        let test_font = assets.get_font(&self.loaded_font_name).clone();
         let text = "Loaded font test gorgeous!|\u{08A8}";
         let text_width = test_font.get_text_bounding_rect(text, 1, false).dim.x;
         // Draw origin is top-left

@@ -19,7 +19,7 @@ pub type FramebufferIndex = u32;
 pub const SPRITE_ATTACHMENT_POINTS_MAX_COUNT: usize = 4;
 
 /// This is similar to a Rect but allows mirroring horizontally/vertically
-#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Copy, Clone, Deserialize, Serialize)]
 pub struct AAQuad {
     pub left: f32,
     pub top: f32,
@@ -41,7 +41,7 @@ impl AAQuad {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Sprite {
     pub name: String,
     pub index: SpriteIndex,
@@ -106,10 +106,16 @@ impl Sprite {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Sprite3D {
+    pub name: String,
+    pub layers: Vec<Sprite>,
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 /// SpriteAtlas
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct SpriteAtlas {
     pub textures: Vec<Bitmap>,
     pub textures_size: u32,

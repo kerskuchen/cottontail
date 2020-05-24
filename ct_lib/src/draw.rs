@@ -7,8 +7,6 @@ use super::sprite::*;
 
 pub use hsl;
 
-use std::collections::HashMap;
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Vertex format
 
@@ -421,8 +419,8 @@ pub struct Drawstate {
 
     is_first_run: bool,
 
-    atlas: SpriteAtlas,
-    fonts: HashMap<String, SpriteFont>,
+    textures: Vec<Bitmap>,
+    textures_size: u32,
     textures_dirty: Vec<bool>,
 
     untextured_uv_center_coord: AAQuad,
@@ -450,52 +448,40 @@ pub struct Drawstate {
 // Creation and configuration
 
 impl Drawstate {
-    pub fn new(mut atlas: SpriteAtlas, fonts: HashMap<String, SpriteFont>) -> Drawstate {
-        // Make sprites out of the atlas pages themselves for debug purposes
-        for page_index in 0..atlas.textures.len() {
-            let sprite_name = format!("debug_sprite_whole_page_{}", page_index);
-            atlas.add_sprite_for_region(
-                sprite_name,
-                page_index as TextureIndex,
-                Recti::from_width_height(atlas.textures_size as i32, atlas.textures_size as i32),
-                Vec2i::zero(),
-                true,
-            );
-        }
+    pub fn new(
+        textures: Vec<Bitmap>,
+        untextured_sprite: Sprite,
+        debug_log_font: SpriteFont,
+    ) -> Drawstate {
+        let textures_size = textures
+            .first()
+            .expect("Drawstate: No Textures given")
+            .width as u32;
 
         // Allocate textures for atlas pages
         let mut drawcommands = Vec::<Drawcommand>::new();
-        for page_index in 0..atlas.textures.len() {
-            let texture_info = Drawstate::textureinfo_for_page(&atlas, page_index as TextureIndex);
+        for page_index in 0..textures.len() {
+            let texture_info = Drawstate::textureinfo_for_page(
+                textures_size,
+                textures.len(),
+                page_index as TextureIndex,
+            );
             drawcommands.push(Drawcommand::TextureCreate(texture_info));
         }
 
-        let textures_dirty = vec![true; atlas.textures.len()];
+        let textures_dirty = vec![true; textures.len()];
 
         // Reserves a white pixel for special usage on the first page
-        let untextured_sprite = atlas
-            .sprites_by_name
-            .get("untextured")
-            .expect("'untextured' sprite missing in atlas");
         let untextured_uv_center_coord = untextured_sprite.trimmed_uvs;
         let untextured_uv_center_atlas_page = untextured_sprite.atlas_texture_index;
-
-        let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-        let debug_log_font = fonts
-            .get(&debug_log_font_name)
-            .expect(&format!(
-                "Cannot find default debug log font '{}'",
-                &debug_log_font_name,
-            ))
-            .clone();
 
         Drawstate {
             canvas_framebuffer_target: FramebufferTarget::Screen,
 
             is_first_run: true,
 
-            atlas,
-            fonts,
+            textures,
+            textures_size,
             textures_dirty,
 
             untextured_uv_center_coord,
@@ -520,20 +506,18 @@ impl Drawstate {
         }
     }
 
-    pub fn textureinfo_for_page(atlas: &SpriteAtlas, page_index: TextureIndex) -> TextureInfo {
-        assert!((page_index as usize) < atlas.textures.len());
+    pub fn textureinfo_for_page(
+        textures_size: u32,
+        textures_count: usize,
+        page_index: TextureIndex,
+    ) -> TextureInfo {
+        assert!((page_index as usize) < textures_count);
         TextureInfo {
             name: format!("atlas_page_{}", page_index),
             index: page_index,
-            width: atlas.textures_size,
-            height: atlas.textures_size,
+            width: textures_size,
+            height: textures_size,
         }
-    }
-
-    pub fn get_font(&self, font_name: &str) -> &SpriteFont {
-        self.fonts
-            .get(font_name)
-            .expect(&format!("Could not find font '{}'", font_name))
     }
 
     pub fn set_shaderparams_simple(&mut self, color_modulate: Color, transform: Mat4) {
@@ -602,15 +586,6 @@ impl Drawstate {
     pub fn debug_enable_flat_color_mode(&mut self, enable: bool) {
         self.debug_use_flat_color_mode = enable;
     }
-
-    pub fn debug_get_sprite_as_bitmap(&self, sprite: SpriteBy) -> Bitmap {
-        let sprite_index = match sprite {
-            SpriteBy::Ref(sprite_reference) => sprite_reference.index,
-            SpriteBy::Index(sprite_index) => sprite_index,
-            SpriteBy::Name(sprite_name) => self.get_sprite_by_name(sprite_name).index,
-        };
-        self.atlas.debug_get_bitmap_for_sprite(sprite_index)
-    }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -636,10 +611,11 @@ impl Drawstate {
                 // An atlas page was modified, re-upload the whole page
                 self.textures_dirty[atlas_page] = false;
 
-                let atlas_page_bitmap = self.atlas.textures[atlas_page].clone();
+                let atlas_page_bitmap = self.textures[atlas_page].clone();
                 self.drawcommands.push(Drawcommand::TextureUpdate {
                     texture_info: Drawstate::textureinfo_for_page(
-                        &self.atlas,
+                        self.textures_size,
+                        self.textures.len(),
                         atlas_page as TextureIndex,
                     ),
                     offset_x: 0,
@@ -685,7 +661,11 @@ impl Drawstate {
             for batch in batches.into_iter() {
                 self.drawcommands.push(Drawcommand::Draw {
                     framebuffer_target: self.canvas_framebuffer_target.clone(),
-                    texture_info: Drawstate::textureinfo_for_page(&self.atlas, batch.texture_index),
+                    texture_info: Drawstate::textureinfo_for_page(
+                        self.textures_size,
+                        self.textures.len(),
+                        batch.texture_index,
+                    ),
                     shader_params: ShaderParams::Simple(self.simple_shaderparams),
                     vertexbuffer: batch,
                 });
@@ -778,7 +758,7 @@ impl Drawstate {
     /// NOTE: Rotation is performed around the sprites pivot point
     pub fn draw_sprite_pixel_snapped(
         &mut self,
-        sprite: SpriteBy,
+        sprite: &Sprite,
         pos: Vec2,
         scale: Vec2,
         rotation_dir: Vec2,
@@ -789,12 +769,6 @@ impl Drawstate {
         additivity: Additivity,
     ) {
         let (sprite_quad, sprite_uvs, texture_index, has_translucency) = {
-            let sprite = match sprite {
-                SpriteBy::Ref(sprite_reference) => sprite_reference,
-                SpriteBy::Index(sprite_index) => self.get_sprite_by_index(sprite_index),
-                SpriteBy::Name(sprite_name) => self.get_sprite_by_name(sprite_name),
-            };
-
             let quad = sprite.get_quad_transformed(pos.pixel_snapped(), scale, rotation_dir);
 
             let mut sprite_uvs = sprite.trimmed_uvs;
@@ -826,7 +800,7 @@ impl Drawstate {
 
     pub fn draw_sprite_clipped(
         &mut self,
-        sprite: SpriteBy,
+        sprite: &Sprite,
         pos: Vec2,
         scale: Vec2,
         clipping_rect: Rect,
@@ -834,12 +808,6 @@ impl Drawstate {
         color_modulate: Color,
         additivity: Additivity,
     ) {
-        let sprite = match sprite {
-            SpriteBy::Ref(sprite_reference) => sprite_reference,
-            SpriteBy::Index(sprite_index) => self.get_sprite_by_index(sprite_index),
-            SpriteBy::Name(sprite_name) => self.get_sprite_by_name(sprite_name),
-        };
-
         let mut sprite_rect = sprite.trimmed_rect.scaled_from_origin(scale);
 
         sprite_rect = sprite_rect.translated_by(-sprite.pivot_offset);
@@ -913,28 +881,6 @@ impl Drawstate {
                 );
             }
         }
-    }
-
-    //----------------------------------------------------------------------------------------------
-    // Sprite 'by index' and 'by name' functions
-
-    pub fn get_sprite_by_index(&self, sprite_index: SpriteIndex) -> &Sprite {
-        &self.atlas.sprites[sprite_index as usize]
-    }
-
-    pub fn get_sprite_by_name(&self, spritename: &str) -> &Sprite {
-        self.atlas
-            .sprites_by_name
-            .get(spritename)
-            .expect(&format!("Sprite with name '{}' does not exist", spritename))
-    }
-
-    pub fn get_sprite_index_by_name(&self, spritename: &str) -> SpriteIndex {
-        self.atlas
-            .sprites_by_name
-            .get(spritename)
-            .expect(&format!("Sprite with name '{}' does not exist", spritename))
-            .index
     }
 
     //----------------------------------------------------------------------------------------------
@@ -1528,8 +1474,7 @@ impl Drawstate {
                 alignment,
                 &mut |glyph, draw_pos, _codepoint| {
                     // Draw background
-                    let sprite = self.get_sprite_by_index(glyph.sprite_index);
-                    let quad = sprite.get_quad_transformed(
+                    let quad = glyph.sprite.get_quad_transformed(
                         draw_pos.into(),
                         Vec2::new(font_scale, font_scale),
                         Vec2::unit_x(),
@@ -1546,7 +1491,7 @@ impl Drawstate {
 
                     // Draw glyph
                     self.draw_sprite_pixel_snapped(
-                        SpriteBy::Index(glyph.sprite_index),
+                        &glyph.sprite,
                         draw_pos.into(),
                         Vec2::new(font_scale, font_scale),
                         Vec2::unit_x(),
@@ -1569,7 +1514,7 @@ impl Drawstate {
                 &mut |glyph, draw_pos, _codepoint| {
                     // Draw glyph
                     self.draw_sprite_pixel_snapped(
-                        SpriteBy::Index(glyph.sprite_index),
+                        &glyph.sprite,
                         draw_pos.into(),
                         Vec2::new(font_scale, font_scale),
                         Vec2::unit_x(),
@@ -1617,7 +1562,7 @@ impl Drawstate {
             clipping_recti,
             &mut |glyph, draw_pos, _codepoint| {
                 self.draw_sprite_clipped(
-                    SpriteBy::Index(glyph.sprite_index),
+                    &glyph.sprite,
                     draw_pos.into(),
                     Vec2::new(font_scale, font_scale),
                     clipping_rect,
@@ -1747,7 +1692,7 @@ impl Drawstate {
                     .get_glyph_for_codepoint_copy(codepoint as Codepoint);
 
                 self.draw_sprite_pixel_snapped(
-                    SpriteBy::Index(glyph.sprite_index),
+                    &glyph.sprite,
                     origin + pos,
                     Vec2::filled(self.debug_log_font_scale),
                     Vec2::unit_x(),
