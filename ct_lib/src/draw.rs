@@ -699,14 +699,6 @@ impl Drawstate {
 //--------------------------------------------------------------------------------------------------
 // Drawing
 
-/// NOTE: SpriteBy::Ref should be preferred as it is the fastest to use. SpriteBy::Index /
-///       SpriteBy::Name require array / hashmap lookup
-pub enum SpriteBy<'a> {
-    Ref(&'a Sprite),
-    Index(SpriteIndex),
-    Name(&'a str),
-}
-
 impl Drawstate {
     //----------------------------------------------------------------------------------------------
     // Quad drawing

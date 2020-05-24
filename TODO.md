@@ -8,8 +8,6 @@
 * Pixie Stitch: 
   - Add custom launcher icon
 
-* We could simplify assetbaker structs if we atlaspack early so that we have the final sprites and 
-  can store them directly i.e. into fonts
 * Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 
   sized rectangle drawing and the `skip_last_vertex` 
 * Fix Vec2 to work with flipped_y only and remove special suffixes

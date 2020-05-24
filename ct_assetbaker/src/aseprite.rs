@@ -286,24 +286,19 @@ pub fn create_sheet_animations_2d(
             sheet_name.to_string() + ":" + &frametag.name
         };
 
-        // NOTE: `sprite_indices` will be set later to a real value when we collected all sprites
         let mut sprite_names: Vec<Spritename> = Vec::new();
-        let mut sprite_indices: Vec<u32> = Vec::new();
         let mut frame_durations_ms: Vec<u32> = Vec::new();
         for frame_index in frametag.from..=frametag.to {
             let sprite_name =
                 sprite_name_for_frameindex(&sheet_name, frame_index as usize, framecount);
             sprite_names.push(sprite_name);
-            sprite_indices.push(std::u32::MAX);
             frame_durations_ms.push(meta.frames[frame_index as usize].duration);
         }
 
         let new_animation = AssetAnimation {
             name: animation_name.clone(),
-            name_hash: ct_lib::hash_string_64(&animation_name),
             framecount: sprite_names.len() as u32,
             sprite_names,
-            sprite_indices,
             frame_durations_ms,
         };
 
@@ -482,7 +477,6 @@ fn sprite_create_from_frame_metadata(
     // actually pack the sprites into atlas textures
     AssetSprite {
         name: sprite_name.to_owned(),
-        name_hash: ct_lib::hash_string_64(sprite_name),
 
         has_translucency,
         atlas_texture_index: std::u32::MAX,

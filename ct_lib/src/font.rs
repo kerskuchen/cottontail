@@ -750,7 +750,7 @@ impl Font<SpriteGlyph> for SpriteFont {
                 .unicode_glyphs
                 .get(&codepoint)
                 .unwrap_or(&self.ascii_glyphs[0usize]);
-            if result.sprite.index != 0 {
+            if result.sprite.name != "" {
                 result.clone()
             } else {
                 self.ascii_glyphs['?' as usize].clone()
@@ -765,7 +765,7 @@ impl Font<SpriteGlyph> for SpriteFont {
                 .unicode_glyphs
                 .get(&codepoint)
                 .unwrap_or(&self.ascii_glyphs[0usize]);
-            if result.sprite.index != 0 {
+            if result.sprite.name != "" {
                 result
             } else {
                 &self.ascii_glyphs['?' as usize]

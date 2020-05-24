@@ -31,7 +31,6 @@ type Animationname = String;
 #[derive(Debug, Clone, Serialize)]
 pub struct AssetSprite {
     pub name: Spritename,
-    pub name_hash: u64,
     pub atlas_texture_index: TextureIndex,
     pub has_translucency: bool,
 
@@ -47,10 +46,8 @@ pub struct AssetSprite {
 #[derive(Default, Debug, Clone, PartialEq, Serialize)]
 pub struct AssetAnimation {
     pub name: Animationname,
-    pub name_hash: u64,
     pub framecount: u32,
     pub sprite_names: Vec<Spritename>,
-    pub sprite_indices: Vec<SpriteIndex>,
     pub frame_durations_ms: Vec<u32>,
 }
 
@@ -58,7 +55,7 @@ pub struct AssetAnimation {
 pub struct AssetGlyph {
     pub codepoint: Codepoint,
     pub sprite_name: Spritename,
-    pub sprite_index: SpriteIndex,
+
     pub horizontal_advance: i32,
 
     /// This is mainly used for text dimension calculations
@@ -70,7 +67,6 @@ pub struct AssetGlyph {
 #[derive(Default, Debug, Clone, Serialize)]
 pub struct AssetFont {
     pub name: Fontname,
-    pub name_hash: u64,
     pub baseline: i32,
     pub vertical_advance: i32,
     pub horizontal_advance_max: i32,
@@ -198,32 +194,19 @@ fn bake_graphics_resources() {
         }
     }
 
-    // Assign sprite indices to glyphs and animation frames
-    let spritename_to_index_map: IndexMap<Spritename, u32> = result_sprites
-        .keys()
-        .enumerate()
-        .map(|(index, key)| (key.clone(), index as u32))
-        .collect();
-    for font in result_fonts.values_mut() {
-        for glyph in font.glyphs.values_mut() {
-            glyph.sprite_index = spritename_to_index_map[&glyph.sprite_name];
-        }
-    }
-    for animation in result_animations.values_mut() {
-        for (index, sprite_name) in animation.sprite_names.iter().enumerate() {
-            animation.sprite_indices[index] = spritename_to_index_map[sprite_name];
-        }
-    }
-
-    let final_sprites_by_index: Vec<Sprite> = result_sprites
-        .values()
-        .enumerate()
-        .map(|(index, sprite)| convert_sprite(sprite, index as u32, result_atlas.texture_size))
+    let final_sprites_by_name: IndexMap<Spritename, Sprite> = result_sprites
+        .iter()
+        .map(|(name, sprite)| {
+            (
+                name.clone(),
+                convert_sprite(&sprite, result_atlas.texture_size),
+            )
+        })
         .collect();
 
     serialize_sprites(&result_sprites, result_atlas.texture_size);
-    serialize_fonts(&result_fonts, &final_sprites_by_index);
-    serialize_animations(&result_animations);
+    serialize_fonts(&result_fonts, &final_sprites_by_name);
+    serialize_animations(&result_animations, &final_sprites_by_name);
     serialize_atlas(&result_atlas);
 }
 
@@ -438,7 +421,6 @@ fn sprite_create_from_glyph(
     // actually pack the sprites into atlas textures
     AssetSprite {
         name: sprite_name.to_owned(),
-        name_hash: ct_lib::hash_string_64(sprite_name),
 
         has_translucency: false,
 
@@ -504,9 +486,6 @@ pub fn bitmapfont_create_from_ttf(
         let asset_glyph = AssetGlyph {
             codepoint,
             sprite_name: sprite_name.clone(),
-            // NOTE: The `sprite_index` be set later when we finished collecting all
-            //       our the sprites
-            sprite_index: std::u32::MAX,
             horizontal_advance: glyph.horizontal_advance,
             sprite_dimensions: sprite.trimmed_rect.dim,
             sprite_draw_offset: sprite.trimmed_rect.pos,
@@ -519,7 +498,6 @@ pub fn bitmapfont_create_from_ttf(
     // Create Font
     let result_font = AssetFont {
         name: font_name.clone(),
-        name_hash: ct_lib::hash_string_64(&font_name),
         baseline: font.baseline,
         vertical_advance: font.vertical_advance,
         horizontal_advance_max: font.horizontal_advance_max,
@@ -580,11 +558,7 @@ pub fn atlas_create_from_pngs(
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Asset conversion
 
-fn convert_sprite(
-    sprite: &AssetSprite,
-    sprite_index: SpriteIndex,
-    atlas_texture_size: u32,
-) -> Sprite {
+fn convert_sprite(sprite: &AssetSprite, atlas_texture_size: u32) -> Sprite {
     let attachment_points = [
         Vec2::from(sprite.attachment_points[0]),
         Vec2::from(sprite.attachment_points[1]),
@@ -593,7 +567,6 @@ fn convert_sprite(
     ];
     Sprite {
         name: sprite.name.clone(),
-        index: sprite_index,
         atlas_texture_index: sprite.atlas_texture_index,
 
         has_translucency: sprite.has_translucency,
@@ -610,23 +583,29 @@ fn convert_sprite(
     }
 }
 
-fn convert_glyph(glyph: &AssetGlyph, final_sprites_by_index: &Vec<Sprite>) -> SpriteGlyph {
+fn convert_glyph(
+    glyph: &AssetGlyph,
+    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
+) -> SpriteGlyph {
     SpriteGlyph {
         horizontal_advance: glyph.horizontal_advance,
-        sprite: final_sprites_by_index[glyph.sprite_index as usize].clone(),
+        sprite: final_sprites_by_name[&glyph.sprite_name].clone(),
         sprite_dimensions: glyph.sprite_dimensions,
         sprite_draw_offset: glyph.sprite_draw_offset,
     }
 }
 
-fn convert_font(font: &AssetFont, final_sprites_by_index: &Vec<Sprite>) -> SpriteFont {
+fn convert_font(
+    font: &AssetFont,
+    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
+) -> SpriteFont {
     let mut ascii_glyphs: Vec<SpriteGlyph> =
         vec![SpriteGlyph::default(); FONT_MAX_NUM_FASTPATH_CODEPOINTS];
     let mut unicode_glyphs: HashMap<Codepoint, SpriteGlyph> = HashMap::new();
 
     for glyph in font.glyphs.values() {
         let codepoint = glyph.codepoint;
-        let converted_glyph = convert_glyph(glyph, final_sprites_by_index);
+        let converted_glyph = convert_glyph(glyph, final_sprites_by_name);
         if codepoint < FONT_MAX_NUM_FASTPATH_CODEPOINTS as i32 {
             ascii_glyphs[codepoint as usize] = converted_glyph;
         } else {
@@ -645,15 +624,19 @@ fn convert_font(font: &AssetFont, final_sprites_by_index: &Vec<Sprite>) -> Sprit
     }
 }
 
-fn convert_animation(anim: &AssetAnimation) -> Animation<SpriteIndex> {
-    assert!(anim.sprite_indices.len() == anim.frame_durations_ms.len());
+fn convert_animation(
+    anim: &AssetAnimation,
+    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
+) -> Animation<Sprite> {
+    assert!(anim.sprite_names.len() == anim.frame_durations_ms.len());
     let mut anim_result = Animation::new_empty(&anim.name);
-    for (&frame_duration_ms, &sprite_index) in anim
-        .frame_durations_ms
-        .iter()
-        .zip(anim.sprite_indices.iter())
+    for (&frame_duration_ms, sprite_name) in
+        anim.frame_durations_ms.iter().zip(anim.sprite_names.iter())
     {
-        anim_result.add_frame(frame_duration_ms as f32 / 1000.0, sprite_index);
+        anim_result.add_frame(
+            frame_duration_ms as f32 / 1000.0,
+            final_sprites_by_name[sprite_name].clone(),
+        );
     }
     anim_result
 }
@@ -662,17 +645,15 @@ fn convert_animation(anim: &AssetAnimation) -> Animation<SpriteIndex> {
 // Serialization
 
 fn serialize_sprites(sprite_map: &IndexMap<Spritename, AssetSprite>, atlas_texture_size: u32) {
-    let human_readable: Vec<AssetSprite> = sprite_map.values().cloned().collect();
     std::fs::write(
         "resources/sprites.json",
-        serde_json::to_string_pretty(&human_readable).unwrap(),
+        serde_json::to_string_pretty(sprite_map).unwrap(),
     )
     .unwrap();
 
-    let binary: Vec<Sprite> = human_readable
+    let binary: IndexMap<Spritename, Sprite> = sprite_map
         .iter()
-        .enumerate()
-        .map(|(index, sprite)| convert_sprite(sprite, index as u32, atlas_texture_size))
+        .map(|(name, sprite)| (name.clone(), convert_sprite(sprite, atlas_texture_size)))
         .collect();
     std::fs::write(
         "resources/sprites.data",
@@ -681,7 +662,10 @@ fn serialize_sprites(sprite_map: &IndexMap<Spritename, AssetSprite>, atlas_textu
     .unwrap();
 }
 
-fn serialize_fonts(font_map: &IndexMap<Fontname, AssetFont>, final_sprites_by_index: &Vec<Sprite>) {
+fn serialize_fonts(
+    font_map: &IndexMap<Fontname, AssetFont>,
+    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
+) {
     let human_readable: Vec<AssetFont> = font_map.values().cloned().collect();
     std::fs::write(
         "resources/fonts.json",
@@ -691,12 +675,15 @@ fn serialize_fonts(font_map: &IndexMap<Fontname, AssetFont>, final_sprites_by_in
 
     let binary: HashMap<String, SpriteFont> = font_map
         .iter()
-        .map(|(name, font)| (name.clone(), convert_font(font, final_sprites_by_index)))
+        .map(|(name, font)| (name.clone(), convert_font(font, final_sprites_by_name)))
         .collect();
     std::fs::write("resources/fonts.data", bincode::serialize(&binary).unwrap()).unwrap();
 }
 
-fn serialize_animations(animation_map: &IndexMap<Animationname, AssetAnimation>) {
+fn serialize_animations(
+    animation_map: &IndexMap<Animationname, AssetAnimation>,
+    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
+) {
     let human_readable: Vec<AssetAnimation> = animation_map.values().cloned().collect();
     std::fs::write(
         "resources/animations.json",
@@ -704,9 +691,9 @@ fn serialize_animations(animation_map: &IndexMap<Animationname, AssetAnimation>)
     )
     .unwrap();
 
-    let binary: HashMap<String, Animation<SpriteIndex>> = animation_map
+    let binary: HashMap<String, Animation<Sprite>> = animation_map
         .iter()
-        .map(|(name, anim)| (name.clone(), convert_animation(anim)))
+        .map(|(name, anim)| (name.clone(), convert_animation(anim, final_sprites_by_name)))
         .collect();
     std::fs::write(
         "resources/animations.data",

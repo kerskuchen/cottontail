@@ -5,7 +5,7 @@ use std::collections::HashMap;
 #[derive(Default, Clone)]
 pub struct GameAssets {
     assets_folder: String,
-    animations: HashMap<String, Animation<SpriteIndex>>,
+    animations: HashMap<String, Animation<Sprite>>,
     animations_3d: HashMap<String, Animation<Sprite3D>>,
     fonts: HashMap<String, SpriteFont>,
     atlas: SpriteAtlas,
@@ -51,7 +51,7 @@ impl GameAssets {
         self.recordings.insert(name.to_owned(), recording_frames);
     }
 
-    pub fn get_anim(&self, animation_name: &str) -> &Animation<SpriteIndex> {
+    pub fn get_anim(&self, animation_name: &str) -> &Animation<Sprite> {
         self.animations
             .get(animation_name)
             .expect(&format!("Could not find animation '{}'", animation_name))
@@ -83,36 +83,19 @@ impl GameAssets {
     //----------------------------------------------------------------------------------------------
     // Sprite 'by index' and 'by name' functions
 
-    pub fn get_sprite_by_index(&self, sprite_index: SpriteIndex) -> &Sprite {
-        &self.atlas.sprites[sprite_index as usize]
-    }
-
     pub fn get_sprite_by_name(&self, spritename: &str) -> &Sprite {
         self.atlas
-            .sprites_by_name
+            .sprites
             .get(spritename)
             .expect(&format!("Sprite with name '{}' does not exist", spritename))
     }
 
-    pub fn get_sprite_index_by_name(&self, spritename: &str) -> SpriteIndex {
-        self.atlas
-            .sprites_by_name
-            .get(spritename)
-            .expect(&format!("Sprite with name '{}' does not exist", spritename))
-            .index
+    pub fn debug_get_sprite_as_bitmap(&self, sprite_name: &str) -> Bitmap {
+        self.atlas.debug_get_bitmap_for_sprite(sprite_name)
     }
 
-    pub fn debug_get_sprite_as_bitmap(&self, sprite: SpriteBy) -> Bitmap {
-        let sprite_index = match sprite {
-            SpriteBy::Ref(sprite_reference) => sprite_reference.index,
-            SpriteBy::Index(sprite_index) => sprite_index,
-            SpriteBy::Name(sprite_name) => self.get_sprite_by_name(sprite_name).index,
-        };
-        self.atlas.debug_get_bitmap_for_sprite(sprite_index)
-    }
-
-    pub fn debug_save_sprite_as_png(&self, sprite: SpriteBy, filepath: &str) {
-        let sprite_bitmap = self.debug_get_sprite_as_bitmap(sprite);
+    pub fn debug_save_sprite_as_png(&self, sprite_name: &str, filepath: &str) {
+        let sprite_bitmap = self.debug_get_sprite_as_bitmap(sprite_name);
         Bitmap::write_to_png_file(&sprite_bitmap, filepath);
     }
 }
@@ -120,7 +103,7 @@ impl GameAssets {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Asset loading
 
-fn load_animations(assets_folder: &str) -> HashMap<String, Animation<SpriteIndex>> {
+fn load_animations(assets_folder: &str) -> HashMap<String, Animation<Sprite>> {
     let animations_filepath = system::path_join(assets_folder, "animations.data");
     super::deserialize_from_file_binary(&animations_filepath)
 }

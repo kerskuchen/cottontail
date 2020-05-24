@@ -1862,7 +1862,7 @@ pub struct Afterimage {
     color_modulate_start: Color,
     color_modulate_end: Color,
 
-    sprite: Vec<SpriteIndex>,
+    sprite: Vec<Sprite>,
     age: Vec<f32>,
     pos: Vec<Vec2>,
     scale: Vec<Vec2>,
@@ -1914,7 +1914,7 @@ impl Afterimage {
     pub fn add_afterimage_image_if_needed(
         &mut self,
         deltatime: f32,
-        newimage_sprite: SpriteIndex,
+        newimage_sprite: Sprite,
         newimage_pos: Vec2,
         newimage_scale: Vec2,
         newimage_rotation_dir: Vec2,
@@ -1964,9 +1964,8 @@ impl Afterimage {
                 age_percentage,
             );
 
-            let sprite = assets.get_sprite_by_index(self.sprite[index]);
             draw.draw_sprite_pixel_snapped(
-                sprite,
+                &self.sprite[index],
                 self.pos[index],
                 self.scale[index],
                 self.rotation_dir[index],

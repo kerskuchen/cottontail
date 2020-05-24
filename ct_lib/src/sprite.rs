@@ -12,7 +12,6 @@ use std::collections::HashMap;
 
 // NOTE: We used u32 here instead of usize for safer serialization / deserialization between
 //       32Bit and 64Bit platforms
-pub type SpriteIndex = u32;
 pub type TextureIndex = u32;
 pub type FramebufferIndex = u32;
 
@@ -44,7 +43,6 @@ impl AAQuad {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Sprite {
     pub name: String,
-    pub index: SpriteIndex,
     pub atlas_texture_index: TextureIndex,
 
     /// Determines if the sprite contains pixels that have alpha that is not 0 and not 1.
@@ -119,15 +117,12 @@ pub struct Sprite3D {
 pub struct SpriteAtlas {
     pub textures: Vec<Bitmap>,
     pub textures_size: u32,
-
-    pub sprites: Vec<Sprite>,
-    pub sprites_by_name: HashMap<String, Sprite>,
-    pub sprites_indices: HashMap<String, SpriteIndex>,
+    pub sprites: HashMap<String, Sprite>,
 }
 
 impl SpriteAtlas {
     /// NOTE: This expects all bitmaps to be powers-of-two sized rectangles with the same size
-    pub fn new(textures: Vec<Bitmap>, sprites: Vec<Sprite>) -> SpriteAtlas {
+    pub fn new(textures: Vec<Bitmap>, sprites: HashMap<String, Sprite>) -> SpriteAtlas {
         // Double check bitmap dimensions
         let textures_size = {
             assert!(textures.len() > 0);
@@ -141,20 +136,10 @@ impl SpriteAtlas {
             textures_size
         };
 
-        // Create indexing hashmaps
-        let mut sprites_by_name = HashMap::<String, Sprite>::new();
-        let mut sprites_indices = HashMap::<String, SpriteIndex>::new();
-        for (index, sprite) in sprites.iter().enumerate() {
-            sprites_by_name.insert(sprite.name.clone(), sprite.clone());
-            sprites_indices.insert(sprite.name.clone(), index as SpriteIndex);
-        }
-
         SpriteAtlas {
             textures_size,
             textures,
             sprites,
-            sprites_by_name,
-            sprites_indices,
         }
     }
 
@@ -166,17 +151,14 @@ impl SpriteAtlas {
         sprite_rect: Recti,
         draw_offset: Vec2i,
         has_translucency: bool,
-    ) -> SpriteIndex {
-        debug_assert!(!self.sprites_by_name.contains_key(&sprite_name));
+    ) -> Sprite {
+        debug_assert!(!self.sprites.contains_key(&sprite_name));
 
         let sprite_rect = Rect::from(sprite_rect);
         let draw_offset = Vec2::from(draw_offset);
         let uv_scale = 1.0 / self.textures_size as f32;
-        let index = self.sprites.len() as SpriteIndex;
         let sprite = Sprite {
-            index: 0,
             name: sprite_name.clone(),
-
             atlas_texture_index: atlas_texture_index,
             has_translucency,
             pivot_offset: Vec2::zero(),
@@ -186,15 +168,15 @@ impl SpriteAtlas {
             trimmed_uvs: AAQuad::from_rect(sprite_rect.scaled_from_origin(Vec2::filled(uv_scale))),
         };
 
-        self.sprites.push(sprite.clone());
-        self.sprites_by_name.insert(sprite_name.clone(), sprite);
-        self.sprites_indices.insert(sprite_name, index);
-
-        index
+        self.sprites.insert(sprite_name.clone(), sprite.clone());
+        sprite
     }
 
-    pub fn debug_get_bitmap_for_sprite(&self, sprite_index: SpriteIndex) -> Bitmap {
-        let sprite = &self.sprites[sprite_index as usize];
+    pub fn debug_get_bitmap_for_sprite(&self, sprite_name: &str) -> Bitmap {
+        let sprite = &self
+            .sprites
+            .get(sprite_name)
+            .expect(&format!("Atlas does not contain sprite '{}'", &sprite_name));
         let dim = Vec2i::from_vec2_rounded(sprite.trimmed_rect.dim);
         let texture_coordinates = AAQuad::from_rect(
             sprite
