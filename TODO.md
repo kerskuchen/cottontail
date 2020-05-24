@@ -1,23 +1,21 @@
+* DungeonTracks
+  - Make 3D SpriteAnimations a first class concept
+
 * Repeaty:
   - Check if we can automatically log on exit with fern?
-  - Add readme
-  - Add launcher icon
   - When pressing start button and text input is empty (but previously valid) refill text input
     
+* Pixie Stitch: 
+  - Add custom launcher icon
 
 * Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 
   sized rectangle drawing and the `skip_last_vertex` 
-* Fix Vec2 to work with degrees only 
 * Fix Vec2 to work with flipped_y only and remove special suffixes
 * Maybe we can decouple sprites and fonts from the drawstate by putting those into gameassets?
   This would help with the font ownership/cloning problem and make the drawstate less bloaty?
-
-* Bytepath-tutorial:
-  - Rename the `size` variables to either radius or diameter because currently it is ambiguous
-  - Make slowmotion a build-in game concept similar to camera screenshake
-
-* Pixie Stitch: 
-  - Add custom launcher icon
+* Change color mode of asefiles to rgb via `--color-mode rgb` to have correct color blending on 
+  sheet export. This could be done as preprocess step and could include the preprocessing of the 
+  3d sprites.
 
 
 * We need a production/develop version where we enable/disable i.e. panic messageboxes. It would be 
