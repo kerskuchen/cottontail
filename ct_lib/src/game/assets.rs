@@ -7,6 +7,7 @@ pub struct GameAssets {
     assets_folder: String,
     animations: HashMap<String, Animation<Sprite>>,
     animations_3d: HashMap<String, Animation<Sprite3D>>,
+    sprites_3d: HashMap<String, Sprite3D>,
     fonts: HashMap<String, SpriteFont>,
     atlas: SpriteAtlas,
     recordings: HashMap<String, Vec<AudioFrame>>,
@@ -23,7 +24,8 @@ impl GameAssets {
         self.atlas = load_atlas(&self.assets_folder);
         self.animations = load_animations(&self.assets_folder);
         self.fonts = load_fonts(&self.assets_folder);
-        // self.animations_3d = load_animations_3d(&self.assets_folder);
+        //self.animations_3d = load_animations_3d(&self.assets_folder);
+        self.sprites_3d = load_sprites_3d(&self.assets_folder);
     }
 
     pub fn load_audio(&mut self) {
@@ -80,14 +82,18 @@ impl GameAssets {
         ))
     }
 
-    //----------------------------------------------------------------------------------------------
-    // Sprite 'by index' and 'by name' functions
+    pub fn get_sprite(&self, sprite_name: &str) -> &Sprite {
+        self.atlas.sprites.get(sprite_name).expect(&format!(
+            "Sprite with name '{}' does not exist",
+            sprite_name
+        ))
+    }
 
-    pub fn get_sprite_by_name(&self, spritename: &str) -> &Sprite {
-        self.atlas
-            .sprites
-            .get(spritename)
-            .expect(&format!("Sprite with name '{}' does not exist", spritename))
+    pub fn get_sprite_3d(&self, sprite_name: &str) -> &Sprite3D {
+        self.sprites_3d.get(sprite_name).expect(&format!(
+            "Sprite3D with name '{}' does not exist",
+            sprite_name
+        ))
     }
 
     pub fn debug_get_sprite_as_bitmap(&self, sprite_name: &str) -> Bitmap {
@@ -103,6 +109,16 @@ impl GameAssets {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Asset loading
 
+fn load_sprites(assets_folder: &str) -> HashMap<String, Sprite> {
+    let sprites_filepath = system::path_join(assets_folder, "sprites.data");
+    super::deserialize_from_file_binary(&sprites_filepath)
+}
+
+fn load_sprites_3d(assets_folder: &str) -> HashMap<String, Sprite3D> {
+    let sprites_filepath = system::path_join(assets_folder, "sprites_3d.data");
+    super::deserialize_from_file_binary(&sprites_filepath)
+}
+
 fn load_animations(assets_folder: &str) -> HashMap<String, Animation<Sprite>> {
     let animations_filepath = system::path_join(assets_folder, "animations.data");
     super::deserialize_from_file_binary(&animations_filepath)
@@ -115,30 +131,15 @@ fn load_animations_3d(assets_folder: &str) -> HashMap<String, Animation<Sprite3D
 
 fn load_atlas(assets_folder: &str) -> SpriteAtlas {
     let textures_list_filepath = system::path_join(assets_folder, "atlas.data");
-    let textures_list: Vec<String> =
-        bincode::deserialize(&std::fs::read(&textures_list_filepath).expect(&format!(
-            "Could not read '{}' - Gamedata corrupt?",
-            &textures_list_filepath
-        )))
-        .expect(&format!(
-            "Could not deserialize '{}' - Gamedata corrupt?",
-            &textures_list_filepath
-        ));
+    let textures_list: Vec<String> = super::deserialize_from_file_binary(&textures_list_filepath);
+
     let mut textures = Vec::new();
     for texture_filepath_relative in &textures_list {
         let texture_filepath = system::path_join(assets_folder, texture_filepath_relative);
         textures.push(Bitmap::from_png_file_or_panic(&texture_filepath));
     }
 
-    let sprites_filepath = system::path_join(assets_folder, "sprites.data");
-    let sprites = bincode::deserialize(&std::fs::read(&sprites_filepath).expect(&format!(
-        "Could not read '{}' - Gamedata corrupt?",
-        sprites_filepath
-    )))
-    .expect(&format!(
-        "Could not deserialize '{}' - Gamedata corrupt?",
-        sprites_filepath
-    ));
+    let sprites = load_sprites(assets_folder);
 
     let mut atlas = SpriteAtlas::new(textures, sprites);
 
@@ -159,16 +160,7 @@ fn load_atlas(assets_folder: &str) -> SpriteAtlas {
 
 fn load_fonts(assets_folder: &str) -> HashMap<String, SpriteFont> {
     let fonts_filepath = system::path_join(assets_folder, "fonts.data");
-    let fonts = bincode::deserialize(&std::fs::read(&fonts_filepath).expect(&format!(
-        "Could not read '{}' - Gamedata corrupt?",
-        fonts_filepath
-    )))
-    .expect(&format!(
-        "Could not deserialize '{}' - Gamedata corrupt?",
-        fonts_filepath
-    ));
-
-    fonts
+    super::deserialize_from_file_binary(&fonts_filepath)
 }
 
 fn load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, Vec<AudioSample>> {

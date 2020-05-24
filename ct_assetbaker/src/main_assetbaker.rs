@@ -25,8 +25,10 @@ use std::{
 };
 
 type Spritename = String;
+type Spritename3D = String;
 type Fontname = String;
 type Animationname = String;
+type Animationname3D = String;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AssetSprite {
@@ -43,11 +45,25 @@ pub struct AssetSprite {
     pub trimmed_uvs: Recti,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AssetSprite3D {
+    pub name: Spritename3D,
+    pub layer_sprite_names: Vec<Spritename>,
+}
+
 #[derive(Default, Debug, Clone, PartialEq, Serialize)]
 pub struct AssetAnimation {
     pub name: Animationname,
     pub framecount: u32,
     pub sprite_names: Vec<Spritename>,
+    pub frame_durations_ms: Vec<u32>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize)]
+pub struct AssetAnimation3D {
+    pub name: Animationname3D,
+    pub framecount: u32,
+    pub sprite_names: Vec<Spritename3D>,
     pub frame_durations_ms: Vec<u32>,
 }
 
@@ -84,9 +100,11 @@ pub struct AssetAtlas {
 }
 
 fn bake_graphics_resources() {
-    let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
     let mut result_fonts: IndexMap<Fontname, AssetFont> = IndexMap::new();
+    let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
+    let mut result_sprites_3d: IndexMap<Spritename3D, AssetSprite3D> = IndexMap::new();
     let mut result_animations: IndexMap<Animationname, AssetAnimation> = IndexMap::new();
+    let mut result_animations_3d: IndexMap<Animationname3D, AssetAnimation3D> = IndexMap::new();
 
     // Create fonts and its correspronding sprites
     let font_styles = load_font_styles();
@@ -116,32 +134,38 @@ fn bake_graphics_resources() {
     }
 
     // Convert png and aseprite files to png sheets and move to them to `target/assets_temp`
-    let mut imagepaths = vec![];
-    imagepaths.append(&mut system::collect_files_by_extension_recursive(
-        "assets", ".ase",
-    ));
-    imagepaths.append(&mut system::collect_files_by_extension_recursive(
-        "assets", ".png",
-    ));
     let sprites_and_animations: Vec<(
         IndexMap<Spritename, AssetSprite>,
+        IndexMap<Spritename3D, AssetSprite3D>,
         IndexMap<Animationname, AssetAnimation>,
-    )> = imagepaths
-        .par_iter()
-        .map(|imagepath| {
-            let sheet_name = system::path_without_extension(imagepath).replace("assets/", "");
-            let output_path_without_extension =
-                system::path_without_extension(imagepath).replace("assets", "target/assets_temp");
-            aseprite::create_sheet_animations(
-                imagepath,
-                &sheet_name,
-                &output_path_without_extension,
-            )
-        })
-        .collect();
-    for (sprites, animations) in sprites_and_animations {
+        IndexMap<Animationname3D, AssetAnimation3D>,
+    )> = {
+        let mut imagepaths = vec![];
+        imagepaths.append(&mut system::collect_files_by_extension_recursive(
+            "assets", ".ase",
+        ));
+        imagepaths.append(&mut system::collect_files_by_extension_recursive(
+            "assets", ".png",
+        ));
+        imagepaths
+            .par_iter()
+            .map(|imagepath| {
+                let sheet_name = system::path_without_extension(imagepath).replace("assets/", "");
+                let output_path_without_extension = system::path_without_extension(imagepath)
+                    .replace("assets", "target/assets_temp");
+                aseprite::create_sheet_animations(
+                    imagepath,
+                    &sheet_name,
+                    &output_path_without_extension,
+                )
+            })
+            .collect()
+    };
+    for (sprites, sprites_3d, animations, animations_3d) in sprites_and_animations {
         result_sprites.extend(sprites);
+        result_sprites_3d.extend(sprites_3d);
         result_animations.extend(animations);
+        result_animations_3d.extend(animations_3d);
     }
 
     // Create texture atlas and Adjust positions of our sprites according to the final packed
@@ -205,6 +229,7 @@ fn bake_graphics_resources() {
         .collect();
 
     serialize_sprites(&result_sprites, result_atlas.texture_size);
+    serialize_sprites_3d(&result_sprites_3d, &final_sprites_by_name);
     serialize_fonts(&result_fonts, &final_sprites_by_name);
     serialize_animations(&result_animations, &final_sprites_by_name);
     serialize_atlas(&result_atlas);
@@ -583,6 +608,21 @@ fn convert_sprite(sprite: &AssetSprite, atlas_texture_size: u32) -> Sprite {
     }
 }
 
+fn convert_sprite_3d(
+    sprite: &AssetSprite3D,
+    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
+) -> Sprite3D {
+    let layers = sprite
+        .layer_sprite_names
+        .iter()
+        .map(|name| final_sprites_by_name[name].clone())
+        .collect();
+    Sprite3D {
+        name: sprite.name.clone(),
+        layers,
+    }
+}
+
 fn convert_glyph(
     glyph: &AssetGlyph,
     final_sprites_by_name: &IndexMap<Spritename, Sprite>,
@@ -657,6 +697,32 @@ fn serialize_sprites(sprite_map: &IndexMap<Spritename, AssetSprite>, atlas_textu
         .collect();
     std::fs::write(
         "resources/sprites.data",
+        bincode::serialize(&binary).unwrap(),
+    )
+    .unwrap();
+}
+
+fn serialize_sprites_3d(
+    sprite_map: &IndexMap<Spritename3D, AssetSprite3D>,
+    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
+) {
+    std::fs::write(
+        "resources/sprites_3d.json",
+        serde_json::to_string_pretty(sprite_map).unwrap(),
+    )
+    .unwrap();
+
+    let binary: IndexMap<Spritename3D, Sprite3D> = sprite_map
+        .iter()
+        .map(|(name, sprite)| {
+            (
+                name.clone(),
+                convert_sprite_3d(sprite, final_sprites_by_name),
+            )
+        })
+        .collect();
+    std::fs::write(
+        "resources/sprites_3d.data",
         bincode::serialize(&binary).unwrap(),
     )
     .unwrap();

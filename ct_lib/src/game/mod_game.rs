@@ -118,7 +118,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
                 .assets
                 .as_ref()
                 .unwrap()
-                .get_sprite_by_name("untextured")
+                .get_sprite("untextured")
                 .clone();
             let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
             let debug_log_font = self
@@ -160,7 +160,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
         draw.begin_frame();
 
         if self.splashscreen.is_none() {
-            let splash_sprite = assets.get_sprite_by_name("splash").clone();
+            let splash_sprite = assets.get_sprite("splash").clone();
             self.splashscreen = Some(SplashScreen::new(
                 splash_sprite,
                 SPLASHSCREEN_FADEIN_TIME,

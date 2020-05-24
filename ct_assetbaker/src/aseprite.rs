@@ -1,4 +1,7 @@
-use super::{Animationname, AssetAnimation, AssetSprite, Spritename};
+use super::{
+    Animationname, Animationname3D, AssetAnimation, AssetAnimation3D, AssetSprite, AssetSprite3D,
+    Spritename, Spritename3D,
+};
 
 use ct_lib::bitmap::*;
 use ct_lib::math::*;
@@ -17,7 +20,9 @@ pub fn create_sheet_animations(
     output_filepath_without_extension: &str,
 ) -> (
     IndexMap<Spritename, AssetSprite>,
+    IndexMap<Spritename3D, AssetSprite3D>,
     IndexMap<Animationname, AssetAnimation>,
+    IndexMap<Animationname3D, AssetAnimation3D>,
 ) {
     if image_filepath.ends_with("_3d.ase") {
         create_sheet_animations_3d(
@@ -26,11 +31,12 @@ pub fn create_sheet_animations(
             output_filepath_without_extension,
         )
     } else {
-        create_sheet_animations_2d(
+        let (sprites, animations) = create_sheet_animations_2d(
             image_filepath,
             sheet_name,
             output_filepath_without_extension,
-        )
+        );
+        (sprites, IndexMap::new(), animations, IndexMap::new())
     }
 }
 
@@ -40,7 +46,9 @@ pub fn create_sheet_animations_3d(
     output_filepath_without_extension: &str,
 ) -> (
     IndexMap<Spritename, AssetSprite>,
+    IndexMap<Spritename3D, AssetSprite3D>,
     IndexMap<Animationname, AssetAnimation>,
+    IndexMap<Animationname3D, AssetAnimation3D>,
 ) {
     let stack_layer_count = {
         // NOTE: This block is mainly for validation
@@ -133,7 +141,64 @@ pub fn create_sheet_animations_3d(
         result_animations.extend(animations);
     }
 
-    (result_sprites, result_animations)
+    // Create dedicated 3D sprite and animation assets
+    let mut result_sprites_3d: IndexMap<Spritename3D, AssetSprite3D> = IndexMap::new();
+    let mut result_animations_3d: IndexMap<Animationname3D, AssetAnimation3D> = IndexMap::new();
+
+    assert!(
+        result_sprites.len() % stack_layer_count == 0,
+        "Sprite count {} is not a multiple of stack layer count {} in 3D sprite '{}'",
+        result_sprites.len(),
+        stack_layer_count,
+        image_filepath
+    );
+    assert!(
+        result_animations.len() % stack_layer_count == 0,
+        "Animation count {} is not a multiple of stack layer count {} in 3D sprite '{}'",
+        result_sprites.len(),
+        stack_layer_count,
+        image_filepath
+    );
+    let frame_count_3d = result_sprites.len() / stack_layer_count;
+    let anim_count_3d = result_animations.len() / stack_layer_count;
+
+    // 3D-Sprites
+    for frame_index in 0..frame_count_3d {
+        let mut layer_sprite_names = Vec::new();
+        for stack_layer in 0..stack_layer_count {
+            let sprite_name_2d = format!("{}#{}.{}", sheet_name, stack_layer, frame_index);
+            layer_sprite_names.push(sprite_name_2d);
+        }
+
+        let sprite_name_3d = format!("{}.{}", sheet_name, frame_index);
+        result_sprites_3d.insert(
+            sprite_name_3d.clone(),
+            AssetSprite3D {
+                name: sprite_name_3d,
+                layer_sprite_names,
+            },
+        );
+    }
+
+    /*
+    let mut anim_base = Animation::new_empty("susi_base_3d");
+    anim_base.add_frame(0.1, assets.get_sprite_3d("susi_base_3d.0").clone());
+    anim_base.add_frame(0.1, assets.get_sprite_3d("susi_base_3d.1").clone());
+    anim_base.add_frame(0.1, assets.get_sprite_3d("susi_base_3d.2").clone());
+    anim_base.add_frame(0.1, assets.get_sprite_3d("susi_base_3d.3").clone());
+    */
+    // 3D-Animations
+    //for (name, sprite) in &result_sprites {
+    //    let mut layers = Vec::new();
+    //}
+    //for layer_index in 0..stack_layer_count {}
+
+    (
+        result_sprites,
+        result_sprites_3d,
+        result_animations,
+        result_animations_3d,
+    )
 }
 
 pub fn create_sheet_animations_2d(
@@ -268,10 +333,10 @@ pub fn create_sheet_animations_2d(
     let frametags: Vec<FrameTag> = if meta.meta.frame_tags.len() == 0 {
         // If we have no animation tags we treat the whole frame-range as one big tagless animation
         vec![FrameTag {
-            name: "".to_owned(),
+            name: "default".to_string(),
             from: 0,
             to: (framecount as i32 - 1),
-            direction: "forward".to_owned(),
+            direction: "forward".to_string(),
         }]
     } else {
         meta.meta.frame_tags.clone()
@@ -280,11 +345,7 @@ pub fn create_sheet_animations_2d(
     // Create animations
     let mut result_animations: IndexMap<Animationname, AssetAnimation> = IndexMap::new();
     for frametag in frametags {
-        let animation_name = if frametag.name == "" {
-            sheet_name.to_string()
-        } else {
-            sheet_name.to_string() + ":" + &frametag.name
-        };
+        let animation_name = sheet_name.to_string() + ":" + &frametag.name;
 
         let mut sprite_names: Vec<Spritename> = Vec::new();
         let mut frame_durations_ms: Vec<u32> = Vec::new();
