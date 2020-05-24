@@ -2014,9 +2014,6 @@ pub struct Globals {
 
     pub canvas_width: f32,
     pub canvas_height: f32,
-
-    pub font_default: SpriteFont,
-    pub font_default_no_border: SpriteFont,
 }
 
 pub trait Scene: Clone {
@@ -2344,7 +2341,7 @@ impl Scene for SceneDebug {
 
         draw.draw_text(
             "Press 'D'",
-            &globals.font_default,
+            &assets.get_font(FONT_DEFAULT_TINY_NAME),
             1.0,
             hp_rect_initial.pos,
             Vec2::filled_y(-5.0),
