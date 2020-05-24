@@ -65,6 +65,11 @@ pub fn create_sheet_animations_3d(
             "No layer found in 3D sprite '{}'",
             image_filepath
         );
+        assert!(
+            layers.len() > 1,
+            "Expected more than one layer in 3D sprite '{}'",
+            image_filepath
+        );
         layers.sort();
         for index in 0..layers.len() {
             assert!(
