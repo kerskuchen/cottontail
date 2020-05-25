@@ -13,6 +13,7 @@ sdl2 = "0.32"
 fern = "0.5"
 backtrace = "0.3"
 serde = "1.0"
+gilrs = "0.7"
 
 [dependencies.ct_lib]
 path = "../ct_lib"

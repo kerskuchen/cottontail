@@ -1,6 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // GameInput
 
+use super::math::Vec2;
+
 use std::collections::HashMap;
 
 #[derive(Default, Clone)]
@@ -18,7 +20,7 @@ pub struct GameInput {
     pub screen_framebuffer_height: u32,
     pub screen_framebuffer_dimensions_changed: bool,
 
-    pub gamepads: [GamepadState; 4],
+    pub gamepad: GamepadState,
 
     /// Measured time since last frame
     pub deltatime: f32,
@@ -199,14 +201,9 @@ impl TouchState {
 pub struct GamepadState {
     pub is_connected: bool,
 
-    pub stick_left_x: f32,
-    pub stick_left_y: f32,
-
-    pub stick_right_x: f32,
-    pub stick_right_y: f32,
-
-    pub trigger_left: f32,
-    pub trigger_right: f32,
+    pub start: ButtonState,
+    pub back: ButtonState,
+    pub home: ButtonState,
 
     pub move_up: ButtonState,
     pub move_down: ButtonState,
@@ -218,15 +215,20 @@ pub struct GamepadState {
     pub action_left: ButtonState,
     pub action_right: ButtonState,
 
-    pub shoulder_left: ButtonState,
-    pub shoulder_right: ButtonState,
+    pub stick_left: Vec2,
+    pub stick_right: Vec2,
 
-    pub stick_left: ButtonState,
-    pub stick_right: ButtonState,
+    pub stick_button_left: ButtonState,
+    pub stick_button_right: ButtonState,
 
-    pub start: ButtonState,
-    pub back: ButtonState,
-    pub home: ButtonState,
+    pub trigger_left: f32,
+    pub trigger_right: f32,
+
+    pub trigger_button_left_1: ButtonState,
+    pub trigger_button_left_2: ButtonState,
+
+    pub trigger_button_right_1: ButtonState,
+    pub trigger_button_right_2: ButtonState,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

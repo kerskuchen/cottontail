@@ -8,6 +8,8 @@
 * Pixie Stitch: 
   - Add custom launcher icon
 
+* Find out why gamepad trigger axis does not work. maybe we can access the state directly with
+  `Gamepad::axis_or_btn_name()`
 * Maybe we can make drawstate globally available for debug drawing so that we don't need it to 
   pass everywhere. this is of course highly unsafe but ok for debug
 

@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 // Configuration
 
 const ENABLE_PANIC_MESSAGES: bool = false;
+const ENABLE_FRAMETIME_LOGGING: bool = false;
 
 #[derive(Serialize, Deserialize)]
 struct LauncherConfig {
@@ -134,24 +135,26 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
 }
 
 fn log_frametimes(
-    duration_frame: f32,
-    duration_input: f32,
-    duration_update: f32,
-    duration_sound: f32,
-    duration_render: f32,
-    duration_swap: f32,
-    duration_wait: f32,
+    _duration_frame: f32,
+    _duration_input: f32,
+    _duration_update: f32,
+    _duration_sound: f32,
+    _duration_render: f32,
+    _duration_swap: f32,
+    _duration_wait: f32,
 ) {
-    log::trace!(
+    if ENABLE_FRAMETIME_LOGGING {
+        log::trace!(
         "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  sound: {:.3}ms  render: {:.3}ms  swap: {:.3}ms  idle: {:.3}ms",
-        duration_frame * 1000.0,
-        duration_input * 1000.0,
-        duration_update * 1000.0,
-        duration_sound * 1000.0,
-        duration_render * 1000.0,
-        duration_swap * 1000.0,
-        duration_wait * 1000.0
+        _duration_frame * 1000.0,
+        _duration_input * 1000.0,
+        _duration_update * 1000.0,
+        _duration_sound * 1000.0,
+        _duration_render * 1000.0,
+        _duration_swap * 1000.0,
+        _duration_wait * 1000.0
     );
+    }
 }
 
 pub fn run_main<GameStateType: GameStateInterface + Clone>() {
@@ -224,9 +227,6 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     let sdl_audio = sdl_context
         .audio()
         .expect("Failed to initialize SDL2 audio");
-    let sdl_controller = sdl_context
-        .game_controller()
-        .expect("Cannot initialize controller subsystem");
 
     // ---------------------------------------------------------------------------------------------
     // SDL Window
@@ -322,20 +322,54 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     // ---------------------------------------------------------------------------------------------
     // Input
 
-    sdl_controller
-        .load_mappings(ct_lib::system::path_join(
-            &savedata_dir,
-            "gamecontrollerdb.txt",
-        ))
-        .unwrap_or_else(|_error| {
-            log::info!(
-                "Could not find 'gamecontrollerdb.txt' at '{}' using default one from game data",
-                &savedata_dir
-            );
-            sdl_controller
-                .load_mappings("resources/gamecontrollerdb.txt")
-                .expect("Cannot find 'resources/gamecontrollerdb.txt' - game data corrupt?")
-        });
+    let mut gamepad_subsystem = {
+        let savedata_mappings_path = system::path_join(&savedata_dir, "gamecontrollerdb.txt");
+        let gamedata_mappings_path = "resources/gamecontrollerdb.txt".to_string();
+        let gamepad_mappings = std::fs::read_to_string(&savedata_mappings_path)
+            .or_else(|_error| {
+                log::info!(
+                    "Could not read gamepad mappings file at '{}' - using default one",
+                    savedata_mappings_path
+                );
+                std::fs::read_to_string(&gamedata_mappings_path).map_err(|error| {
+                    log::info!(
+                        "Could not read gamepad mappings file at '{}' - game data corrupt? : {}",
+                        gamedata_mappings_path,
+                        error
+                    )
+                })
+            })
+            .ok();
+
+        let mut builder = gilrs::GilrsBuilder::new();
+        if let Some(mapping) = gamepad_mappings {
+            builder = builder.add_mappings(&mapping);
+        }
+        builder
+            .build()
+            .map_err(|error| {
+                log::warn!("Could not initialize game controller subsystem: {}", error)
+            })
+            .ok()
+    };
+
+    // Print some info about the currently connected gamepads
+    if let Some(gamepad_subsystem) = &gamepad_subsystem {
+        if gamepad_subsystem.gamepads().count() == 0 {
+            log::info!("No gamepads connected");
+        } else {
+            let mut gamepad_info = "\nThe following gamepads were found:\n".to_string();
+            for (id, gamepad) in gamepad_subsystem.gamepads() {
+                gamepad_info += &format!(
+                    "  {}: {} - {:?}\n",
+                    id,
+                    gamepad.name(),
+                    gamepad.power_info()
+                );
+            }
+            log::info!("{}", gamepad_info);
+        }
+    }
 
     // ---------------------------------------------------------------------------------------------
     // Game memory and input
@@ -666,6 +700,75 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
                     input.mouse.wheel_delta = y;
                 }
                 _ => {}
+            }
+        }
+
+        if let Some(gamepad_subsystem) = &mut gamepad_subsystem {
+            while let Some(gilrs::Event { event, .. }) = gamepad_subsystem.next_event() {
+                let maybe_button_event = match event {
+                    gilrs::EventType::ButtonPressed(button, _) => Some((button, true)),
+                    gilrs::EventType::ButtonReleased(button, _) => Some((button, false)),
+                    gilrs::EventType::Connected => {
+                        input.gamepad.is_connected = true;
+                        None
+                    }
+                    gilrs::EventType::Disconnected => {
+                        input.gamepad.is_connected = true;
+                        None
+                    }
+                    gilrs::EventType::AxisChanged(axis, value, _) => {
+                        input.gamepad.is_connected = true;
+                        match axis {
+                            gilrs::Axis::LeftStickX => input.gamepad.stick_left.x = value,
+                            gilrs::Axis::LeftStickY => input.gamepad.stick_left.y = -value,
+                            gilrs::Axis::LeftZ => input.gamepad.trigger_left = value,
+                            gilrs::Axis::RightStickX => input.gamepad.stick_right.x = value,
+                            gilrs::Axis::RightStickY => input.gamepad.stick_right.y = -value,
+                            gilrs::Axis::RightZ => input.gamepad.trigger_right = value,
+                            _ => {}
+                        };
+                        None
+                    }
+                    _ => None,
+                };
+
+                if let Some((button, is_pressed)) = maybe_button_event {
+                    input.gamepad.is_connected = true;
+                    let gamepad_button = match button {
+                        gilrs::Button::South => Some(&mut input.gamepad.action_down),
+                        gilrs::Button::East => Some(&mut input.gamepad.action_right),
+                        gilrs::Button::North => Some(&mut input.gamepad.action_up),
+                        gilrs::Button::West => Some(&mut input.gamepad.action_left),
+                        gilrs::Button::LeftTrigger => {
+                            Some(&mut input.gamepad.trigger_button_left_1)
+                        }
+                        gilrs::Button::LeftTrigger2 => {
+                            Some(&mut input.gamepad.trigger_button_left_2)
+                        }
+                        gilrs::Button::RightTrigger => {
+                            Some(&mut input.gamepad.trigger_button_right_1)
+                        }
+                        gilrs::Button::RightTrigger2 => {
+                            Some(&mut input.gamepad.trigger_button_right_2)
+                        }
+                        gilrs::Button::Select => Some(&mut input.gamepad.back),
+                        gilrs::Button::Start => Some(&mut input.gamepad.start),
+                        gilrs::Button::Mode => Some(&mut input.gamepad.home),
+                        gilrs::Button::LeftThumb => Some(&mut input.gamepad.stick_button_left),
+                        gilrs::Button::RightThumb => Some(&mut input.gamepad.stick_button_right),
+                        gilrs::Button::DPadUp => Some(&mut input.gamepad.move_up),
+                        gilrs::Button::DPadDown => Some(&mut input.gamepad.move_down),
+                        gilrs::Button::DPadLeft => Some(&mut input.gamepad.move_left),
+                        gilrs::Button::DPadRight => Some(&mut input.gamepad.move_right),
+                        gilrs::Button::C => None,
+                        gilrs::Button::Z => None,
+                        gilrs::Button::Unknown => None,
+                    };
+
+                    if let Some(button) = gamepad_button {
+                        button.process_event(is_pressed, false, current_tick);
+                    }
+                }
             }
         }
 
