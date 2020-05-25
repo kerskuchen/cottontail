@@ -703,6 +703,8 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             }
         }
 
+        // Gamepad events
+        // NOTE: Currently we collect events from all available gamepads
         if let Some(gamepad_subsystem) = &mut gamepad_subsystem {
             while let Some(gilrs::Event { event, .. }) = gamepad_subsystem.next_event() {
                 let maybe_button_event = match event {
