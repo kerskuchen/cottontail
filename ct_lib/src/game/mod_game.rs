@@ -1550,6 +1550,7 @@ pub struct Animation<FrameType: Clone> {
     pub name: String,
     #[serde(bound(deserialize = "FrameType: serde::de::DeserializeOwned"))]
     pub frames: Vec<AnimationFrame<FrameType>>,
+    pub length: f32,
 }
 
 impl<FrameType: Clone> Animation<FrameType> {
@@ -1557,163 +1558,153 @@ impl<FrameType: Clone> Animation<FrameType> {
         Animation {
             name: name.to_owned(),
             frames: Vec::with_capacity(32),
+            length: 0.0,
         }
     }
 
     pub fn add_frame(&mut self, duration_seconds: f32, value: FrameType) {
+        assert!(duration_seconds > 0.0);
+
+        self.length += duration_seconds;
         self.frames.push(AnimationFrame {
             duration_seconds,
             value,
-        })
+        });
+    }
+
+    fn frame_index_and_percent_at_time(&self, time: f32, wrap_around: bool) -> (usize, f32) {
+        assert!(!self.frames.is_empty());
+
+        let time = if wrap_around {
+            wrap_value_in_range(time, self.length)
+        } else {
+            clampf(time, 0.0, self.length)
+        };
+
+        let mut frame_start = 0.0;
+
+        for (index, frame) in self.frames.iter().enumerate() {
+            let frame_end = frame_start + frame.duration_seconds;
+
+            if time < frame_end {
+                let percent = (time - frame_start) / frame.duration_seconds;
+                return (index, percent);
+            }
+
+            frame_start = frame_end;
+        }
+
+        (self.frames.len() - 1, 1.0)
+    }
+
+    pub fn frame_at_time(&self, time: f32, wrap_around: bool) -> &FrameType {
+        let (index, _percent) = self.frame_index_and_percent_at_time(time, wrap_around);
+        &self.frames[index].value
+    }
+
+    pub fn frame_at_percentage(&self, percentage: f32) -> &FrameType {
+        debug_assert!(0.0 <= percentage && percentage <= 1.0);
+        let time = percentage * self.length;
+        self.frame_at_time(time, false)
+    }
+}
+
+impl Animation<f32> {
+    pub fn value_at_time_interpolated_linear(&self, time: f32, wrap_around: bool) -> f32 {
+        let (frame_index, frametime_percent) =
+            self.frame_index_and_percent_at_time(time, wrap_around);
+        let next_frame_index = if wrap_around {
+            (frame_index + 1) % self.frames.len()
+        } else {
+            usize::min(frame_index + 1, self.frames.len() - 1)
+        };
+
+        let value_start = self.frames[frame_index].value;
+        let value_end = self.frames[next_frame_index].value;
+
+        lerp(value_start, value_end, frametime_percent)
     }
 }
 
 #[derive(Clone)]
 pub struct AnimationPlayer<FrameType: Clone> {
-    current_frametime: f32,
-    current_frame_index: usize,
-    pub playback_speed: f32,
-    pub stop_after_finish: bool,
-    pub play_reversed: bool,
-    pub is_paused: bool,
-    animation: Animation<FrameType>,
+    pub current_frametime: f32,
+    pub playback_rate: f32,
+    pub looping: bool,
+    pub animation: Animation<FrameType>,
+    pub has_finished: bool,
 }
 
 impl<FrameType: Clone> AnimationPlayer<FrameType> {
-    pub fn new(
-        anim: Animation<FrameType>,
-        playback_speed: f32,
-        stop_after_finished: bool,
+    pub fn new_from_beginning(
+        animation: Animation<FrameType>,
+        playback_rate: f32,
+        looping: bool,
     ) -> AnimationPlayer<FrameType> {
+        assert!(animation.length > 0.0);
+
         AnimationPlayer {
-            current_frame_index: 0,
             current_frametime: 0.0,
-            playback_speed: playback_speed,
-            stop_after_finish: stop_after_finished,
-            play_reversed: false,
-            is_paused: false,
-            animation: anim,
+            playback_rate,
+            looping,
+            animation,
+            has_finished: false,
         }
     }
 
-    pub fn new_reversed(
-        anim: &Animation<FrameType>,
-        playback_speed: f32,
-        stop_after_finished: bool,
+    pub fn new_from_end(
+        animation: Animation<FrameType>,
+        playback_rate: f32,
+        looping: bool,
     ) -> AnimationPlayer<FrameType> {
-        let last_frame_index = anim.frames.len() - 1;
-        let current_frame_index = last_frame_index;
-        let current_frametime = anim.frames[last_frame_index].duration_seconds;
-
-        AnimationPlayer {
-            current_frame_index,
-            current_frametime,
-            playback_speed: playback_speed,
-            stop_after_finish: stop_after_finished,
-            play_reversed: true,
-            is_paused: false,
-            animation: anim.clone(),
-        }
+        let mut result = AnimationPlayer::new_from_beginning(animation, playback_rate, looping);
+        result.restart_from_end();
+        result
     }
 
-    pub fn finished_playing(&self) -> bool {
-        if !self.stop_after_finish {
-            return false;
-        }
+    pub fn restart_from_beginning(&mut self) {
+        self.current_frametime = 0.0;
+        self.has_finished = false;
+    }
 
-        if self.play_reversed {
-            if self.current_frame_index > 0 {
-                return false;
-            }
-            return self.current_frametime == 0.0;
-        } else {
-            if self.current_frame_index < self.animation.frames.len() - 1 {
-                return false;
-            }
-
-            let max_frametime = self.animation.frames[self.current_frame_index].duration_seconds;
-            return self.current_frametime == max_frametime;
-        }
+    pub fn restart_from_end(&mut self) {
+        self.current_frametime = self.animation.length;
+        self.has_finished = false;
     }
 
     pub fn update(&mut self, deltatime: f32) {
-        if self.is_paused {
+        if self.playback_rate == 0.0 {
             return;
         }
 
-        if self.play_reversed {
-            self.current_frametime -= deltatime * self.playback_speed;
-
-            if self.current_frametime < 0.0 {
-                // NOTE: We need to cast to i32 here because we want to handle the negative case
-                let next_frameindex: i32 = (self.current_frame_index as i32) - 1;
-                if next_frameindex >= 0 {
-                    let next_frameindex = next_frameindex as usize;
-                    let frametime = self.animation.frames[next_frameindex].duration_seconds;
-                    self.current_frame_index = next_frameindex;
-                    self.current_frametime += frametime;
-                } else {
-                    // We reached the end of our animation
-                    if self.stop_after_finish {
-                        // Just let it stay zero so `animationplayer_is_finished` returns
-                        // correct values
-                        self.current_frametime = 0.0;
-                    } else {
-                        let next_frameindex = self.animation.frames.len() - 1;
-                        let frametime = self.animation.frames[next_frameindex].duration_seconds;
-                        self.current_frame_index = next_frameindex;
-                        self.current_frametime -= frametime;
-                    }
-                }
-            }
+        let new_frametime = self.current_frametime + self.playback_rate * deltatime;
+        if self.looping {
+            self.current_frametime = wrap_value_in_range(new_frametime, self.animation.length);
         } else {
-            let max_frametime = self.animation.frames[self.current_frame_index].duration_seconds;
-            self.current_frametime += deltatime * self.playback_speed;
-
-            if self.current_frametime > max_frametime {
-                let framecount = self.animation.frames.len();
-                let next_frameindex = self.current_frame_index + 1;
-                if next_frameindex < framecount {
-                    self.current_frame_index = next_frameindex;
-                    self.current_frametime -= max_frametime;
-                } else {
-                    // We reached the end of our animation
-                    if self.stop_after_finish {
-                        // Just let it stay `max_frametime` so `animationplayer_is_finished` returns
-                        // correct values
-                        self.current_frametime = max_frametime;
-                    } else {
-                        self.current_frame_index = 0;
-                        self.current_frametime -= max_frametime;
-                    }
-                }
+            self.current_frametime = clampf(new_frametime, 0.0, self.animation.length);
+            if self.current_frametime == self.animation.length && self.playback_rate > 0.0 {
+                self.has_finished = true;
+            }
+            if self.current_frametime == 0.0 && self.playback_rate < 0.0 {
+                self.has_finished = true;
             }
         }
     }
 
-    pub fn value_fixed_for_percentage(&self, percentage: f32) -> &FrameType {
-        let frame_index = floori(percentage * self.animation.frames.len() as f32) as usize;
-        let frame_index = usize::min(frame_index, self.animation.frames.len() - 1);
-        &self.animation.frames[frame_index].value
+    pub fn frame_at_percentage(&self, percentage: f32) -> &FrameType {
+        self.animation.frame_at_percentage(percentage)
     }
 
-    pub fn value_current(&self) -> &FrameType {
-        &self.animation.frames[self.current_frame_index].value
+    pub fn current_frame(&self) -> &FrameType {
+        self.animation
+            .frame_at_time(self.current_frametime, self.looping)
     }
 }
 
 impl AnimationPlayer<f32> {
     pub fn value_current_interpolated_linear(&self) -> f32 {
-        let max_frametime = self.animation.frames[self.current_frame_index].duration_seconds;
-        let frametime_percent = self.current_frametime / max_frametime;
-
-        let current_index = self.current_frame_index;
-        let next_index = (current_index + 1) % self.animation.frames.len();
-
-        let value_start = self.animation.frames[current_index].value;
-        let value_end = self.animation.frames[next_index].value;
-
-        lerp(value_start, value_end, frametime_percent)
+        self.animation
+            .value_at_time_interpolated_linear(self.current_frametime, self.looping)
     }
 }
 
@@ -1944,13 +1935,7 @@ impl Afterimage {
         }
     }
 
-    pub fn update_and_draw(
-        &mut self,
-        draw: &mut Drawstate,
-        assets: &GameAssets,
-        deltatime: f32,
-        draw_depth: f32,
-    ) {
+    pub fn update_and_draw(&mut self, draw: &mut Drawstate, deltatime: f32, draw_depth: f32) {
         for index in 0..self.sprite.len() {
             let age_percentage = self.age[index] / self.lifetime;
             let additivity = lerp(

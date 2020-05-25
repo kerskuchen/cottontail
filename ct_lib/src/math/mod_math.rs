@@ -137,6 +137,21 @@ pub fn clampi(x: i32, min: i32, max: i32) -> i32 {
     i32::min(max, i32::max(min, x))
 }
 
+/// Wraps a value in the range [start, begin]
+#[inline]
+pub fn wrap_value_in_interval(value: f32, start: f32, end: f32) -> f32 {
+    debug_assert!(start < end);
+    let range = end - start;
+    start + f32::rem_euclid(value, range)
+}
+
+/// Wraps a value in the range [0, range]
+#[inline]
+pub fn wrap_value_in_range(value: f32, range: f32) -> f32 {
+    debug_assert!(range > 0.0);
+    f32::rem_euclid(value, range)
+}
+
 /// Wraps an angle to the range [-360, 360]. Note that this operation does not change the cos and
 /// sin of the angle value
 #[inline]
