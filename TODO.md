@@ -1,15 +1,14 @@
 # DONE:
 
-* AnimationPlayer overhaul
+* Using transforms where applicable
+* Cleanup of pixel snapping in various draw functions
 
 * DungeonTracks
-  - Adds gamepad support
-  - Port old movement code (keyboard + gamepad)
+  - Tweak movement feel
 
 # CURRENT
 
 * DungeonTracks
-  - Tweak movement feel
 
 # NEXT:
 
@@ -17,7 +16,6 @@
   pass everywhere. this is of course highly unsafe but ok for debug
 
 * DungeonTracks
-  - Tweak movement feel
   - Add movement sound
 
 * Repeaty:
