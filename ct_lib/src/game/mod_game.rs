@@ -1469,11 +1469,12 @@ impl SplashScreen {
             canvas_width as i32,
             canvas_height as i32,
         );
-        draw.draw_sprite_pixel_snapped(
+        draw.draw_sprite(
             &self.sprite,
-            Vec2::new(splash_rect.left() as f32, splash_rect.top() as f32),
-            Vec2::ones(),
-            Vec2::unit_x(),
+            Transform::from_pos(Vec2::new(
+                splash_rect.left() as f32,
+                splash_rect.top() as f32,
+            )),
             false,
             false,
             DEPTH_SPLASH,
@@ -1802,9 +1803,7 @@ impl ParticleSystem {
                 true,
                 true,
                 Vec2::zero(),
-                self.pos[index].pixel_snapped(),
-                Vec2::filled(scale),
-                Vec2::unit_x(),
+                Transform::from_pos_uniform_scale(self.pos[index].pixel_snapped(), scale),
                 depth,
                 color,
                 additivity,
@@ -1855,9 +1854,7 @@ pub struct Afterimage {
 
     sprite: Vec<Sprite>,
     age: Vec<f32>,
-    pos: Vec<Vec2>,
-    scale: Vec<Vec2>,
-    rotation_dir: Vec<Vec2>,
+    xform: Vec<Transform>,
     flip_horizontally: Vec<bool>,
     flip_vertically: Vec<bool>,
     color_modulate: Vec<Color>,
@@ -1886,9 +1883,7 @@ impl Afterimage {
 
             sprite: Vec::with_capacity(count_max),
             age: Vec::with_capacity(count_max),
-            pos: Vec::with_capacity(count_max),
-            scale: Vec::with_capacity(count_max),
-            rotation_dir: Vec::with_capacity(count_max),
+            xform: Vec::with_capacity(count_max),
             flip_horizontally: Vec::with_capacity(count_max),
             flip_vertically: Vec::with_capacity(count_max),
             color_modulate: Vec::with_capacity(count_max),
@@ -1906,9 +1901,7 @@ impl Afterimage {
         &mut self,
         deltatime: f32,
         newimage_sprite: Sprite,
-        newimage_pos: Vec2,
-        newimage_scale: Vec2,
-        newimage_rotation_dir: Vec2,
+        newimage_xform: Transform,
         newimage_flip_horizontally: bool,
         newimage_flip_vertically: bool,
         newimage_color_modulate: Color,
@@ -1918,15 +1911,14 @@ impl Afterimage {
 
         if self.count_max > 0 {
             let time_between_spawns = self.lifetime / self.count_max as f32;
-            if self.pos.len() < self.count_max && self.time_since_last_spawn >= time_between_spawns
+            if self.xform.len() < self.count_max
+                && self.time_since_last_spawn >= time_between_spawns
             {
                 self.time_since_last_spawn -= time_between_spawns;
 
                 self.sprite.push(newimage_sprite);
                 self.age.push(0.0);
-                self.pos.push(newimage_pos);
-                self.scale.push(newimage_scale);
-                self.rotation_dir.push(newimage_rotation_dir);
+                self.xform.push(newimage_xform);
                 self.flip_horizontally.push(newimage_flip_horizontally);
                 self.flip_vertically.push(newimage_flip_vertically);
                 self.color_modulate.push(newimage_color_modulate);
@@ -1949,11 +1941,9 @@ impl Afterimage {
                 age_percentage,
             );
 
-            draw.draw_sprite_pixel_snapped(
+            draw.draw_sprite(
                 &self.sprite[index],
-                self.pos[index],
-                self.scale[index],
-                self.rotation_dir[index],
+                self.xform[index],
                 self.flip_horizontally[index],
                 self.flip_vertically[index],
                 draw_depth,
@@ -1962,14 +1952,12 @@ impl Afterimage {
             );
         }
 
-        for index in (0..self.pos.len()).rev() {
+        for index in (0..self.xform.len()).rev() {
             self.age[index] += deltatime;
             if self.age[index] > self.lifetime {
                 self.sprite.swap_remove(index);
                 self.age.swap_remove(index);
-                self.pos.swap_remove(index);
-                self.scale.swap_remove(index);
-                self.rotation_dir.swap_remove(index);
+                self.xform.swap_remove(index);
                 self.flip_horizontally.swap_remove(index);
                 self.flip_vertically.swap_remove(index);
                 self.color_modulate.swap_remove(index);

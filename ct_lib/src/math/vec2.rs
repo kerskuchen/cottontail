@@ -400,16 +400,9 @@ impl Vec2 {
 
     #[must_use]
     #[inline]
-    pub fn transformed(
-        self,
-        pivot: Vec2,
-        translation: Vec2,
-        scale: Vec2,
-        rotation_dir: Vec2,
-    ) -> Vec2 {
-        assert!(rotation_dir.is_normalized());
-
-        let point_offsetted = scale * (self - pivot);
+    pub fn transformed(self, pivot: Vec2, xform: Transform) -> Vec2 {
+        let offsetted_scaled = xform.scale * (self - pivot);
+        let rotation_dir = xform.rotation_dir();
 
         // NOTE:
         // This describes a matrix multiplication with the rotation matrix
@@ -418,41 +411,33 @@ impl Vec2 {
         //                     = | rotation_dir     v2_perpendicular(rotation_dir) |
         //
         let rotated_scaled = Vec2::new(
-            point_offsetted.x * rotation_dir.x - point_offsetted.y * rotation_dir.y,
-            point_offsetted.x * rotation_dir.y + point_offsetted.y * rotation_dir.x,
+            offsetted_scaled.x * rotation_dir.x - offsetted_scaled.y * rotation_dir.y,
+            offsetted_scaled.x * rotation_dir.y + offsetted_scaled.y * rotation_dir.x,
         );
 
-        rotated_scaled + translation
+        rotated_scaled + xform.pos
     }
 
     #[inline]
-    pub fn multiple_transform(
-        coordinates: &mut [Vec2],
-        pos: Vec2,
-        pivot: Vec2,
-        scale: Vec2,
-        rotationdir: Vec2,
-    ) {
+    pub fn multi_transform(coordinates: &mut [Vec2], pivot: Vec2, xform: Transform) {
         for point in coordinates {
-            *point = point.transformed(pivot, pos, scale, rotationdir);
+            *point = point.transformed(pivot, xform);
         }
     }
 
     #[must_use]
     #[inline]
-    pub fn multiple_transformed<CoordType>(
+    pub fn multi_transformed<CoordType>(
         coordinates: &[CoordType],
-        pos: Vec2,
         pivot: Vec2,
-        scale: Vec2,
-        rotation_dir: Vec2,
+        xform: Transform,
     ) -> Vec<Vec2>
     where
         CoordType: Into<Vec2> + Copy + Clone,
     {
         coordinates
             .iter()
-            .map(|&point| Vec2::from(point.into()).transformed(pivot, pos, scale, rotation_dir))
+            .map(|&point| Vec2::from(point.into()).transformed(pivot, xform))
             .collect()
     }
 

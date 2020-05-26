@@ -377,6 +377,68 @@ pub fn triangle_get_bounds(a: Vec2, b: Vec2, c: Vec2) -> Rect {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Quad
 
+#[derive(Default, Debug, Copy, Clone)]
+pub struct Transform {
+    pub pos: Vec2,
+    pub scale: Vec2,
+    /// Angle given in degrees [-360, 360] counterclockwise
+    pub dir_angle: f32,
+}
+
+impl Transform {
+    pub const fn from_pos(pos: Vec2) -> Transform {
+        Transform {
+            pos,
+            scale: Vec2::ones(),
+            dir_angle: 0.0,
+        }
+    }
+
+    pub const fn from_pos_angle(pos: Vec2, dir_angle: f32) -> Transform {
+        Transform {
+            pos,
+            scale: Vec2::ones(),
+            dir_angle,
+        }
+    }
+
+    pub fn from_pos_dir(pos: Vec2, dir: Vec2) -> Transform {
+        Transform {
+            pos,
+            scale: Vec2::ones(),
+            dir_angle: dir.to_angle_flipped_y(),
+        }
+    }
+
+    pub const fn from_pos_scale(pos: Vec2, scale: Vec2) -> Transform {
+        Transform {
+            pos,
+            scale,
+            dir_angle: 0.0,
+        }
+    }
+
+    pub const fn from_pos_uniform_scale(pos: Vec2, scale: f32) -> Transform {
+        Transform {
+            pos,
+            scale: Vec2::filled(scale),
+            dir_angle: 0.0,
+        }
+    }
+
+    pub fn rotation_dir(&self) -> Vec2 {
+        Vec2::from_angle_flipped_y(self.dir_angle)
+    }
+
+    pub fn pixel_snapped(&self) -> Transform {
+        Transform {
+            pos: self.pos.pixel_snapped(),
+            scale: self.scale,
+            dir_angle: self.dir_angle,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Quad {
     pub vert_right_top: Vec2,
@@ -408,33 +470,12 @@ impl Quad {
     }
 
     #[inline]
-    pub fn from_rect_transformed(
-        rect_dim: Vec2,
-        pivot: Vec2,
-        translation: Vec2,
-        scale: Vec2,
-        rotation_dir: Vec2,
-    ) -> Quad {
+    pub fn from_rect_transformed(rect_dim: Vec2, pivot: Vec2, xform: Transform) -> Quad {
         Quad {
-            vert_right_top: Vec2::new(rect_dim.x, 0.0).transformed(
-                pivot,
-                translation,
-                scale,
-                rotation_dir,
-            ),
-            vert_right_bottom: Vec2::new(rect_dim.x, rect_dim.y).transformed(
-                pivot,
-                translation,
-                scale,
-                rotation_dir,
-            ),
-            vert_left_bottom: Vec2::new(0.0, rect_dim.y).transformed(
-                pivot,
-                translation,
-                scale,
-                rotation_dir,
-            ),
-            vert_left_top: Vec2::new(0.0, 0.0).transformed(pivot, translation, scale, rotation_dir),
+            vert_right_top: Vec2::new(rect_dim.x, 0.0).transformed(pivot, xform),
+            vert_right_bottom: Vec2::new(rect_dim.x, rect_dim.y).transformed(pivot, xform),
+            vert_left_bottom: Vec2::new(0.0, rect_dim.y).transformed(pivot, xform),
+            vert_left_top: Vec2::new(0.0, 0.0).transformed(pivot, xform),
         }
     }
 

@@ -748,12 +748,10 @@ impl Drawstate {
     // Sprite drawing
 
     /// NOTE: Rotation is performed around the sprites pivot point
-    pub fn draw_sprite_pixel_snapped(
+    pub fn draw_sprite(
         &mut self,
         sprite: &Sprite,
-        pos: Vec2,
-        scale: Vec2,
-        rotation_dir: Vec2,
+        xform: Transform,
         flip_horizontally: bool,
         flip_vertically: bool,
         depth: Depth,
@@ -761,7 +759,7 @@ impl Drawstate {
         additivity: Additivity,
     ) {
         let (sprite_quad, sprite_uvs, texture_index, has_translucency) = {
-            let quad = sprite.get_quad_transformed(pos.pixel_snapped(), scale, rotation_dir);
+            let quad = sprite.get_quad_transformed(xform);
 
             let mut sprite_uvs = sprite.trimmed_uvs;
             if flip_horizontally {
@@ -884,12 +882,15 @@ impl Drawstate {
         additivity: Additivity,
     ) {
         let depth_increment = 1.0 / sprite.layers.len() as f32;
+        let xform_snapped = xform.pixel_snapped();
         for (index, sprite) in sprite.layers.iter().rev().enumerate() {
-            self.draw_sprite_pixel_snapped(
+            self.draw_sprite(
                 sprite,
-                xform.pos.pixel_snapped() + index as f32 * Vec2::unit_y(),
-                xform.scale,
-                xform.dir(),
+                Transform {
+                    pos: xform_snapped.pos + index as f32 * Vec2::unit_y(),
+                    scale: xform_snapped.scale,
+                    dir_angle: xform_snapped.dir_angle,
+                },
                 false,
                 false,
                 depth - (index as f32) * 0.5 * depth_increment,
@@ -912,6 +913,7 @@ impl Drawstate {
         color: Color,
         additivity: Additivity,
     ) {
+        let rect = rect.pixel_snapped();
         if filled {
             let quad = Quad::from_rect(rect);
             self.draw_quad(
@@ -924,7 +926,6 @@ impl Drawstate {
                 additivity,
             );
         } else {
-            let rect = rect.pixel_snapped();
             let dim = rect.dim;
             if dim.x == 0.0 || dim.y == 0.0 {
                 return;
@@ -955,9 +956,7 @@ impl Drawstate {
         filled: bool,
         centered: bool,
         pivot: Vec2,
-        pos: Vec2,
-        scale: Vec2,
-        rotation_dir: Vec2,
+        xform: Transform,
         depth: Depth,
         color: Color,
         additivity: Additivity,
@@ -969,7 +968,7 @@ impl Drawstate {
                 Vec2::zero()
             };
 
-        let quad = Quad::from_rect_transformed(rect_dim, pivot, pos, scale, rotation_dir);
+        let quad = Quad::from_rect_transformed(rect_dim, pivot, xform);
         if filled {
             self.draw_quad(
                 &quad,
@@ -991,14 +990,12 @@ impl Drawstate {
         &mut self,
         vertices: &[Vec2],
         pivot: Vec2,
-        pos: Vec2,
-        scale: Vec2,
-        rotation_dir: Vec2,
+        xform: Transform,
         depth: Depth,
         color: Color,
         additivity: Additivity,
     ) {
-        let vertices = Vec2::multiple_transformed(vertices, pos, pivot, scale, rotation_dir);
+        let vertices = Vec2::multi_transformed(vertices, pivot, xform);
         let indices = (0..vertices.len() as u32).collect();
         let uvs = vec![
             Vec2::new(
@@ -1252,7 +1249,7 @@ impl Drawstate {
     /// WARNING: This can be slow if used often
     pub fn draw_pixel(&mut self, pos: Vec2, depth: Depth, color: Color, additivity: Additivity) {
         self.draw_rect(
-            Rect::from_pos_dim(pos.pixel_snapped(), Vec2::ones()),
+            Rect::from_pos_dim(pos, Vec2::ones()),
             true,
             depth,
             color,
@@ -1490,11 +1487,13 @@ impl Drawstate {
                 alignment,
                 &mut |glyph, draw_pos, _codepoint| {
                     // Draw background
-                    let quad = glyph.sprite.get_quad_transformed(
-                        draw_pos.into(),
-                        Vec2::new(font_scale, font_scale),
-                        Vec2::unit_x(),
-                    );
+                    let quad =
+                        glyph
+                            .sprite
+                            .get_quad_transformed(Transform::from_pos_uniform_scale(
+                                draw_pos.into(),
+                                font_scale,
+                            ));
                     self.draw_quad(
                         &quad,
                         self.untextured_uv_center_coord,
@@ -1506,11 +1505,9 @@ impl Drawstate {
                     );
 
                     // Draw glyph
-                    self.draw_sprite_pixel_snapped(
+                    self.draw_sprite(
                         &glyph.sprite,
-                        draw_pos.into(),
-                        Vec2::new(font_scale, font_scale),
-                        Vec2::unit_x(),
+                        Transform::from_pos_uniform_scale(draw_pos.into(), font_scale),
                         false,
                         false,
                         depth,
@@ -1529,11 +1526,9 @@ impl Drawstate {
                 alignment,
                 &mut |glyph, draw_pos, _codepoint| {
                     // Draw glyph
-                    self.draw_sprite_pixel_snapped(
+                    self.draw_sprite(
                         &glyph.sprite,
-                        draw_pos.into(),
-                        Vec2::new(font_scale, font_scale),
-                        Vec2::unit_x(),
+                        Transform::from_pos_uniform_scale(draw_pos.into(), font_scale),
                         false,
                         false,
                         depth,
@@ -1568,7 +1563,6 @@ impl Drawstate {
             clipping_rect.pos.pixel_snapped_i32(),
             clipping_rect.dim.roundi(),
         );
-        clipping_rect.pixel_snapped_i32();
         font.iter_text_glyphs_clipped(
             text,
             font_scale as i32,
@@ -1602,9 +1596,10 @@ impl Drawstate {
         color_b: Color,
         depth: Depth,
     ) {
+        let origin = origin.pixel_snapped();
         for y in 0..cells_per_side {
             for x in 0..cells_per_side {
-                let pos = origin.pixel_snapped() + Vec2::new(x as f32, y as f32) * cell_size;
+                let pos = origin + Vec2::new(x as f32, y as f32) * cell_size;
                 let dim = Vec2::filled(cell_size as f32);
                 let cell_rect = Rect::from_pos_dim(pos, dim);
                 if y % 2 == 0 {
@@ -1707,11 +1702,9 @@ impl Drawstate {
                     .debug_log_font
                     .get_glyph_for_codepoint_copy(codepoint as Codepoint);
 
-                self.draw_sprite_pixel_snapped(
+                self.draw_sprite(
                     &glyph.sprite,
-                    origin + pos,
-                    Vec2::filled(self.debug_log_font_scale),
-                    Vec2::unit_x(),
+                    Transform::from_pos_uniform_scale(origin + pos, self.debug_log_font_scale),
                     false,
                     false,
                     self.debug_log_depth,

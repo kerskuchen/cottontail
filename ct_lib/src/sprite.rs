@@ -77,30 +77,22 @@ impl Sprite {
     pub fn get_attachment_point_transformed(
         &self,
         attachment_index: usize,
-        pos: Vec2,
-        scale: Vec2,
-        rotation_dir: Vec2,
+        xform: Transform,
     ) -> Vec2 {
         // NOTE: The `sprite.pivot_offset` is relative to the left top corner of the untrimmed sprite.
         //       But we need the offset relative to the trimmed sprite which may have its own offset.
         let sprite_pivot = self.pivot_offset - self.trimmed_rect.pos;
         let attachment_point = self.attachment_points[attachment_index] - self.trimmed_rect.pos;
-        attachment_point.transformed(sprite_pivot, pos, scale, rotation_dir)
+        attachment_point.transformed(sprite_pivot, xform.pixel_snapped())
     }
 
     #[inline]
-    pub fn get_quad_transformed(&self, pos: Vec2, scale: Vec2, rotation_dir: Vec2) -> Quad {
+    pub fn get_quad_transformed(&self, xform: Transform) -> Quad {
         let sprite_dim = self.trimmed_rect.dim;
         // NOTE: The `sprite.pivot_offset` is relative to the left top corner of the untrimmed sprite.
         //       But we need the offset relative to the trimmed sprite which may have its own offset.
         let sprite_pivot = self.pivot_offset - self.trimmed_rect.pos;
-        Quad::from_rect_transformed(
-            sprite_dim,
-            sprite_pivot,
-            pos.pixel_snapped(),
-            scale,
-            rotation_dir,
-        )
+        Quad::from_rect_transformed(sprite_dim, sprite_pivot, xform.pixel_snapped())
     }
 }
 
