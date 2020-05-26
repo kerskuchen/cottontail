@@ -54,6 +54,60 @@ impl Rect {
     }
 }
 
+#[derive(Default, Debug, Copy, Clone)]
+pub struct Transform {
+    pub pos: Vec2,
+    pub scale: Vec2,
+    /// Angle given in degrees [-360, 360] counterclockwise
+    pub dir_angle: f32,
+}
+
+impl Transform {
+    pub const fn new_from_pos(pos: Vec2) -> Transform {
+        Transform {
+            pos,
+            scale: Vec2::ones(),
+            dir_angle: 0.0,
+        }
+    }
+
+    pub const fn new_from_pos_angle(pos: Vec2, dir_angle: f32) -> Transform {
+        Transform {
+            pos,
+            scale: Vec2::ones(),
+            dir_angle,
+        }
+    }
+
+    pub fn new_from_pos_dir(pos: Vec2, dir: Vec2) -> Transform {
+        Transform {
+            pos,
+            scale: Vec2::ones(),
+            dir_angle: dir.to_angle_flipped_y(),
+        }
+    }
+
+    pub const fn new_from_pos_scale(pos: Vec2, scale: Vec2) -> Transform {
+        Transform {
+            pos,
+            scale,
+            dir_angle: 0.0,
+        }
+    }
+
+    pub const fn new_from_pos_uniform_scale(pos: Vec2, scale: f32) -> Transform {
+        Transform {
+            pos,
+            scale: Vec2::filled(scale),
+            dir_angle: 0.0,
+        }
+    }
+
+    pub fn dir(&self) -> Vec2 {
+        Vec2::from_angle_flipped_y(self.dir_angle)
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Canvas and screen blitting and transformations
 

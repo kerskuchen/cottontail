@@ -1,5 +1,24 @@
+# DONE:
+
+* AnimationPlayer overhaul
+
 * DungeonTracks
-  - Make 3D SpriteAnimations a first class concept
+  - Adds gamepad support
+  - Port old movement code (keyboard + gamepad)
+
+# CURRENT
+
+* DungeonTracks
+  - Tweak movement feel
+
+# NEXT:
+
+* Maybe we can make drawstate globally available for debug drawing so that we don't need it to 
+  pass everywhere. this is of course highly unsafe but ok for debug
+
+* DungeonTracks
+  - Tweak movement feel
+  - Add movement sound
 
 * Repeaty:
   - Check if we can automatically log on exit with fern?
@@ -8,14 +27,16 @@
 * Pixie Stitch: 
   - Add custom launcher icon
 
-* Find out why gamepad shoulder trigger axes does not work. directly can access the state 
-  with `Gamepad::axis_or_btn_name()` or iterating axis does not let us find any state
-* Maybe we can make drawstate globally available for debug drawing so that we don't need it to 
-  pass everywhere. this is of course highly unsafe but ok for debug
 
 * Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 
   sized rectangle drawing and the `skip_last_vertex` 
 * Fix Vec2 to work with flipped_y only and remove special suffixes
+* Easy debug-printing text API that draws in screenspace (not canvas-space)
+  - We need to add a debug layer to the drawstate with its own drawqueue
+
+* Find out why gamepad shoulder trigger axes does not work. directly can access the state 
+  with `Gamepad::axis_or_btn_name()` or iterating axis does not let us find any state. We know that 
+  it should work because it does so in the control panel
 
 
 * We need a production/develop version where we enable/disable i.e. panic messageboxes. It would be 
@@ -27,8 +48,6 @@
   - Splashscreen
 * Clean up old stuff code at the end of draw.rs and sdl_window.rs. 
   Determine what is needed and implement it. Throw out the rest 
-* Easy debug-printing text API that draws in screenspace (not canvas-space)
-  - We need to add a debug layer to the drawstate with its own drawqueue
 
 * Allow hotreloading of game assets
 * Support ogg audio and differentiate between mono/stereo recordings

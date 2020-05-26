@@ -875,6 +875,30 @@ impl Drawstate {
         }
     }
 
+    pub fn draw_sprite_3d(
+        &mut self,
+        sprite: &Sprite3D,
+        xform: Transform,
+        depth: Depth,
+        color_modulate: Color,
+        additivity: Additivity,
+    ) {
+        let depth_increment = 1.0 / sprite.layers.len() as f32;
+        for (index, sprite) in sprite.layers.iter().rev().enumerate() {
+            self.draw_sprite_pixel_snapped(
+                sprite,
+                xform.pos.pixel_snapped() + index as f32 * Vec2::unit_y(),
+                xform.scale,
+                xform.dir(),
+                false,
+                false,
+                depth - (index as f32) * 0.5 * depth_increment,
+                color_modulate,
+                additivity,
+            );
+        }
+    }
+
     //----------------------------------------------------------------------------------------------
     // Primitive drawing
 
