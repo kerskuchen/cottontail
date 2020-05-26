@@ -178,16 +178,21 @@ struct AudioStream {
     has_finished: bool,
     is_repeating: bool,
 
+    playback_speed_current: f32,
+    playback_speed_target: f32,
+
     /// Ranges in [0,1]
     /// Silence       = 0
     /// Full loudness = 1
-    volume: f32,
+    volume_current: f32,
+    volume_target: f32,
 
     /// Ranges in [-1,1]
     /// Left   = -1
     /// Center =  0
     /// Right  =  1
-    pan: f32,
+    pan_current: f32,
+    pan_target: f32,
 }
 
 #[derive(Clone)]
@@ -268,14 +273,49 @@ impl Audiostate {
         stream.remove_on_finish = true;
     }
 
+    pub fn stream_set_volume(&mut self, stream_id: AudioStreamId, new_volume: f32) {
+        let stream = self
+            .streams
+            .get_mut(&stream_id)
+            .expect(&format!("No audio stream found for id {}", stream_id));
+        stream.volume_target = new_volume;
+        stream.volume_current = new_volume;
+    }
+
+    pub fn stream_set_pan(&mut self, stream_id: AudioStreamId, new_pan: f32) {
+        let stream = self
+            .streams
+            .get_mut(&stream_id)
+            .expect(&format!("No audio stream found for id {}", stream_id));
+        stream.pan_target = new_pan;
+        stream.pan_current = new_pan;
+    }
+
+    pub fn stream_set_playback_speed(&mut self, stream_id: AudioStreamId, new_playback_speed: f32) {
+        let stream = self
+            .streams
+            .get_mut(&stream_id)
+            .expect(&format!("No audio stream found for id {}", stream_id));
+        stream.playback_speed_target = new_playback_speed;
+        stream.playback_speed_current = new_playback_speed;
+    }
+
     pub fn play_oneshot(
         &mut self,
         recording_name: &str,
         play_time: SchedulePlay,
         volume: f32,
         pan: f32,
+        playback_speed: f32,
     ) {
-        let _ = self.play(recording_name, play_time, false, volume, pan);
+        let _ = self.play(
+            recording_name,
+            play_time,
+            false,
+            volume,
+            pan,
+            playback_speed,
+        );
     }
 
     #[must_use]
@@ -286,6 +326,7 @@ impl Audiostate {
         is_repeating: bool,
         volume: f32,
         pan: f32,
+        playback_speed: f32,
     ) -> AudioStreamId {
         let id = self.next_stream_id;
         let stream = AudioStream {
@@ -295,8 +336,12 @@ impl Audiostate {
             has_finished: false,
             start_frame: None,
             is_repeating,
-            volume,
-            pan,
+            volume_current: volume,
+            volume_target: volume,
+            pan_current: pan,
+            pan_target: pan,
+            playback_speed_current: playback_speed,
+            playback_speed_target: playback_speed,
         };
         self.streams.insert(id, stream);
         self.next_stream_id += 1;
@@ -356,11 +401,8 @@ impl Audiostate {
                 continue;
             }
 
-            // NOTE: We use sinuoidal panning:
-            //       http://folk.ntnu.no/oyvinbra/delete/Lesson1Panning.html
-            let pan = 0.5 * (stream.pan + 1.0); // Transform [-1,1] -> [0,1]
-            let volume_left = stream.volume * f32::cos((PI / 2.0) * pan);
-            let volume_right = stream.volume * f32::sin((PI / 2.0) * pan);
+            let pan = 0.5 * (stream.pan_current + 1.0); // Transform [-1,1] -> [0,1]
+            let (volume_left, volume_right) = crossfade_sinuoidal(stream.volume_current, pan);
 
             let stream_frames = recordings.get(&stream.recording_name).unwrap();
             stream.has_finished = if stream.is_repeating {

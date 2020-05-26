@@ -1630,7 +1630,7 @@ impl Animation<f32> {
 #[derive(Clone)]
 pub struct AnimationPlayer<FrameType: Clone> {
     pub current_frametime: f32,
-    pub playback_rate: f32,
+    pub playback_speed: f32,
     pub looping: bool,
     pub animation: Animation<FrameType>,
     pub has_finished: bool,
@@ -1639,14 +1639,14 @@ pub struct AnimationPlayer<FrameType: Clone> {
 impl<FrameType: Clone> AnimationPlayer<FrameType> {
     pub fn new_from_beginning(
         animation: Animation<FrameType>,
-        playback_rate: f32,
+        playback_speed: f32,
         looping: bool,
     ) -> AnimationPlayer<FrameType> {
         assert!(animation.length > 0.0);
 
         AnimationPlayer {
             current_frametime: 0.0,
-            playback_rate,
+            playback_speed,
             looping,
             animation,
             has_finished: false,
@@ -1655,10 +1655,10 @@ impl<FrameType: Clone> AnimationPlayer<FrameType> {
 
     pub fn new_from_end(
         animation: Animation<FrameType>,
-        playback_rate: f32,
+        playback_speed: f32,
         looping: bool,
     ) -> AnimationPlayer<FrameType> {
-        let mut result = AnimationPlayer::new_from_beginning(animation, playback_rate, looping);
+        let mut result = AnimationPlayer::new_from_beginning(animation, playback_speed, looping);
         result.restart_from_end();
         result
     }
@@ -1674,19 +1674,19 @@ impl<FrameType: Clone> AnimationPlayer<FrameType> {
     }
 
     pub fn update(&mut self, deltatime: f32) {
-        if self.playback_rate == 0.0 {
+        if self.playback_speed == 0.0 {
             return;
         }
 
-        let new_frametime = self.current_frametime + self.playback_rate * deltatime;
+        let new_frametime = self.current_frametime + self.playback_speed * deltatime;
         if self.looping {
             self.current_frametime = wrap_value_in_range(new_frametime, self.animation.length);
         } else {
             self.current_frametime = clampf(new_frametime, 0.0, self.animation.length);
-            if self.current_frametime == self.animation.length && self.playback_rate > 0.0 {
+            if self.current_frametime == self.animation.length && self.playback_speed > 0.0 {
                 self.has_finished = true;
             }
-            if self.current_frametime == 0.0 && self.playback_rate < 0.0 {
+            if self.current_frametime == 0.0 && self.playback_speed < 0.0 {
                 self.has_finished = true;
             }
         }
@@ -2099,6 +2099,7 @@ impl Scene for SceneDebug {
                 true,
                 0.1,
                 0.0,
+                1.0,
             );
         }
 
@@ -2252,6 +2253,7 @@ impl Scene for SceneDebug {
                 },
                 0.7,
                 0.0,
+                1.0,
             );
 
             self.hp_previous = self.hp;

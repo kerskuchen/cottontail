@@ -66,6 +66,22 @@ pub const fn make_even_upwards(x: i32) -> i32 {
     (x / 2) * 2
 }
 
+/// Based on linear panning (http://gdsp.hf.ntnu.no/lessons/1/5/)
+#[inline]
+pub fn crossfade_linear(factor: f32, percent: f32) -> (f32, f32) {
+    let left = factor * lerp(1.0, 0.0, percent);
+    let right = factor * lerp(1.0, 0.0, percent);
+    (left, right)
+}
+
+/// Based on sinuoidal panning (http://gdsp.hf.ntnu.no/lessons/1/5/)
+#[inline]
+pub fn crossfade_sinuoidal(factor: f32, percent: f32) -> (f32, f32) {
+    let left = factor * f32::cos((PI / 2.0) * percent);
+    let right = factor * f32::sin((PI / 2.0) * percent);
+    (left, right)
+}
+
 //--------------------------------------------------------------------------------------------------
 // Epsilon
 
