@@ -209,30 +209,13 @@ impl AudioOutput {
         }
     }
 }
-
-fn audio_fade_out(out_stereo_samples: &mut [i16], starting_values: (i16, i16)) {
-    if out_stereo_samples.len() == 2 {
-        out_stereo_samples[0] = 0;
-        out_stereo_samples[1] = 0;
-        return;
-    }
-
-    let framecount_remaining = out_stereo_samples.len() / 2;
-    for (frame_index, frame) in out_stereo_samples.chunks_exact_mut(2).enumerate() {
-        let fade = lerp(
-            1.0,
-            0.0,
-            frame_index as f32 / (framecount_remaining - 1) as f32,
-        );
-        frame[0] = (starting_values.0 as f32 * fade) as i16;
-        frame[1] = (starting_values.1 as f32 * fade) as i16;
-    }
-}
-
 struct SDLAudioCallback {
-    pub next_frame_index_to_be_played: Arc<AtomicI64>,
-    pub output_buffer: ringbuf::Consumer<(AudioFrameIndex, (i16, i16))>,
-    pub last_frame_written: (i16, i16),
+    next_frame_index_to_be_played: Arc<AtomicI64>,
+    output_buffer: ringbuf::Consumer<(AudioFrameIndex, (i16, i16))>,
+
+    /// This is used fade in / out the volume when we drop frames to reduce clicking
+    fader_current: f32,
+    last_frame_written: (i16, i16),
 }
 
 impl sdl2::audio::AudioCallback for SDLAudioCallback {
@@ -267,14 +250,19 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
                 //       audio samples that should have been written out the last time this
                 //       function was called but weren't available then
                 if frameindex >= next_frameindex_to_write {
+                    self.fader_current = f32::min(1.0, self.fader_current + 1.0 / 512.0);
+
                     if frameindex > next_frameindex_to_write {
                         // NOTE: We want to keep up with the input stream
                         next_frameindex_to_write = frameindex;
                     }
 
                     self.last_frame_written = audio_frame;
-                    out_samples_stereo[out_next_sample_index] = audio_frame.0;
-                    out_samples_stereo[out_next_sample_index + 1] = audio_frame.1;
+                    out_samples_stereo[out_next_sample_index + 0] =
+                        (self.fader_current * audio_frame.0 as f32) as i16;
+                    out_samples_stereo[out_next_sample_index + 1] =
+                        (self.fader_current * audio_frame.1 as f32) as i16;
+
                     out_next_sample_index += 2;
                     framecount_written += 1;
 
@@ -290,20 +278,23 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
 
         // If we are missing frames we want to zero out the remaining buffer smoothly
         if framecount_written < framecount_to_write {
-            #[cfg(debug_assertions)]
-            log::debug!(
-                "Audiobuffer: expected {} got {} frames at frame index {}",
-                framecount_to_write,
-                framecount_written,
-                next_frameindex_to_write
-            );
+            if ENABLE_FRAMETIME_LOGGING {
+                #[cfg(debug_assertions)]
+                log::debug!(
+                    "Audiobuffer: expected {} got {} frames at frame index {}",
+                    framecount_to_write,
+                    framecount_written,
+                    next_frameindex_to_write
+                );
+            }
 
             let samplecount_written = 2 * framecount_written;
-            audio_fade_out(
-                &mut out_samples_stereo[samplecount_written..],
-                self.last_frame_written,
-            );
-            self.last_frame_written = (0, 0);
+            for frame in out_samples_stereo[samplecount_written..].chunks_exact_mut(2) {
+                self.fader_current = f32::max(0.0, self.fader_current - 1.0 / 512.0);
+                frame[0] = (self.last_frame_written.0 as f32 * self.fader_current) as i16;
+                frame[1] = (self.last_frame_written.1 as f32 * self.fader_current) as i16;
+            }
+
             next_frameindex_to_write += (framecount_to_write - framecount_written) as i64;
         }
 
@@ -512,6 +503,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             SDLAudioCallback {
                 next_frame_index_to_be_played: audio_next_frame_index_to_be_played,
                 output_buffer: audio_buffer_consumer,
+                fader_current: 0.0,
                 last_frame_written: (0, 0),
             }
         })
@@ -1097,7 +1089,9 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         let framecount_to_queue = audio_output.get_framecount_to_queue(target_seconds_per_frame);
         let mut frames_to_queue = vec![AudioFrame::silence(); framecount_to_queue];
         audio.render_audio(&mut frames_to_queue, assets.get_audio_recordings());
-        audio_output.queue_frames(&mut frames_to_queue);
+        if !input.keyboard.is_down(Scancode::Q) {
+            audio_output.queue_frames(&mut frames_to_queue);
+        }
 
         let post_sound_time = std::time::Instant::now();
 
@@ -1188,5 +1182,5 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     log::debug!("Playtime: {:.3}s", duration_gameplay);
 
     // Make sure our sound output has time to wind down
-    std::thread::sleep_ms(200);
+    std::thread::sleep_ms((4000.0 * target_seconds_per_frame) as u32);
 }
