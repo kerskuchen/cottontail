@@ -19,6 +19,7 @@ use std::collections::VecDeque;
 
 const ENABLE_PANIC_MESSAGES: bool = false;
 const ENABLE_FRAMETIME_LOGGING: bool = false;
+const ENABLE_AUDIO_LOGGING: bool = false;
 
 #[derive(Serialize, Deserialize)]
 struct LauncherConfig {
@@ -223,29 +224,16 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
 
     fn callback(&mut self, out_samples_stereo: &mut [i16]) {
         debug_assert!(out_samples_stereo.len() % 2 == 0);
+
         let framecount_to_write = out_samples_stereo.len() / 2;
-
-        // TODO: Fade in when last frames were missing?
-
-        // TODO
-        let mut debug_firstindex = std::i64::MAX;
-        let mut debug_lastindex = std::i64::MIN;
-        let debug_start_frame_to_write = self.next_frame_index_to_be_played.load(Ordering::SeqCst);
-
         let mut next_frameindex_to_write =
             self.next_frame_index_to_be_played.load(Ordering::SeqCst);
+
         // Write out as many frames as we have
         let mut out_next_sample_index = 0;
         let mut framecount_written = 0;
         while framecount_written < framecount_to_write {
             if let Some((frameindex, audio_frame)) = self.output_buffer.pop() {
-                if debug_firstindex > frameindex {
-                    debug_firstindex = frameindex;
-                }
-                if debug_lastindex < frameindex {
-                    debug_lastindex = frameindex;
-                }
-
                 // NOTE: We only write frames with the current frameindex to avoid playing old
                 //       audio samples that should have been written out the last time this
                 //       function was called but weren't available then
@@ -278,7 +266,7 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
 
         // If we are missing frames we want to zero out the remaining buffer smoothly
         if framecount_written < framecount_to_write {
-            if ENABLE_FRAMETIME_LOGGING {
+            if ENABLE_AUDIO_LOGGING {
                 #[cfg(debug_assertions)]
                 log::debug!(
                     "Audiobuffer: expected {} got {} frames at frame index {}",
@@ -288,8 +276,10 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
                 );
             }
 
-            let samplecount_written = 2 * framecount_written;
-            for frame in out_samples_stereo[samplecount_written..].chunks_exact_mut(2) {
+            for frame in out_samples_stereo
+                .chunks_exact_mut(2)
+                .skip(framecount_written)
+            {
                 self.fader_current = f32::max(0.0, self.fader_current - 1.0 / 512.0);
                 frame[0] = (self.last_frame_written.0 as f32 * self.fader_current) as i16;
                 frame[1] = (self.last_frame_written.1 as f32 * self.fader_current) as i16;
@@ -300,24 +290,6 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
 
         self.next_frame_index_to_be_played
             .store(next_frameindex_to_write, Ordering::SeqCst);
-        /*
-        TODO
-        log::debug!(
-            "Expecting range [{},{}] - got [{},{}]",
-            debug_start_frame_to_write,
-            debug_start_frame_to_write + framecount_to_write as i64,
-            if debug_firstindex == std::i64::MAX {
-                0
-            } else {
-                debug_firstindex
-            },
-            if debug_lastindex == std::i64::MIN {
-                0
-            } else {
-                debug_lastindex
-            },
-        );
-        */
     }
 }
 
