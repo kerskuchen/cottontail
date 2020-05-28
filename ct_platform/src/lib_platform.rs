@@ -116,9 +116,12 @@ impl<GameStateType: GameStateInterface + Clone> InputRecorder<GameStateType> {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main event loop
 
-use std::sync::{
-    atomic::{AtomicI64, Ordering},
-    Arc,
+use std::{
+    sync::{
+        atomic::{AtomicI64, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
 pub struct AudioOutput {
     pub next_frame_index_to_be_queued: AudioFrameIndex,
@@ -1169,5 +1172,5 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     log::debug!("Playtime: {:.3}s", duration_gameplay);
 
     // Make sure our sound output has time to wind down
-    std::thread::sleep_ms((4000.0 * target_seconds_per_frame) as u32);
+    std::thread::sleep(Duration::from_secs_f32(4.0 * target_seconds_per_frame))
 }

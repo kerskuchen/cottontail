@@ -1,14 +1,16 @@
 # DONE:
 
-* Using transforms where applicable
-* Cleanup of pixel snapping in various draw functions
-
-* DungeonTracks
-  - Tweak movement feel
+* new queue based audio platform layer with fade-in/fade-out (needs further work) 
+* audiostate can now work in terms of a continous stream without the need to re-create samples 
+  from befoe
 
 # CURRENT
 
-* Simplify Audio
+* Simplify Platform Audio
+  - Encapsulate audio rendering, callback and atomics into AudioOutput struct. the render function
+    of AudioOutput should take a &Audiostate
+* Restore Audiostate to its previous functionalty
+* implement (linear) resampler stream adapter and/or mixixing with resampling
 
 * DungeonTracks
   -
@@ -18,6 +20,9 @@
 * Add new method to GameMemory to simplify update method
 * Maybe we can make drawstate globally available for debug drawing so that we don't need it to 
   pass everywhere. this is of course highly unsafe but ok for debug
+* Make audio fader in platformlayer commit fully to fading in or out completely so i.e. we don't 
+  fade out halfway after loosing frames and fade from 0.5 back to 1.0 instead from 0.0 to 1.0
+  
 
 * DungeonTracks
   - Add movement sound
