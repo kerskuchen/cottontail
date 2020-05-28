@@ -129,6 +129,8 @@ pub struct AudioOutput {
     pub dsp_time: f64,
     pub previous_dsp_query_time: std::time::Instant,
     pub previous_dsp_query_next_frame_index: AudioFrameIndex,
+
+    pub audio_output_buffer: Vec<AudioFrame>,
 }
 
 impl AudioOutput {
@@ -147,6 +149,8 @@ impl AudioOutput {
             previous_dsp_query_time: std::time::Instant::now(),
             previous_dsp_query_next_frame_index: 0,
             frames_per_second: audio_frames_per_second,
+
+            audio_output_buffer: Vec::with_capacity(4 * audio_frames_per_second),
         }
     }
 
@@ -192,8 +196,20 @@ impl AudioOutput {
             }
     }
 
-    fn queue_frames(&mut self, frames: &mut Vec<AudioFrame>) {
-        for frame in frames.drain(..) {
+    pub fn get_write_buffer(&mut self, target_frametime: f32) -> &mut [AudioFrame] {
+        let framecount = self.get_framecount_to_queue(target_frametime);
+        self.audio_output_buffer.reserve(framecount);
+        for frame in self.audio_output_buffer.iter_mut() {
+            *frame = AudioFrame::silence();
+        }
+        while self.audio_output_buffer.len() < framecount {
+            self.audio_output_buffer.push(AudioFrame::silence());
+        }
+        &mut self.audio_output_buffer[..framecount]
+    }
+
+    fn submit_rendered_frames(&mut self) {
+        for frame in self.audio_output_buffer.drain(..) {
             if let Err(_) = self.samples_queue.push((
                 self.next_frame_index_to_be_queued,
                 (
@@ -1058,11 +1074,10 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             .as_ref()
             .expect("No audio assets initialized");
 
-        let framecount_to_queue = audio_output.get_framecount_to_queue(target_seconds_per_frame);
-        let mut frames_to_queue = vec![AudioFrame::silence(); framecount_to_queue];
+        let mut frames_to_queue = audio_output.get_write_buffer(target_seconds_per_frame);
         audio.render_audio(&mut frames_to_queue, assets.get_audio_recordings());
         if !input.keyboard.is_down(Scancode::Q) {
-            audio_output.queue_frames(&mut frames_to_queue);
+            audio_output.submit_rendered_frames();
         }
 
         let post_sound_time = std::time::Instant::now();
