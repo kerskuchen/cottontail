@@ -243,16 +243,18 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
         let framecount_to_write = out_samples_stereo.len() / 2;
 
         // TODO: Fade in when last frames were missing?
+
+        // TODO
         let mut debug_firstindex = std::i64::MAX;
         let mut debug_lastindex = std::i64::MIN;
         let debug_start_frame_to_write = self.next_frame_index_to_be_played.load(Ordering::SeqCst);
 
+        let mut next_frameindex_to_write =
+            self.next_frame_index_to_be_played.load(Ordering::SeqCst);
         // Write out as many frames as we have
         let mut out_next_sample_index = 0;
         let mut framecount_written = 0;
         while framecount_written < framecount_to_write {
-            let next_frameindex_to_write =
-                self.next_frame_index_to_be_played.load(Ordering::SeqCst);
             if let Some((frameindex, audio_frame)) = self.output_buffer.pop() {
                 if debug_firstindex > frameindex {
                     debug_firstindex = frameindex;
@@ -267,8 +269,7 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
                 if frameindex >= next_frameindex_to_write {
                     if frameindex > next_frameindex_to_write {
                         // NOTE: We want to keep up with the input stream
-                        self.next_frame_index_to_be_played
-                            .store(frameindex, Ordering::SeqCst);
+                        next_frameindex_to_write = frameindex;
                     }
 
                     self.last_frame_written = audio_frame;
@@ -277,8 +278,7 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
                     out_next_sample_index += 2;
                     framecount_written += 1;
 
-                    self.next_frame_index_to_be_played
-                        .fetch_add(1, Ordering::SeqCst);
+                    next_frameindex_to_write += 1;
                 } else {
                     // frameindex < next_frameindex_to_write
                     // NOTE: This is an old one that we can ignore
@@ -290,8 +290,6 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
 
         // If we are missing frames we want to zero out the remaining buffer smoothly
         if framecount_written < framecount_to_write {
-            /*
-            TODO
             #[cfg(debug_assertions)]
             log::debug!(
                 "Audiobuffer: expected {} got {} frames at frame index {}",
@@ -299,7 +297,6 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
                 framecount_written,
                 next_frameindex_to_write
             );
-            */
 
             let samplecount_written = 2 * framecount_written;
             audio_fade_out(
@@ -307,12 +304,13 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
                 self.last_frame_written,
             );
             self.last_frame_written = (0, 0);
-            self.next_frame_index_to_be_played.fetch_add(
-                (framecount_to_write - framecount_written) as i64,
-                Ordering::SeqCst,
-            );
+            next_frameindex_to_write += (framecount_to_write - framecount_written) as i64;
         }
 
+        self.next_frame_index_to_be_played
+            .store(next_frameindex_to_write, Ordering::SeqCst);
+        /*
+        TODO
         log::debug!(
             "Expecting range [{},{}] - got [{},{}]",
             debug_start_frame_to_write,
@@ -328,6 +326,7 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
                 debug_lastindex
             },
         );
+        */
     }
 }
 
@@ -474,7 +473,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     // ---------------------------------------------------------------------------------------------
     // Sound
 
-    let audio_frames_per_second = 44100;
+    let audio_frames_per_second = 48000;
     let audio_channelcount = 2;
     let audio_format_desired = sdl2::audio::AudioSpecDesired {
         freq: Some(audio_frames_per_second as i32),

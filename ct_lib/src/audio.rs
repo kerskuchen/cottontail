@@ -122,8 +122,9 @@ struct AudioStreamOld {
 struct AudioStreamSine {
     sine_frequency: f64,
     volume: f64,
-    next_frame_index: AudioFrameIndex,
     stream_frames_per_second: usize,
+
+    sine_time: f64,
 }
 
 impl AudioStreamSine {
@@ -131,21 +132,21 @@ impl AudioStreamSine {
         AudioStreamSine {
             sine_frequency,
             volume,
-            next_frame_index: 0,
             stream_frames_per_second,
+
+            sine_time: 0.0,
         }
     }
 
     fn mix(&mut self, out_frames: &mut [AudioFrame]) {
+        let time_increment = audio_frames_to_seconds(1, self.stream_frames_per_second);
         for write_frame in out_frames {
-            let sine_time =
-                audio_frames_to_seconds(self.next_frame_index, self.stream_frames_per_second);
-            let sine_amplitude = f64::sin(self.sine_frequency * sine_time * 2.0 * PI64);
+            let sine_amplitude = f64::sin(self.sine_time * 2.0 * PI64);
 
             write_frame.left += (sine_amplitude * self.volume) as f32;
             write_frame.right += (sine_amplitude * self.volume) as f32;
 
-            self.next_frame_index += 1;
+            self.sine_time += self.sine_frequency * time_increment;
         }
     }
 }
