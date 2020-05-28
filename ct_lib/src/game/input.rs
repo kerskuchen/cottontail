@@ -28,6 +28,9 @@ pub struct GameInput {
     /// NOTE: target_deltatime = 1 / monitor_refresh_rate_hz
     pub target_deltatime: f32,
     pub real_world_uptime: f64,
+
+    pub audio_dsp_time: f64,
+    pub audio_frames_per_second: usize,
 }
 
 impl GameInput {

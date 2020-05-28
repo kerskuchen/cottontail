@@ -1,8 +1,16 @@
 use super::math::*;
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 pub type AudioSample = f32;
+
+pub fn db_to_volume(db: f32) -> f32 {
+    f32::powf(10.0, 0.05 * db)
+}
+
+pub fn volume_to_db(volume: f32) -> f32 {
+    20.0 * f32::log10(volume)
+}
 
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
@@ -33,42 +41,16 @@ pub type AudioFrameIndex = i64;
 pub type AudioChunkIndex = i64;
 pub type AudioSampleIndex = i64;
 
-pub const AUDIO_FREQUENCY: usize = 44100;
-pub const AUDIO_CHANNELCOUNT: usize = 2;
-
-pub const AUDIO_FRAMELENGTH_IN_SECONDS: f64 = 1.0 / AUDIO_FREQUENCY as f64;
-
-pub const AUDIO_CHUNKLENGTH_IN_FRAMES: usize = 256;
-pub const AUDIO_CHUNKLENGTH_IN_SAMPLES: usize = AUDIO_CHUNKLENGTH_IN_FRAMES * 2;
-pub const AUDIO_CHUNKLENGTH_IN_SECONDS: f64 =
-    AUDIO_CHUNKLENGTH_IN_FRAMES as f64 / AUDIO_FREQUENCY as f64;
-
-pub const AUDIO_BUFFERSIZE_IN_FRAMES: usize = AUDIO_FREQUENCY / 2;
-pub const AUDIO_BUFFERSIZE_IN_CHUNKS: usize =
-    AUDIO_BUFFERSIZE_IN_FRAMES / AUDIO_CHUNKLENGTH_IN_FRAMES;
-
-pub type Audiochunk = [i16; AUDIO_CHUNKLENGTH_IN_SAMPLES];
-
 #[inline]
-pub fn audio_chunks_to_frames(chunk_index: AudioChunkIndex) -> AudioFrameIndex {
-    chunk_index * AUDIO_CHUNKLENGTH_IN_FRAMES as AudioFrameIndex
-}
-
-#[inline]
-pub fn audio_chunks_to_seconds(chunk_index: AudioChunkIndex) -> f64 {
-    chunk_index as f64 * AUDIO_CHUNKLENGTH_IN_SECONDS as f64
-}
-
-#[inline]
-pub fn audio_frames_to_seconds(frame_index: AudioFrameIndex) -> f64 {
-    frame_index as f64 / AUDIO_FREQUENCY as f64
+pub fn audio_frames_to_seconds(framecount: AudioFrameIndex, audio_frames_per_second: usize) -> f64 {
+    framecount as f64 / audio_frames_per_second as f64
 }
 
 #[inline]
 /// NOTE: This returns a float so we can round it down ourselves or use the value for further
 ///       calculations without forced rounding errors
-pub fn audio_seconds_to_frames(time: f64) -> f64 {
-    time * AUDIO_FREQUENCY as f64
+pub fn audio_seconds_to_frames(time: f64, audio_frames_per_second: usize) -> f64 {
+    time * audio_frames_per_second as f64
 }
 
 #[inline]
@@ -81,70 +63,8 @@ pub fn audio_measure_length_in_seconds(beats_per_measure: usize, beats_per_minut
     beats_per_measure as f64 * audio_beat_length_in_seconds(beats_per_minute)
 }
 
-pub struct AudioOutput {
-    pub next_chunk_index: AudioChunkIndex,
-    pub buffer: VecDeque<Audiochunk>,
-
-    pub previous_dsp_query_time: std::time::Instant,
-    pub previous_dsp_query_next_chunk_index: AudioChunkIndex,
-    pub dsp_time: f64,
-}
-
-impl AudioOutput {
-    pub fn new() -> AudioOutput {
-        AudioOutput {
-            next_chunk_index: 0,
-            buffer: VecDeque::new(),
-
-            previous_dsp_query_time: std::time::Instant::now(),
-            previous_dsp_query_next_chunk_index: 0,
-            dsp_time: 0.0,
-        }
-    }
-
-    pub fn get_audio_time_in_frames(&mut self) -> AudioFrameIndex {
-        // Easing algorithm based on
-        // https://www.reddit.com/r/gamedev/comments/13y26t/how_do_rhythm_games_stay_in_sync_with_the_music/
-
-        let now_time = std::time::Instant::now();
-        let deltatime = now_time
-            .duration_since(self.previous_dsp_query_time)
-            .as_secs_f64();
-        self.previous_dsp_query_time = now_time;
-
-        self.dsp_time += deltatime;
-        if self.next_chunk_index != self.previous_dsp_query_next_chunk_index {
-            self.dsp_time =
-                (self.dsp_time + audio_chunks_to_seconds(self.next_chunk_index - 1)) / 2.0;
-            self.previous_dsp_query_next_chunk_index = self.next_chunk_index;
-        }
-
-        audio_seconds_to_frames(self.dsp_time) as AudioFrameIndex
-    }
-
-    /// NOTE: This drains the given chunks
-    pub fn replace_chunks(
-        &mut self,
-        first_chunk_index: AudioChunkIndex,
-        chunks: &mut Vec<Audiochunk>,
-    ) {
-        // NOTE: The audio chunk given to us must start at the same index as our next chunk
-        //       index. Everything else is a bug
-        assert!(first_chunk_index == self.next_chunk_index);
-
-        self.buffer.clear();
-        self.buffer.extend(chunks.drain(..));
-    }
-
-    pub fn next_chunk(&mut self) -> (AudioChunkIndex, Option<Audiochunk>) {
-        let chunk_index = self.next_chunk_index;
-        self.next_chunk_index += 1;
-        (chunk_index, self.buffer.pop_front())
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Audiostate
+// Streams
 
 /// This can never be zero for a valid stream
 pub type AudioStreamId = u64;
@@ -168,7 +88,7 @@ pub enum SchedulePlay {
 }
 
 #[derive(Debug, Clone)]
-struct AudioStream {
+struct AudioStreamOld {
     recording_name: String,
 
     play_time: SchedulePlay,
@@ -195,26 +115,157 @@ struct AudioStream {
     pan_target: f32,
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Audiostate
+
+#[derive(Clone)]
+struct AudioStreamSine {
+    sine_frequency: f64,
+    volume: f64,
+    next_frame_index: AudioFrameIndex,
+    stream_frames_per_second: usize,
+}
+
+impl AudioStreamSine {
+    fn new(sine_frequency: f64, stream_frames_per_second: usize, volume: f64) -> AudioStreamSine {
+        AudioStreamSine {
+            sine_frequency,
+            volume,
+            next_frame_index: 0,
+            stream_frames_per_second,
+        }
+    }
+
+    fn mix(&mut self, out_frames: &mut [AudioFrame]) {
+        for write_frame in out_frames {
+            let sine_time =
+                audio_frames_to_seconds(self.next_frame_index, self.stream_frames_per_second);
+            let sine_amplitude = f64::sin(self.sine_frequency * sine_time * 2.0 * PI64);
+
+            write_frame.left += (sine_amplitude * self.volume) as f32;
+            write_frame.right += (sine_amplitude * self.volume) as f32;
+
+            self.next_frame_index += 1;
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Audiostate {
     /// This is can be used for interpolating time-based things that are dependent on music / beats
-    current_frame_index: AudioFrameIndex,
+    currently_playing_frame_index: AudioFrameIndex,
+    next_frame_index_to_output: AudioFrameIndex,
 
-    streams: HashMap<AudioStreamId, AudioStream>,
+    output_frames_per_second: usize,
+
+    streams: HashMap<AudioStreamId, AudioStreamOld>,
     next_stream_id: AudioStreamId,
 
-    out_frames: Vec<AudioFrame>,
+    sine_stream: AudioStreamSine,
 }
 
 impl Audiostate {
-    pub fn new() -> Audiostate {
+    pub fn new(output_frames_per_second: usize) -> Audiostate {
         Audiostate {
+            currently_playing_frame_index: 0,
+            next_frame_index_to_output: 0,
+            streams: HashMap::new(),
+            next_stream_id: 1,
+            output_frames_per_second,
+
+            sine_stream: AudioStreamSine::new(440.0, output_frames_per_second, 0.1),
+        }
+    }
+
+    pub fn update_current_playcursor_time(&mut self, current_playcursor_time: f64) {
+        self.currently_playing_frame_index =
+            audio_seconds_to_frames(current_playcursor_time, self.output_frames_per_second)
+                as AudioFrameIndex
+    }
+
+    pub fn render_audio(
+        &mut self,
+        out_frames: &mut [AudioFrame],
+        recordings: &HashMap<String, Vec<AudioFrame>>,
+    ) {
+        self.sine_stream.mix(out_frames);
+    }
+
+    pub fn stream_set_volume(&mut self, stream_id: AudioStreamId, new_volume: f32) {
+        self.sine_stream.volume = new_volume as f64;
+        // TODO
+    }
+
+    pub fn stream_set_frequency(&mut self, stream_id: AudioStreamId, frequency: f32) {
+        self.sine_stream.sine_frequency = 440.0 + 220.0 * frequency as f64;
+        // TODO
+    }
+
+    pub fn stream_set_pan(&mut self, stream_id: AudioStreamId, new_pan: f32) {
+
+        // TODO
+    }
+
+    pub fn stream_set_playback_speed(&mut self, stream_id: AudioStreamId, new_playback_speed: f32) {
+        // TODO
+    }
+
+    #[must_use]
+    pub fn play(
+        &mut self,
+        recording_name: &str,
+        play_time: SchedulePlay,
+        is_repeating: bool,
+        volume: f32,
+        pan: f32,
+        playback_speed: f32,
+    ) -> AudioStreamId {
+        // TODO
+        0
+    }
+    pub fn play_oneshot(
+        &mut self,
+        recording_name: &str,
+        play_time: SchedulePlay,
+        volume: f32,
+        pan: f32,
+        playback_speed: f32,
+    ) {
+        let _ = self.play(
+            recording_name,
+            play_time,
+            false,
+            volume,
+            pan,
+            playback_speed,
+        );
+    }
+    pub fn stream_completion_ratio(
+        &self,
+        stream_id: AudioStreamId,
+        recordings: &HashMap<String, Vec<AudioFrame>>,
+    ) -> Option<f32> {
+        // TODO
+        return None;
+    }
+}
+
+#[derive(Clone)]
+pub struct AudiostateOld {
+    /// This is can be used for interpolating time-based things that are dependent on music / beats
+    current_frame_index: AudioFrameIndex,
+
+    streams: HashMap<AudioStreamId, AudioStreamOld>,
+    next_stream_id: AudioStreamId,
+}
+
+impl AudiostateOld {
+    pub fn new() -> AudiostateOld {
+        AudiostateOld {
             current_frame_index: 0,
 
             streams: HashMap::new(),
             next_stream_id: 1,
-
-            out_frames: vec![AudioFrame::silence(); AUDIO_BUFFERSIZE_IN_FRAMES],
         }
     }
 
@@ -329,7 +380,7 @@ impl Audiostate {
         playback_speed: f32,
     ) -> AudioStreamId {
         let id = self.next_stream_id;
-        let stream = AudioStream {
+        let stream = AudioStreamOld {
             recording_name: recording_name.to_owned(),
             play_time,
             remove_on_finish: false,
@@ -349,9 +400,11 @@ impl Audiostate {
         id
     }
 
+    /*
+
     /// NOTE: This method needs to be fast because we are effectively blocking our audio callback
     ///       thread here
-    pub fn render_audio(
+    pub fn render_audio_old(
         &mut self,
         first_chunk_index: AudioChunkIndex,
         out_chunk_count: usize,
@@ -440,9 +493,10 @@ impl Audiostate {
             out_chunks.push(sample_chunk);
         }
     }
+    */
 }
 
-/// Returns if the given stream has finished
+/// Returns true if the given stream has finished
 fn audio_add_stream(
     out_start_frame: AudioFrameIndex,
     out_frames: &mut [AudioFrame],
@@ -541,26 +595,6 @@ fn audio_add_stream_repeated(
             volume_right,
         );
         window = window.offsetted_by(stream_frames.len() as i64);
-    }
-}
-
-#[allow(dead_code)]
-fn audio_add_sine(
-    out_start_frame: AudioFrameIndex,
-    out_frames: &mut [AudioFrame],
-    volume_left: f32,
-    volume_right: f32,
-    sine_frequency: f32,
-) {
-    let sine_frequency = sine_frequency as f64;
-
-    let mut sine_time = out_start_frame as f64 * AUDIO_FRAMELENGTH_IN_SECONDS;
-    for write_frame in out_frames {
-        let sine_amplitude = f64::sin(sine_frequency * sine_time * 2.0 * PI64);
-        sine_time += AUDIO_FRAMELENGTH_IN_SECONDS;
-
-        write_frame.left += sine_amplitude as f32 * volume_left;
-        write_frame.right += sine_amplitude as f32 * volume_right;
     }
 }
 

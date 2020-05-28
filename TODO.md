@@ -8,10 +8,14 @@
 
 # CURRENT
 
+* Simplify Audio
+
 * DungeonTracks
+  -
 
 # NEXT:
 
+* Add new method to GameMemory to simplify update method
 * Maybe we can make drawstate globally available for debug drawing so that we don't need it to 
   pass everywhere. this is of course highly unsafe but ok for debug
 

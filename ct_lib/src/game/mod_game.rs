@@ -98,12 +98,7 @@ impl<GameStateType: GameStateInterface> Default for GameMemory<GameStateType> {
 }
 
 impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
-    pub fn update(
-        &mut self,
-        input: &GameInput,
-        current_audio_frame_index: AudioFrameIndex,
-        out_systemcommands: &mut Vec<SystemCommand>,
-    ) {
+    pub fn update(&mut self, input: &GameInput, out_systemcommands: &mut Vec<SystemCommand>) {
         if self.assets.is_none() {
             let mut assets = GameAssets::new("resources");
             assets.load_graphics();
@@ -149,14 +144,14 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
             self.draw = Some(draw);
         }
         if self.audio.is_none() {
-            self.audio = Some(Audiostate::new());
+            self.audio = Some(Audiostate::new(input.audio_frames_per_second));
         }
 
         let draw = self.draw.as_mut().unwrap();
         let audio = self.audio.as_mut().unwrap();
         let assets = self.assets.as_mut().unwrap();
 
-        audio.update_frame_index(current_audio_frame_index);
+        audio.update_current_playcursor_time(input.audio_dsp_time);
         draw.begin_frame();
 
         if self.splashscreen.is_none() {
