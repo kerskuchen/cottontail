@@ -38,6 +38,17 @@ pub const PI64_2: f64 = std::f64::consts::PI / 2.0;
 pub const RADIANS_TO_DEGREE: f32 = 57.2957795;
 pub const DEGREE_TO_RADIANS: f32 = 1.0 / 57.2957795;
 
+pub trait Lerp: Copy {
+    fn lerp_value(start: Self, end: Self, percent: f32) -> Self;
+}
+
+impl Lerp for f32 {
+    #[inline]
+    fn lerp_value(start: f32, end: f32, percent: f32) -> f32 {
+        lerp(start, end, percent)
+    }
+}
+
 #[inline]
 pub fn lerp(start: f32, end: f32, percent: f32) -> f32 {
     start + percent * (end - start)

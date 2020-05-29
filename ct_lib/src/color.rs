@@ -341,6 +341,13 @@ impl Color {
     }
 }
 
+impl Lerp for Color {
+    #[inline]
+    fn lerp_value(start: Color, end: Color, percent: f32) -> Color {
+        Color::lerp(start, end, percent)
+    }
+}
+
 impl Color {
     #[inline]
     pub fn dot(v: Color, u: Color) -> f32 {

@@ -7,10 +7,7 @@ use ct_lib::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCo
 use ct_lib::system;
 
 use ct_lib::log;
-use ct_lib::{
-    math::lerp,
-    serde_derive::{Deserialize, Serialize},
-};
+use ct_lib::serde_derive::{Deserialize, Serialize};
 
 use std::collections::VecDeque;
 

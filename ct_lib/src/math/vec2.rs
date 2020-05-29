@@ -175,6 +175,13 @@ impl Vec2 {
 //--------------------------------------------------------------------------------------------------
 // Functions
 
+impl Lerp for Vec2 {
+    #[inline]
+    fn lerp_value(start: Vec2, end: Vec2, percent: f32) -> Vec2 {
+        Vec2::lerp(start, end, percent)
+    }
+}
+
 impl Vec2 {
     #[inline]
     pub fn dot(v: Vec2, u: Vec2) -> f32 {
