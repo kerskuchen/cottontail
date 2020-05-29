@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 pub type AudioSample = f32;
 
+const AUDIO_PARAMETER_CHANGE_ITERATION_COUNT_DEFAULT: usize = 256;
+
 pub fn db_to_volume(db: f32) -> f32 {
     f32::powf(10.0, 0.05 * db)
 }
@@ -119,25 +121,228 @@ struct AudioStreamOld {
 // Audiostate
 
 #[derive(Clone)]
-struct AudioStreamSine {
-    sine_frequency: f64,
-    volume: f64,
-    stream_frames_per_second: usize,
+struct AudioStreamRecording {
+    buffer: BufferStream,
+}
 
+struct LerpIterative<ValueType> {
+    start: ValueType,
+    target: ValueType,
+    percent: f32,
+    percent_increment_per_iteration: f32,
+}
+impl<ValueType: Lerp> LerpIterative<ValueType> {
+    fn new(value: ValueType) -> LerpIterative<ValueType> {
+        LerpIterative {
+            start: value,
+            target: value,
+            percent: 0.0,
+            percent_increment_per_iteration: 0.0,
+        }
+    }
+
+    fn set_target_value(&mut self, target: ValueType, reach_target_after_n_iterations: usize) {
+        assert!(reach_target_after_n_iterations > 0);
+        let current_value = ValueType::lerp_value(self.start, self.target, self.percent);
+        self.start = current_value;
+        self.target = target;
+        self.percent = 0.0;
+        self.percent_increment_per_iteration = 1.0 / reach_target_after_n_iterations as f32;
+    }
+
+    fn next_value(&mut self) -> ValueType {
+        let current_value = ValueType::lerp_value(self.start, self.target, self.percent);
+        self.percent = f32::min(1.0, self.percent_increment_per_iteration);
+        current_value
+    }
+}
+impl<ValueType: Lerp> Iterator for LerpIterative<ValueType> {
+    type Item = ValueType;
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(self.next_value())
+    }
+}
+
+#[derive(Clone)]
+struct BufferStream {
+    pub frames_per_second: usize,
+    buffer: Arc<[AudioSample]>,
+    next_buffer_index: usize,
+    looped: bool,
+}
+
+impl Iterator for BufferStream {
+    type Item = AudioSample;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next_buffer_index < self.buffer.len() {
+            let result = *self.buffer.get_unchecked(self.next_buffer_index);
+            self.next_buffer_index = if self.looped {
+                (self.next_buffer_index + 1) % self.buffer.len()
+            } else {
+                self.next_buffer_index + 1
+            };
+            Some(result)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone)]
+struct DelayAdapter {
+    frames_left: AudioFrameIndex,
+    stream: Box<dyn Iterator<Item = AudioSample>>,
+}
+impl DelayAdapter {
+    fn new(length_in_frames: usize, stream: Box<dyn Iterator<Item = AudioSample>>) -> DelayAdapter {
+        DelayAdapter {
+            frames_left: length_in_frames as AudioFrameIndex,
+            stream,
+        }
+    }
+}
+impl Iterator for DelayAdapter {
+    type Item = AudioSample;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.frames_left == 0 {
+            self.stream.next()
+        } else {
+            self.frames_left -= 1;
+            None
+        }
+    }
+}
+
+#[derive(Clone)]
+struct VolumeAdapter {
+    volume: LerpIterative<f32>,
+    stream: Box<dyn Iterator<Item = AudioSample>>,
+}
+impl VolumeAdapter {
+    fn new(volume: f32, stream: Box<dyn Iterator<Item = AudioSample>>) -> VolumeAdapter {
+        VolumeAdapter {
+            volume: LerpIterative::new(volume),
+            stream,
+        }
+    }
+    fn set_volume(&mut self, volume: f32) {
+        self.volume
+            .set_target_value(volume, AUDIO_PARAMETER_CHANGE_ITERATION_COUNT_DEFAULT);
+    }
+}
+impl Iterator for VolumeAdapter {
+    type Item = AudioSample;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.stream
+            .next()
+            .map(|sample| self.volume.next_value() * sample)
+    }
+}
+
+#[derive(Clone)]
+struct MonoToStereoAdapter {
+    pan: LerpIterative<f32>,
+    stream: Box<dyn Iterator<Item = AudioSample>>,
+}
+impl MonoToStereoAdapter {
+    fn new(pan: f32, stream: Box<dyn Iterator<Item = AudioSample>>) -> MonoToStereoAdapter {
+        MonoToStereoAdapter {
+            pan: LerpIterative::new(pan),
+            stream,
+        }
+    }
+    fn set_pan(&mut self, pan: f32) {
+        self.pan
+            .set_target_value(pan, AUDIO_PARAMETER_CHANGE_ITERATION_COUNT_DEFAULT);
+    }
+}
+impl Iterator for MonoToStereoAdapter {
+    type Item = AudioFrame;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.stream.next().map(|sample| {
+            let pan = 0.5 * (self.pan.next_value() + 1.0); // Transform [-1,1] -> [0,1]
+            let (volume_left, volume_right) = crossfade_sinuoidal(sample, pan);
+            AudioFrame::new(volume_left, volume_right)
+        })
+    }
+}
+
+#[derive(Clone)]
+struct PlaybackSpeedAdapter {
+    speed: LerpIterative<f32>,
+    stream: Box<dyn Iterator<Item = AudioSample>>,
+
+    sample_current: AudioSample,
+    sample_next: AudioSample,
+    sample_time_percent: f32,
+}
+impl PlaybackSpeedAdapter {
+    fn new(speed: f32, stream: Box<dyn Iterator<Item = AudioSample>>) -> PlaybackSpeedAdapter {
+        assert!(speed >= 0.0);
+        PlaybackSpeedAdapter {
+            speed: LerpIterative::new(speed),
+            stream,
+            sample_current: 0.0,
+            sample_next: 0.0,
+            sample_time_percent: 0.0,
+        }
+    }
+    fn set_speed(&mut self, speed: f32) {
+        assert!(speed >= 0.0);
+        self.speed
+            .set_target_value(speed, AUDIO_PARAMETER_CHANGE_ITERATION_COUNT_DEFAULT);
+    }
+}
+impl Iterator for PlaybackSpeedAdapter {
+    type Item = AudioSample;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.sample_time_percent += self.speed.next_value();
+
+        while self.sample_time_percent >= 1.0 {
+            self.sample_current = self.sample_next;
+            self.sample_next = self.stream.next().unwrap_or(0.0);
+            self.sample_time_percent -= 1.0;
+        }
+
+        let interpolated_sample_value = lerp(
+            self.sample_current,
+            self.sample_next,
+            self.sample_time_percent,
+        );
+
+        Some(interpolated_sample_value)
+    }
+}
+
+#[derive(Clone)]
+struct AudioStreamSine {
     sine_time: f64,
+    sine_frequency: f64,
+    stream_frames_per_second: usize,
+}
+
+impl Iterator for AudioStreamSine {
+    type Item = AudioSample;
+    fn next(&mut self) -> Option<Self::Item> {
+        let sine_amplitude = f64::sin(self.sine_time * 2.0 * PI64);
+        let time_increment = audio_frames_to_seconds(1, self.stream_frames_per_second);
+        self.sine_time += self.sine_frequency * time_increment;
+
+        Some(sine_amplitude as AudioSample)
+    }
 }
 
 impl AudioStreamSine {
-    fn new(sine_frequency: f64, stream_frames_per_second: usize, volume: f64) -> AudioStreamSine {
+    fn new(sine_frequency: f64, stream_frames_per_second: usize) -> AudioStreamSine {
         AudioStreamSine {
             sine_frequency,
-            volume,
             stream_frames_per_second,
 
             sine_time: 0.0,
         }
     }
 
+    /*
     fn mix(&mut self, out_frames: &mut [AudioFrame]) {
         let time_increment = audio_frames_to_seconds(1, self.stream_frames_per_second);
         for write_frame in out_frames {
@@ -149,6 +354,7 @@ impl AudioStreamSine {
             self.sine_time += self.sine_frequency * time_increment;
         }
     }
+    */
 }
 
 #[derive(Clone)]
@@ -156,10 +362,11 @@ pub struct Audiostate {
     /// This is can be used for interpolating time-based things that are dependent on music / beats
     currently_playing_frame_index: AudioFrameIndex,
     next_frame_index_to_output: AudioFrameIndex,
-
     output_frames_per_second: usize,
 
-    streams: HashMap<AudioStreamId, AudioStreamOld>,
+    listener_pos: Vec2,
+
+    streams: HashMap<AudioStreamId, AudioStreamRecording>,
     next_stream_id: AudioStreamId,
 
     sine_stream: AudioStreamSine,
@@ -170,11 +377,14 @@ impl Audiostate {
         Audiostate {
             currently_playing_frame_index: 0,
             next_frame_index_to_output: 0,
-            streams: HashMap::new(),
-            next_stream_id: 1,
             output_frames_per_second,
 
-            sine_stream: AudioStreamSine::new(440.0, output_frames_per_second, 0.1),
+            listener_pos: Vec2::zero(),
+
+            streams: HashMap::new(),
+
+            next_stream_id: 1,
+            sine_stream: AudioStreamSine::new(440.0, output_frames_per_second),
         }
     }
 
@@ -189,26 +399,48 @@ impl Audiostate {
         out_frames: &mut [AudioFrame],
         recordings: &HashMap<String, Vec<AudioFrame>>,
     ) {
-        self.sine_stream.mix(out_frames);
+        //self.sine_stream.mix(out_frames);
+    }
+
+    pub fn set_listener_pos(&mut self, new_listener_pos: Vec2) {
+        // TODO
     }
 
     pub fn stream_set_volume(&mut self, stream_id: AudioStreamId, new_volume: f32) {
-        self.sine_stream.volume = new_volume as f64;
+        //self.sine_stream.volume = new_volume as f64;
         // TODO
     }
 
     pub fn stream_set_frequency(&mut self, stream_id: AudioStreamId, frequency: f32) {
-        self.sine_stream.sine_frequency = 440.0 + 220.0 * frequency as f64;
+        //self.sine_stream.sine_frequency = 440.0 + 220.0 * frequency as f64;
         // TODO
     }
 
-    pub fn stream_set_pan(&mut self, stream_id: AudioStreamId, new_pan: f32) {
+    pub fn stereo_stream_set_pan(&mut self, stream_id: AudioStreamId, new_pan: f32) {
 
         // TODO
     }
 
     pub fn stream_set_playback_speed(&mut self, stream_id: AudioStreamId, new_playback_speed: f32) {
         // TODO
+    }
+
+    pub fn spatial_stream_set_pos(&mut self, stream_id: AudioStreamId, new_pos: Vec2) {
+        // TODO
+    }
+
+    #[must_use]
+    pub fn play_spatial(
+        &mut self,
+        recording_name: &str,
+        play_time: SchedulePlay,
+        is_repeating: bool,
+        volume: f32,
+        playback_speed: f32,
+        pos: Vec2,
+    ) -> AudioStreamId {
+        // TODO
+        0
     }
 
     #[must_use]
@@ -250,6 +482,8 @@ impl Audiostate {
         return None;
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone)]
 pub struct AudiostateOld {
@@ -611,7 +845,7 @@ pub struct Interval {
     pub end: i64,
 }
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, sync::Arc};
 
 // Conversion
 impl Interval {
