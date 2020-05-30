@@ -1,10 +1,8 @@
 use super::math::*;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub type AudioSample = f32;
-
-const AUDIO_PARAMETER_CHANGE_ITERATION_COUNT_DEFAULT: usize = 256;
 
 pub fn db_to_volume(db: f32) -> f32 {
     f32::powf(10.0, 0.05 * db)
@@ -120,9 +118,24 @@ struct AudioStreamOld {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Audiostate
 
+struct AudioBuffer {
+    name: String,
+    sample_rate_hz: usize,
+    frame_count: usize,
+    duration: f64,
+    channel_count: usize,
+    data: Vec<AudioSample>,
+}
+
+trait AudioSourceMono: Clone + Iterator<Item = AudioSample> {
+    fn frames_per_second(&self) -> usize;
+    fn is_looping(&self) -> bool;
+    fn set_looping(&mut self, is_looping: bool);
+}
+
 #[derive(Clone)]
-struct AudioStream {
-    buffer: BufferStreamMono,
+struct AudioStream<SourceType: AudioSourceMono> {
+    source_buffer: SourceType,
     interpolator: PlaybackSpeedInterpolatorLinear,
     delay: FrameDelay,
 
@@ -131,15 +144,15 @@ struct AudioStream {
     pub pan: MonoToStereoAdapter,
     pub has_finished: bool,
 }
-impl AudioStream {
+impl<SourceType: AudioSourceMono> AudioStream<SourceType> {
     fn from_buffer(
-        buffer: BufferStreamMono,
+        source_buffer: SourceType,
         start_delay_in_frames: usize,
         volume: f32,
         pan: f32,
-    ) -> AudioStream {
+    ) -> AudioStream<SourceType> {
         AudioStream {
-            buffer,
+            source_buffer,
             playback_speed: 1.0,
             volume: VolumeAdapter::new(volume),
             pan: MonoToStereoAdapter::new(pan),
@@ -149,24 +162,55 @@ impl AudioStream {
         }
     }
 
+    fn completion_ratio(&self) -> StreamCompletion {
+        // if self.delay.frames_left > 0{
+        //     StreamCompletion::StartingInSeconds(audio_frames_to_seconds(self.delay.frames_left, self.source_buffer.))
+        // }
+        todo!()
+    }
+
+    fn is_looping(&self) -> bool {
+        self.source_buffer.is_looping()
+    }
+
+    fn set_is_looping(&mut self, is_looping: bool) {
+        self.source_buffer.set_looping(is_looping);
+    }
+
+    fn set_volume(&mut self, volume: f32) {
+        self.volume.set_volume(volume);
+    }
+
+    fn set_pan(&mut self, pan: f32) {
+        self.pan.set_pan(pan);
+    }
+
+    fn set_playback_speed(&mut self, playback_speed: f32) {
+        self.playback_speed = playback_speed;
+    }
+
     fn mix(
         &mut self,
         out_frames: &mut [AudioFrame],
-        global_speed: f32,
+        global_speed_factor: f32,
         output_frames_per_second: usize,
     ) {
-        if !self.delay.has_finished() {
+        if self.has_finished {
             return;
         }
 
-        let playback_speed = self.playback_speed
-            * global_speed
-            * (self.buffer.frames_per_second as f32 / output_frames_per_second as f32);
+        if !self.delay.update_and_check_if_has_finished() {
+            return;
+        }
+
+        let framerate_factor =
+            self.source_buffer.frames_per_second() as f32 / output_frames_per_second as f32;
+        let playback_speed = self.playback_speed * global_speed_factor * framerate_factor;
 
         for out_frame in out_frames {
             if let Some(resampled_value) = self
                 .interpolator
-                .next_sample(&mut self.buffer, playback_speed)
+                .next_sample(&mut self.source_buffer, playback_speed)
             {
                 let with_gain = self.volume.mix_next_sample(resampled_value);
                 let stereo = self.pan.mix_next_sample(with_gain);
@@ -178,59 +222,54 @@ impl AudioStream {
     }
 }
 
-#[derive(Clone)]
-struct LerpIterative<ValueType> {
-    start: ValueType,
-    target: ValueType,
-    percent: f32,
-    percent_increment_per_iteration: f32,
+/// NOTE: This assumes (and works best with) values in the range [-1.0, 1.0]
+#[derive(Debug, Clone)]
+struct AudioIterativeFader {
+    pub current: f32,
+    pub target: f32,
 }
-impl<ValueType: Lerp> LerpIterative<ValueType> {
-    fn new(value: ValueType) -> LerpIterative<ValueType> {
-        LerpIterative {
-            start: value,
-            target: value,
-            percent: 0.0,
-            percent_increment_per_iteration: 0.0,
+impl AudioIterativeFader {
+    fn new(initial_value: f32) -> AudioIterativeFader {
+        AudioIterativeFader {
+            current: initial_value,
+            target: initial_value,
         }
     }
 
-    fn set_target_value(&mut self, target: ValueType, reach_target_after_n_iterations: usize) {
-        assert!(reach_target_after_n_iterations > 0);
-        let current_value = ValueType::lerp_value(self.start, self.target, self.percent);
-        self.start = current_value;
-        self.target = target;
-        self.percent = 0.0;
-        self.percent_increment_per_iteration = 1.0 / reach_target_after_n_iterations as f32;
-    }
+    fn next_value(&mut self) -> f32 {
+        // NOTE: The value for `step_size` was chosen experimentally based on what sounded ok
+        let distance = (self.target - self.current).abs();
+        let step_size = f32::max(1.0 / i16::MAX as f32, distance / 1024.0);
 
-    fn next_value(&mut self) -> ValueType {
-        let current_value = ValueType::lerp_value(self.start, self.target, self.percent);
-        self.percent = f32::min(1.0, self.percent_increment_per_iteration);
-        current_value
+        self.current = if self.target >= self.current {
+            f32::min(self.current + step_size, self.target)
+        } else {
+            f32::max(self.current - step_size, self.target)
+        };
+        self.current
     }
 }
-impl<ValueType: Lerp> Iterator for LerpIterative<ValueType> {
-    type Item = ValueType;
+impl Iterator for AudioIterativeFader {
+    type Item = f32;
     fn next(&mut self) -> Option<Self::Item> {
         Some(self.next_value())
     }
 }
 
 #[derive(Clone)]
-struct BufferStreamMono {
+struct AudioSourceBufferMono {
     pub frames_per_second: usize,
     buffer: Arc<[AudioSample]>,
     next_buffer_index: usize,
     play_looped: bool,
 }
-impl BufferStreamMono {
+impl AudioSourceBufferMono {
     fn new(
         buffer: Arc<[AudioSample]>,
         frames_per_second: usize,
         play_looped: bool,
-    ) -> BufferStreamMono {
-        BufferStreamMono {
+    ) -> AudioSourceBufferMono {
+        AudioSourceBufferMono {
             frames_per_second,
             buffer,
             next_buffer_index: 0,
@@ -238,7 +277,18 @@ impl BufferStreamMono {
         }
     }
 }
-impl Iterator for BufferStreamMono {
+impl AudioSourceMono for AudioSourceBufferMono {
+    fn frames_per_second(&self) -> usize {
+        self.frames_per_second
+    }
+    fn is_looping(&self) -> bool {
+        self.play_looped
+    }
+    fn set_looping(&mut self, is_looping: bool) {
+        self.play_looped = is_looping;
+    }
+}
+impl Iterator for AudioSourceBufferMono {
     type Item = AudioSample;
     fn next(&mut self) -> Option<Self::Item> {
         if self.next_buffer_index < self.buffer.len() {
@@ -265,7 +315,7 @@ impl FrameDelay {
             frames_left: length_in_frames,
         }
     }
-    fn has_finished(&mut self) -> bool {
+    fn update_and_check_if_has_finished(&mut self) -> bool {
         if self.frames_left == 0 {
             true
         } else {
@@ -275,45 +325,43 @@ impl FrameDelay {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct VolumeAdapter {
-    volume: LerpIterative<f32>,
+    pub fader: AudioIterativeFader,
 }
 impl VolumeAdapter {
     fn new(volume: f32) -> VolumeAdapter {
         VolumeAdapter {
-            volume: LerpIterative::new(volume),
+            fader: AudioIterativeFader::new(volume),
         }
     }
     fn set_volume(&mut self, volume: f32) {
-        self.volume
-            .set_target_value(volume, AUDIO_PARAMETER_CHANGE_ITERATION_COUNT_DEFAULT);
+        self.fader.target = volume;
     }
     fn mix_next_sample(&mut self, input_sample: AudioSample) -> f32 {
-        self.volume.next_value() * input_sample
+        self.fader.next_value() * input_sample
     }
     fn mix_frame(&mut self, input_frame: AudioFrame) -> AudioFrame {
-        let volume = self.volume.next_value();
+        let volume = self.fader.next_value();
         AudioFrame::new(input_frame.left * volume, input_frame.right * volume)
     }
 }
 
 #[derive(Clone)]
 struct MonoToStereoAdapter {
-    pan: LerpIterative<f32>,
+    fader: AudioIterativeFader,
 }
 impl MonoToStereoAdapter {
     fn new(pan: f32) -> MonoToStereoAdapter {
         MonoToStereoAdapter {
-            pan: LerpIterative::new(pan),
+            fader: AudioIterativeFader::new(pan),
         }
     }
     fn set_pan(&mut self, pan: f32) {
-        self.pan
-            .set_target_value(pan, AUDIO_PARAMETER_CHANGE_ITERATION_COUNT_DEFAULT);
+        self.fader.target = pan;
     }
     fn mix_next_sample(&mut self, input_sample: AudioSample) -> AudioFrame {
-        let pan = 0.5 * (self.pan.next_value() + 1.0); // Transform [-1,1] -> [0,1]
+        let pan = 0.5 * (self.fader.next_value() + 1.0); // Transform [-1,1] -> [0,1]
         let (volume_left, volume_right) = crossfade_sinuoidal(input_sample, pan);
         AudioFrame::new(volume_left, volume_right)
     }
@@ -321,36 +369,40 @@ impl MonoToStereoAdapter {
 
 #[derive(Clone)]
 struct PlaybackSpeedInterpolatorLinear {
-    sample_current: AudioSample,
-    sample_next: AudioSample,
+    sample_current: Option<AudioSample>,
+    sample_next: Option<AudioSample>,
     sample_time_percent: f32,
 }
 impl PlaybackSpeedInterpolatorLinear {
     fn new() -> PlaybackSpeedInterpolatorLinear {
         PlaybackSpeedInterpolatorLinear {
-            sample_current: 0.0,
-            sample_next: 0.0,
+            sample_current: Some(0.0),
+            sample_next: Some(0.0),
             sample_time_percent: 0.0,
         }
     }
 
     fn next_sample(
         &mut self,
-        source_samples: &mut Iterator<Item = AudioSample>,
+        source_samples: &mut dyn Iterator<Item = AudioSample>,
         speed: f32,
     ) -> Option<AudioSample> {
+        if self.sample_current.is_none() && self.sample_next.is_none() {
+            return None;
+        }
+
         assert!(speed > EPSILON);
         self.sample_time_percent += speed;
 
         while self.sample_time_percent >= 1.0 {
             self.sample_current = self.sample_next;
-            self.sample_next = source_samples.next().unwrap_or(0.0);
+            self.sample_next = source_samples.next();
             self.sample_time_percent -= 1.0;
         }
 
         let interpolated_sample_value = lerp(
-            self.sample_current,
-            self.sample_next,
+            self.sample_current.unwrap_or(0.0),
+            self.sample_next.unwrap_or(0.0),
             self.sample_time_percent,
         );
 
@@ -359,46 +411,41 @@ impl PlaybackSpeedInterpolatorLinear {
 }
 
 #[derive(Clone)]
-struct AudioStreamSine {
+struct AudioSourceSine {
     sine_time: f64,
     sine_frequency: f64,
-    stream_frames_per_second: usize,
+    frames_per_second: usize,
 }
-
-impl Iterator for AudioStreamSine {
-    type Item = AudioSample;
-    fn next(&mut self) -> Option<Self::Item> {
-        let sine_amplitude = f64::sin(self.sine_time * 2.0 * PI64);
-        let time_increment = audio_frames_to_seconds(1, self.stream_frames_per_second);
-        self.sine_time += self.sine_frequency * time_increment;
-
-        Some(sine_amplitude as AudioSample)
-    }
-}
-
-impl AudioStreamSine {
-    fn new(sine_frequency: f64, stream_frames_per_second: usize) -> AudioStreamSine {
-        AudioStreamSine {
+impl AudioSourceSine {
+    fn new(sine_frequency: f64, stream_frames_per_second: usize) -> AudioSourceSine {
+        AudioSourceSine {
             sine_frequency,
-            stream_frames_per_second,
+            frames_per_second: stream_frames_per_second,
 
             sine_time: 0.0,
         }
     }
-
-    /*
-    fn mix(&mut self, out_frames: &mut [AudioFrame]) {
-        let time_increment = audio_frames_to_seconds(1, self.stream_frames_per_second);
-        for write_frame in out_frames {
-            let sine_amplitude = f64::sin(self.sine_time * 2.0 * PI64);
-
-            write_frame.left += (sine_amplitude * self.volume) as f32;
-            write_frame.right += (sine_amplitude * self.volume) as f32;
-
-            self.sine_time += self.sine_frequency * time_increment;
-        }
+}
+impl AudioSourceMono for AudioSourceSine {
+    fn frames_per_second(&self) -> usize {
+        self.frames_per_second
     }
-    */
+    fn is_looping(&self) -> bool {
+        true
+    }
+    fn set_looping(&mut self, is_looping: bool) {
+        panic!("Cannot set looping parameter on sine stream");
+    }
+}
+impl Iterator for AudioSourceSine {
+    type Item = AudioSample;
+    fn next(&mut self) -> Option<Self::Item> {
+        let sine_amplitude = f64::sin(self.sine_time * 2.0 * PI64);
+        let time_increment = audio_frames_to_seconds(1, self.frames_per_second);
+        self.sine_time += self.sine_frequency * time_increment;
+
+        Some(sine_amplitude as AudioSample)
+    }
 }
 
 #[derive(Clone)]
@@ -406,14 +453,25 @@ pub struct Audiostate {
     /// This is can be used for interpolating time-based things that are dependent on music / beats
     currently_playing_frame_index: AudioFrameIndex,
     next_frame_index_to_output: AudioFrameIndex,
+
     output_frames_per_second: usize,
+    global_speed_factor: f32,
 
     listener_pos: Vec2,
+    listener_vel: Vec2,
 
-    streams: HashMap<AudioStreamId, AudioStream>,
+    /// This can never be 0 when used with `get_next_stream_id` method
     next_stream_id: AudioStreamId,
 
-    sine_stream: AudioStreamSine,
+    streams_sine: HashMap<AudioStreamId, AudioStream<AudioSourceSine>>,
+    streams_buffer_mono: HashMap<AudioStreamId, AudioStream<AudioSourceBufferMono>>,
+    streams_to_delete_after_finish: HashSet<AudioStreamId>,
+}
+
+enum StreamCompletion {
+    StartingInSeconds(f32),
+    RunningPercentage(f32),
+    FinishedSecondsAgo(f32),
 }
 
 impl Audiostate {
@@ -421,15 +479,88 @@ impl Audiostate {
         Audiostate {
             currently_playing_frame_index: 0,
             next_frame_index_to_output: 0,
+
             output_frames_per_second,
+            global_speed_factor: 1.0,
 
             listener_pos: Vec2::zero(),
+            listener_vel: Vec2::zero(),
+            next_stream_id: 0,
 
-            streams: HashMap::new(),
-
-            next_stream_id: 1,
-            sine_stream: AudioStreamSine::new(440.0, output_frames_per_second),
+            streams_sine: HashMap::new(),
+            streams_buffer_mono: HashMap::new(),
+            streams_to_delete_after_finish: HashSet::new(),
         }
+    }
+
+    pub fn stream_has_finished(&self, stream_id: AudioStreamId) -> bool {
+        if let Some(stream) = self.streams_buffer_mono.get(&stream_id) {
+            return stream.has_finished;
+        }
+        if let Some(stream) = self.streams_sine.get(&stream_id) {
+            return stream.has_finished;
+        }
+
+        // TODO
+        // panic!("No audio stream found for id {}", stream_id);
+        true
+    }
+
+    pub fn stream_forget(&mut self, stream_id: AudioStreamId) {
+        if let Some(stream) = self.streams_buffer_mono.get(&stream_id) {
+            assert!(
+                !stream.is_looping(),
+                "Cannot forget looping audio stream {}",
+                stream_id
+            );
+            self.streams_to_delete_after_finish.insert(stream_id);
+        }
+        if let Some(stream) = self.streams_sine.get(&stream_id) {
+            assert!(
+                !stream.is_looping(),
+                "Cannot forget looping audio stream {}",
+                stream_id
+            );
+            self.streams_to_delete_after_finish.insert(stream_id);
+        }
+    }
+
+    pub fn stream_completion_ratio(
+        &self,
+        stream_id: AudioStreamId,
+        recordings: &HashMap<String, Vec<AudioFrame>>,
+    ) -> StreamCompletion {
+        todo!()
+        /*
+        if let Some(stream) = self.streams_buffer_mono.get(&stream_id) {
+
+
+            self.currently_playing_frame_index < stream.start_frame
+            if stream.has_finished {
+                return Some(1.0);
+            }
+
+            if let Some(start_frame_index) = stream.start_frame {
+                if self.current_frame_index < start_frame_index {
+                    return None;
+                }
+                let stream_frames = recordings.get(&stream.recording_name).unwrap();
+                let stream_len = stream_frames.len() as AudioFrameIndex;
+
+                // NOTE: We use modulus here to account for repeating streams
+                let completed_frames_count =
+                    (self.current_frame_index - start_frame_index) % stream_len;
+                return Some(completed_frames_count as f32 / stream_len as f32);
+            }
+
+            return None;
+        }
+        */
+    }
+
+    fn get_next_stream_id(&mut self) -> AudioStreamId {
+        self.next_stream_id += 1;
+        self.next_stream_id
     }
 
     pub fn update_current_playcursor_time(&mut self, current_playcursor_time: f64) {
@@ -443,20 +574,30 @@ impl Audiostate {
         out_frames: &mut [AudioFrame],
         recordings: &HashMap<String, Vec<AudioFrame>>,
     ) {
-        //self.sine_stream.mix(out_frames);
+        // Remove streams that have finished
+        self.streams_sine.retain(|_id, stream| !stream.has_finished);
+        self.streams_buffer_mono
+            .retain(|_id, stream| !stream.has_finished);
+
+        // Render samples
+        for stream in self.streams_sine.values_mut() {
+            dbg!(&stream.volume);
+            stream.mix(
+                out_frames,
+                self.global_speed_factor,
+                self.output_frames_per_second,
+            )
+        }
+        for stream in self.streams_buffer_mono.values_mut() {
+            stream.mix(
+                out_frames,
+                self.global_speed_factor,
+                self.output_frames_per_second,
+            )
+        }
     }
 
     pub fn set_listener_pos(&mut self, new_listener_pos: Vec2) {
-        // TODO
-    }
-
-    pub fn stream_set_volume(&mut self, stream_id: AudioStreamId, new_volume: f32) {
-        //self.sine_stream.volume = new_volume as f64;
-        // TODO
-    }
-
-    pub fn stream_set_frequency(&mut self, stream_id: AudioStreamId, frequency: f32) {
-        //self.sine_stream.sine_frequency = 440.0 + 220.0 * frequency as f64;
         // TODO
     }
 
@@ -465,12 +606,32 @@ impl Audiostate {
         // TODO
     }
 
-    pub fn stream_set_playback_speed(&mut self, stream_id: AudioStreamId, new_playback_speed: f32) {
+    pub fn spatial_stream_set_pos(&mut self, stream_id: AudioStreamId, new_pos: Vec2) {
         // TODO
     }
 
-    pub fn spatial_stream_set_pos(&mut self, stream_id: AudioStreamId, new_pos: Vec2) {
+    pub fn stream_set_volume(&mut self, stream_id: AudioStreamId, volume: f32) {
+        if let Some(stream) = self.streams_buffer_mono.get_mut(&stream_id) {
+            stream.set_volume(volume);
+        }
+        if let Some(stream) = self.streams_sine.get_mut(&stream_id) {
+            stream.set_volume(volume);
+        }
+
         // TODO
+        // panic!("No audio stream found for id {}", stream_id);
+    }
+
+    pub fn stream_set_playback_speed(&mut self, stream_id: AudioStreamId, playback_speed: f32) {
+        if let Some(stream) = self.streams_buffer_mono.get_mut(&stream_id) {
+            stream.set_playback_speed(playback_speed);
+        }
+        if let Some(stream) = self.streams_sine.get_mut(&stream_id) {
+            stream.set_playback_speed(playback_speed);
+        }
+
+        // TODO
+        // panic!("No audio stream found for id {}", stream_id);
     }
 
     #[must_use]
@@ -491,14 +652,20 @@ impl Audiostate {
     pub fn play(
         &mut self,
         recording_name: &str,
-        play_time: SchedulePlay,
+        schedule_time: SchedulePlay,
         is_repeating: bool,
         volume: f32,
         pan: f32,
         playback_speed: f32,
     ) -> AudioStreamId {
+        let id = self.get_next_stream_id();
+        if recording_name == "sine" {
+            let sine_source = AudioSourceSine::new(440.0, 44100);
+            let stream = AudioStream::from_buffer(sine_source, 0, volume, pan);
+            self.streams_sine.insert(id, stream);
+        }
         // TODO
-        0
+        id
     }
     pub fn play_oneshot(
         &mut self,
@@ -516,14 +683,6 @@ impl Audiostate {
             pan,
             playback_speed,
         );
-    }
-    pub fn stream_completion_ratio(
-        &self,
-        stream_id: AudioStreamId,
-        recordings: &HashMap<String, Vec<AudioFrame>>,
-    ) -> Option<f32> {
-        // TODO
-        return None;
     }
 }
 
@@ -550,84 +709,6 @@ impl AudiostateOld {
 
     pub fn update_frame_index(&mut self, current_frame_index: AudioFrameIndex) {
         self.current_frame_index = current_frame_index;
-    }
-
-    pub fn stream_completion_ratio(
-        &self,
-        stream_id: AudioStreamId,
-        recordings: &HashMap<String, Vec<AudioFrame>>,
-    ) -> Option<f32> {
-        let stream = self
-            .streams
-            .get(&stream_id)
-            .expect(&format!("No audio stream found for id {}", stream_id));
-
-        if stream.has_finished {
-            return Some(1.0);
-        }
-
-        if let Some(start_frame_index) = stream.start_frame {
-            if self.current_frame_index < start_frame_index {
-                return None;
-            }
-            let stream_frames = recordings.get(&stream.recording_name).unwrap();
-            let stream_len = stream_frames.len() as AudioFrameIndex;
-
-            // NOTE: We use modulus here to account for repeating streams
-            let completed_frames_count =
-                (self.current_frame_index - start_frame_index) % stream_len;
-            return Some(completed_frames_count as f32 / stream_len as f32);
-        }
-
-        return None;
-    }
-
-    pub fn stream_has_finished(&self, stream_id: AudioStreamId) -> bool {
-        self.streams
-            .get(&stream_id)
-            .expect(&format!("No audio stream found for id {}", stream_id))
-            .has_finished
-    }
-
-    pub fn stream_forget(&mut self, stream_id: AudioStreamId) {
-        let stream = self
-            .streams
-            .get_mut(&stream_id)
-            .expect(&format!("No audio stream found for id {}", stream_id));
-
-        assert!(
-            !stream.is_repeating,
-            "Cannot forget repeating audio stream {:?}",
-            stream
-        );
-        stream.remove_on_finish = true;
-    }
-
-    pub fn stream_set_volume(&mut self, stream_id: AudioStreamId, new_volume: f32) {
-        let stream = self
-            .streams
-            .get_mut(&stream_id)
-            .expect(&format!("No audio stream found for id {}", stream_id));
-        stream.volume_target = new_volume;
-        stream.volume_current = new_volume;
-    }
-
-    pub fn stream_set_pan(&mut self, stream_id: AudioStreamId, new_pan: f32) {
-        let stream = self
-            .streams
-            .get_mut(&stream_id)
-            .expect(&format!("No audio stream found for id {}", stream_id));
-        stream.pan_target = new_pan;
-        stream.pan_current = new_pan;
-    }
-
-    pub fn stream_set_playback_speed(&mut self, stream_id: AudioStreamId, new_playback_speed: f32) {
-        let stream = self
-            .streams
-            .get_mut(&stream_id)
-            .expect(&format!("No audio stream found for id {}", stream_id));
-        stream.playback_speed_target = new_playback_speed;
-        stream.playback_speed_current = new_playback_speed;
     }
 
     pub fn play_oneshot(
