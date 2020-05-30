@@ -121,10 +121,64 @@ struct AudioStreamOld {
 // Audiostate
 
 #[derive(Clone)]
-struct AudioStreamRecording {
-    buffer: BufferStream,
+struct AudioStream {
+    buffer: BufferStreamMono,
+    interpolator: PlaybackSpeedInterpolatorLinear,
+    delay: FrameDelay,
+
+    pub playback_speed: f32,
+    pub volume: VolumeAdapter,
+    pub pan: MonoToStereoAdapter,
+    pub has_finished: bool,
+}
+impl AudioStream {
+    fn from_buffer(
+        buffer: BufferStreamMono,
+        start_delay_in_frames: usize,
+        volume: f32,
+        pan: f32,
+    ) -> AudioStream {
+        AudioStream {
+            buffer,
+            playback_speed: 1.0,
+            volume: VolumeAdapter::new(volume),
+            pan: MonoToStereoAdapter::new(pan),
+            delay: FrameDelay::new(start_delay_in_frames),
+            interpolator: PlaybackSpeedInterpolatorLinear::new(),
+            has_finished: false,
+        }
+    }
+
+    fn mix(
+        &mut self,
+        out_frames: &mut [AudioFrame],
+        global_speed: f32,
+        output_frames_per_second: usize,
+    ) {
+        if !self.delay.has_finished() {
+            return;
+        }
+
+        let playback_speed = self.playback_speed
+            * global_speed
+            * (self.buffer.frames_per_second as f32 / output_frames_per_second as f32);
+
+        for out_frame in out_frames {
+            if let Some(resampled_value) = self
+                .interpolator
+                .next_sample(&mut self.buffer, playback_speed)
+            {
+                let with_gain = self.volume.mix_next_sample(resampled_value);
+                let stereo = self.pan.mix_next_sample(with_gain);
+                *out_frame = stereo;
+            } else {
+                self.has_finished = true;
+            }
+        }
+    }
 }
 
+#[derive(Clone)]
 struct LerpIterative<ValueType> {
     start: ValueType,
     target: ValueType,
@@ -164,19 +218,32 @@ impl<ValueType: Lerp> Iterator for LerpIterative<ValueType> {
 }
 
 #[derive(Clone)]
-struct BufferStream {
+struct BufferStreamMono {
     pub frames_per_second: usize,
     buffer: Arc<[AudioSample]>,
     next_buffer_index: usize,
-    looped: bool,
+    play_looped: bool,
 }
-
-impl Iterator for BufferStream {
+impl BufferStreamMono {
+    fn new(
+        buffer: Arc<[AudioSample]>,
+        frames_per_second: usize,
+        play_looped: bool,
+    ) -> BufferStreamMono {
+        BufferStreamMono {
+            frames_per_second,
+            buffer,
+            next_buffer_index: 0,
+            play_looped,
+        }
+    }
+}
+impl Iterator for BufferStreamMono {
     type Item = AudioSample;
     fn next(&mut self) -> Option<Self::Item> {
         if self.next_buffer_index < self.buffer.len() {
-            let result = *self.buffer.get_unchecked(self.next_buffer_index);
-            self.next_buffer_index = if self.looped {
+            let result = unsafe { *self.buffer.get_unchecked(self.next_buffer_index) };
+            self.next_buffer_index = if self.play_looped {
                 (self.next_buffer_index + 1) % self.buffer.len()
             } else {
                 self.next_buffer_index + 1
@@ -189,26 +256,21 @@ impl Iterator for BufferStream {
 }
 
 #[derive(Clone)]
-struct DelayAdapter {
-    frames_left: AudioFrameIndex,
-    stream: Box<dyn Iterator<Item = AudioSample>>,
+struct FrameDelay {
+    frames_left: usize,
 }
-impl DelayAdapter {
-    fn new(length_in_frames: usize, stream: Box<dyn Iterator<Item = AudioSample>>) -> DelayAdapter {
-        DelayAdapter {
-            frames_left: length_in_frames as AudioFrameIndex,
-            stream,
+impl FrameDelay {
+    fn new(length_in_frames: usize) -> FrameDelay {
+        FrameDelay {
+            frames_left: length_in_frames,
         }
     }
-}
-impl Iterator for DelayAdapter {
-    type Item = AudioSample;
-    fn next(&mut self) -> Option<Self::Item> {
+    fn has_finished(&mut self) -> bool {
         if self.frames_left == 0 {
-            self.stream.next()
+            true
         } else {
             self.frames_left -= 1;
-            None
+            false
         }
     }
 }
@@ -216,91 +278,73 @@ impl Iterator for DelayAdapter {
 #[derive(Clone)]
 struct VolumeAdapter {
     volume: LerpIterative<f32>,
-    stream: Box<dyn Iterator<Item = AudioSample>>,
 }
 impl VolumeAdapter {
-    fn new(volume: f32, stream: Box<dyn Iterator<Item = AudioSample>>) -> VolumeAdapter {
+    fn new(volume: f32) -> VolumeAdapter {
         VolumeAdapter {
             volume: LerpIterative::new(volume),
-            stream,
         }
     }
     fn set_volume(&mut self, volume: f32) {
         self.volume
             .set_target_value(volume, AUDIO_PARAMETER_CHANGE_ITERATION_COUNT_DEFAULT);
     }
-}
-impl Iterator for VolumeAdapter {
-    type Item = AudioSample;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.stream
-            .next()
-            .map(|sample| self.volume.next_value() * sample)
+    fn mix_next_sample(&mut self, input_sample: AudioSample) -> f32 {
+        self.volume.next_value() * input_sample
+    }
+    fn mix_frame(&mut self, input_frame: AudioFrame) -> AudioFrame {
+        let volume = self.volume.next_value();
+        AudioFrame::new(input_frame.left * volume, input_frame.right * volume)
     }
 }
 
 #[derive(Clone)]
 struct MonoToStereoAdapter {
     pan: LerpIterative<f32>,
-    stream: Box<dyn Iterator<Item = AudioSample>>,
 }
 impl MonoToStereoAdapter {
-    fn new(pan: f32, stream: Box<dyn Iterator<Item = AudioSample>>) -> MonoToStereoAdapter {
+    fn new(pan: f32) -> MonoToStereoAdapter {
         MonoToStereoAdapter {
             pan: LerpIterative::new(pan),
-            stream,
         }
     }
     fn set_pan(&mut self, pan: f32) {
         self.pan
             .set_target_value(pan, AUDIO_PARAMETER_CHANGE_ITERATION_COUNT_DEFAULT);
     }
-}
-impl Iterator for MonoToStereoAdapter {
-    type Item = AudioFrame;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.stream.next().map(|sample| {
-            let pan = 0.5 * (self.pan.next_value() + 1.0); // Transform [-1,1] -> [0,1]
-            let (volume_left, volume_right) = crossfade_sinuoidal(sample, pan);
-            AudioFrame::new(volume_left, volume_right)
-        })
+    fn mix_next_sample(&mut self, input_sample: AudioSample) -> AudioFrame {
+        let pan = 0.5 * (self.pan.next_value() + 1.0); // Transform [-1,1] -> [0,1]
+        let (volume_left, volume_right) = crossfade_sinuoidal(input_sample, pan);
+        AudioFrame::new(volume_left, volume_right)
     }
 }
 
 #[derive(Clone)]
-struct PlaybackSpeedAdapter {
-    speed: LerpIterative<f32>,
-    stream: Box<dyn Iterator<Item = AudioSample>>,
-
+struct PlaybackSpeedInterpolatorLinear {
     sample_current: AudioSample,
     sample_next: AudioSample,
     sample_time_percent: f32,
 }
-impl PlaybackSpeedAdapter {
-    fn new(speed: f32, stream: Box<dyn Iterator<Item = AudioSample>>) -> PlaybackSpeedAdapter {
-        assert!(speed >= 0.0);
-        PlaybackSpeedAdapter {
-            speed: LerpIterative::new(speed),
-            stream,
+impl PlaybackSpeedInterpolatorLinear {
+    fn new() -> PlaybackSpeedInterpolatorLinear {
+        PlaybackSpeedInterpolatorLinear {
             sample_current: 0.0,
             sample_next: 0.0,
             sample_time_percent: 0.0,
         }
     }
-    fn set_speed(&mut self, speed: f32) {
-        assert!(speed >= 0.0);
-        self.speed
-            .set_target_value(speed, AUDIO_PARAMETER_CHANGE_ITERATION_COUNT_DEFAULT);
-    }
-}
-impl Iterator for PlaybackSpeedAdapter {
-    type Item = AudioSample;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.sample_time_percent += self.speed.next_value();
+
+    fn next_sample(
+        &mut self,
+        source_samples: &mut Iterator<Item = AudioSample>,
+        speed: f32,
+    ) -> Option<AudioSample> {
+        assert!(speed > EPSILON);
+        self.sample_time_percent += speed;
 
         while self.sample_time_percent >= 1.0 {
             self.sample_current = self.sample_next;
-            self.sample_next = self.stream.next().unwrap_or(0.0);
+            self.sample_next = source_samples.next().unwrap_or(0.0);
             self.sample_time_percent -= 1.0;
         }
 
@@ -366,7 +410,7 @@ pub struct Audiostate {
 
     listener_pos: Vec2,
 
-    streams: HashMap<AudioStreamId, AudioStreamRecording>,
+    streams: HashMap<AudioStreamId, AudioStream>,
     next_stream_id: AudioStreamId,
 
     sine_stream: AudioStreamSine,
