@@ -116,7 +116,7 @@ impl<GameStateType: GameStateInterface + Clone> InputRecorder<GameStateType> {
 // Main event loop
 
 #[derive(Eq, PartialEq)]
-enum FadeState {
+enum AudioFadeState {
     FadingOut,
     FadedOut,
     FadingIn,
@@ -126,7 +126,7 @@ struct SDLAudioCallback {
     input_ringbuffer: ringbuf::Consumer<(i16, i16)>,
 
     // This is used fade in / out the volume when we drop frames to reduce clicking
-    fadestate: FadeState,
+    fadestate: AudioFadeState,
     fader_current: f32,
     last_frame_written: (i16, i16),
 }
@@ -136,7 +136,7 @@ impl SDLAudioCallback {
             input_ringbuffer: audio_buffer_consumer,
             fader_current: 0.0,
             last_frame_written: (0, 0),
-            fadestate: FadeState::FadedOut,
+            fadestate: AudioFadeState::FadedOut,
         }
     }
 }
@@ -146,27 +146,26 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
     fn callback(&mut self, out_samples_stereo: &mut [i16]) {
         debug_assert!(out_samples_stereo.len() % 2 == 0);
 
-        //dbg!(self.fader_current);
         for frame_out in out_samples_stereo.chunks_exact_mut(2) {
             match self.fadestate {
-                FadeState::FadingOut => {
+                AudioFadeState::FadingOut => {
                     self.fader_current -= 1.0 / 2048.0;
                     if self.fader_current <= 0.0 {
                         self.fader_current = 0.0;
-                        self.fadestate = FadeState::FadedOut;
+                        self.fadestate = AudioFadeState::FadedOut;
                     }
                 }
-                FadeState::FadedOut => self.fader_current = 0.0,
-                FadeState::FadingIn => {
+                AudioFadeState::FadedOut => self.fader_current = 0.0,
+                AudioFadeState::FadingIn => {
                     self.fader_current = f32::min(1.0, self.fader_current + 1.0 / 4096.0);
                 }
             }
 
             if let Some(frame) = self.input_ringbuffer.pop() {
-                if self.fadestate == FadeState::FadedOut {
-                    self.fadestate = FadeState::FadingIn;
+                if self.fadestate == AudioFadeState::FadedOut {
+                    self.fadestate = AudioFadeState::FadingIn;
                 }
-                if self.fadestate == FadeState::FadingOut {
+                if self.fadestate == AudioFadeState::FadingOut {
                     frame_out[0] = (self.fader_current * self.last_frame_written.0 as f32) as i16;
                     frame_out[1] = (self.fader_current * self.last_frame_written.1 as f32) as i16;
                 } else {
@@ -175,7 +174,7 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
                     frame_out[1] = (self.fader_current * frame.1 as f32) as i16;
                 }
             } else {
-                self.fadestate = FadeState::FadingOut;
+                self.fadestate = AudioFadeState::FadingOut;
                 frame_out[0] = (self.fader_current * self.last_frame_written.0 as f32) as i16;
                 frame_out[1] = (self.fader_current * self.last_frame_written.1 as f32) as i16;
             }
@@ -286,7 +285,8 @@ impl AudioOutputSDL {
         let mut audio_frames_to_queue = self.prepare_empty_render_buffer(minimum_frames_in_queue);
         if audio_frames_to_queue.len() > 0 {
             audio.render_audio(&mut audio_frames_to_queue, assets.get_audio_recordings());
-            if !input.keyboard.is_down(Scancode::Q) {
+            if input.has_focus {
+                // NOTE: When not submitting new frames the callback will automatically fade out
                 self.submit_rendered_frames();
             }
         }
@@ -1094,5 +1094,5 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     log::debug!("Playtime: {:.3}s", duration_gameplay);
 
     // Make sure our sound output has time to wind down
-    std::thread::sleep(Duration::from_secs_f32(2.0 * target_seconds_per_frame))
+    std::thread::sleep(Duration::from_secs_f32(4.0 * target_seconds_per_frame))
 }
