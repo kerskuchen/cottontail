@@ -144,14 +144,13 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
             self.draw = Some(draw);
         }
         if self.audio.is_none() {
-            self.audio = Some(Audiostate::new(input.audio_frames_per_second));
+            self.audio = Some(Audiostate::new(input.audio_playback_rate_hz));
         }
 
         let draw = self.draw.as_mut().unwrap();
         let audio = self.audio.as_mut().unwrap();
         let assets = self.assets.as_mut().unwrap();
 
-        audio.update_current_playcursor_time(input.audio_dsp_time);
         draw.begin_frame();
 
         if self.splashscreen.is_none() {

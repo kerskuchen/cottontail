@@ -127,6 +127,14 @@ struct AudioBuffer {
     data: Vec<AudioSample>,
 }
 
+struct AudioBufferStream {
+    buffer: AudioBuffer,
+    interpolator: PlaybackSpeedInterpolatorLinear,
+    output: Vec<AudioSample>,
+
+    is_looping: bool,
+}
+
 trait AudioSourceMono: Clone + Iterator<Item = AudioSample> {
     fn frames_per_second(&self) -> usize;
     fn is_looping(&self) -> bool;
@@ -450,12 +458,14 @@ impl Iterator for AudioSourceSine {
 
 #[derive(Clone)]
 pub struct Audiostate {
-    /// This is can be used for interpolating time-based things that are dependent on music / beats
-    currently_playing_frame_index: AudioFrameIndex,
     next_frame_index_to_output: AudioFrameIndex,
+    audio_playback_rate_hz: usize,
 
-    output_frames_per_second: usize,
-    global_speed_factor: f32,
+    dsp_time: f64,
+    previous_dsp_query_time: std::time::Instant,
+    previous_dsp_query_next_frame_index: AudioFrameIndex,
+
+    global_playback_speed: f32,
 
     listener_pos: Vec2,
     listener_vel: Vec2,
@@ -475,22 +485,48 @@ enum StreamCompletion {
 }
 
 impl Audiostate {
-    pub fn new(output_frames_per_second: usize) -> Audiostate {
+    pub fn new(audio_playback_rate_hz: usize) -> Audiostate {
         Audiostate {
-            currently_playing_frame_index: 0,
             next_frame_index_to_output: 0,
+            audio_playback_rate_hz,
 
-            output_frames_per_second,
-            global_speed_factor: 1.0,
+            dsp_time: 0.0,
+            previous_dsp_query_time: std::time::Instant::now(),
+            previous_dsp_query_next_frame_index: 0,
 
+            global_playback_speed: 1.0,
             listener_pos: Vec2::zero(),
+
             listener_vel: Vec2::zero(),
             next_stream_id: 0,
-
             streams_sine: HashMap::new(),
             streams_buffer_mono: HashMap::new(),
             streams_to_delete_after_finish: HashSet::new(),
         }
+    }
+
+    pub fn get_audio_time_estimate(&mut self) -> f64 {
+        // Easing algorithm based on
+        // https://www.reddit.com/r/gamedev/comments/13y26t/how_do_rhythm_games_stay_in_sync_with_the_music/
+
+        let now_time = std::time::Instant::now();
+        let time_since_last_query = now_time
+            .duration_since(self.previous_dsp_query_time)
+            .as_secs_f64();
+        self.previous_dsp_query_time = now_time;
+
+        self.dsp_time += time_since_last_query;
+        if self.next_frame_index_to_output != self.previous_dsp_query_next_frame_index {
+            self.dsp_time = (self.dsp_time
+                + audio_frames_to_seconds(
+                    self.next_frame_index_to_output,
+                    self.audio_playback_rate_hz,
+                ))
+                / 2.0;
+            self.previous_dsp_query_next_frame_index = self.next_frame_index_to_output;
+        }
+
+        self.dsp_time
     }
 
     pub fn stream_has_finished(&self, stream_id: AudioStreamId) -> bool {
@@ -529,7 +565,7 @@ impl Audiostate {
         &self,
         stream_id: AudioStreamId,
         recordings: &HashMap<String, Vec<AudioFrame>>,
-    ) -> StreamCompletion {
+    ) -> Option<f32> {
         todo!()
         /*
         if let Some(stream) = self.streams_buffer_mono.get(&stream_id) {
@@ -563,10 +599,8 @@ impl Audiostate {
         self.next_stream_id
     }
 
-    pub fn update_current_playcursor_time(&mut self, current_playcursor_time: f64) {
-        self.currently_playing_frame_index =
-            audio_seconds_to_frames(current_playcursor_time, self.output_frames_per_second)
-                as AudioFrameIndex
+    pub fn set_global_playback_speed(&mut self, global_playback_speed: f32) {
+        self.global_playback_speed = global_playback_speed;
     }
 
     pub fn render_audio(
@@ -581,18 +615,17 @@ impl Audiostate {
 
         // Render samples
         for stream in self.streams_sine.values_mut() {
-            dbg!(&stream.volume);
             stream.mix(
                 out_frames,
-                self.global_speed_factor,
-                self.output_frames_per_second,
+                self.global_playback_speed,
+                self.audio_playback_rate_hz,
             )
         }
         for stream in self.streams_buffer_mono.values_mut() {
             stream.mix(
                 out_frames,
-                self.global_speed_factor,
-                self.output_frames_per_second,
+                self.global_playback_speed,
+                self.audio_playback_rate_hz,
             )
         }
     }

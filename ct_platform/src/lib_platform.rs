@@ -3,13 +3,15 @@ mod sdl_input;
 mod sdl_window;
 
 use ct_lib::audio::*;
-use ct_lib::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand};
+use ct_lib::game::{
+    GameAssets, GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand,
+};
 use ct_lib::system;
 
 use ct_lib::log;
 use ct_lib::serde_derive::{Deserialize, Serialize};
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::Duration};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Configuration
@@ -113,199 +115,181 @@ impl<GameStateType: GameStateInterface + Clone> InputRecorder<GameStateType> {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main event loop
 
-use std::{
-    sync::{
-        atomic::{AtomicI64, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
-pub struct AudioOutput {
-    pub next_frame_index_to_be_queued: AudioFrameIndex,
-    pub samples_queue: ringbuf::Producer<(AudioFrameIndex, (i16, i16))>,
-
-    pub frames_per_second: usize,
-    pub next_frame_index_to_be_played: Arc<AtomicI64>,
-    pub dsp_time: f64,
-    pub previous_dsp_query_time: std::time::Instant,
-    pub previous_dsp_query_next_frame_index: AudioFrameIndex,
-
-    pub audio_output_buffer: Vec<AudioFrame>,
+#[derive(Eq, PartialEq)]
+enum FadeState {
+    FadingOut,
+    FadedOut,
+    FadingIn,
 }
 
-impl AudioOutput {
-    pub fn new(
-        next_frame_index_to_be_played: Arc<AtomicI64>,
-        samples_queue: ringbuf::Producer<(AudioFrameIndex, (i16, i16))>,
-        audio_frames_per_second: usize,
-    ) -> AudioOutput {
-        AudioOutput {
-            next_frame_index_to_be_queued: 0,
-            samples_queue,
-
-            next_frame_index_to_be_played,
-
-            dsp_time: 0.0,
-            previous_dsp_query_time: std::time::Instant::now(),
-            previous_dsp_query_next_frame_index: 0,
-            frames_per_second: audio_frames_per_second,
-
-            audio_output_buffer: Vec::with_capacity(4 * audio_frames_per_second),
-        }
-    }
-
-    pub fn get_audio_time_estimate(&mut self) -> f64 {
-        // Easing algorithm based on
-        // https://www.reddit.com/r/gamedev/comments/13y26t/how_do_rhythm_games_stay_in_sync_with_the_music/
-
-        let now_time = std::time::Instant::now();
-        let time_since_last_query = now_time
-            .duration_since(self.previous_dsp_query_time)
-            .as_secs_f64();
-        self.previous_dsp_query_time = now_time;
-
-        self.dsp_time += time_since_last_query;
-        let next_frame_index_to_be_played =
-            self.next_frame_index_to_be_played.load(Ordering::SeqCst);
-        if next_frame_index_to_be_played != self.previous_dsp_query_next_frame_index {
-            self.dsp_time = (self.dsp_time
-                + audio_frames_to_seconds(next_frame_index_to_be_played, self.frames_per_second))
-                / 2.0;
-            self.previous_dsp_query_next_frame_index = next_frame_index_to_be_played;
-        }
-
-        self.dsp_time
-    }
-
-    fn get_framecount_to_queue(&mut self, target_frametime: f32) -> usize {
-        let next_frame_index_to_be_played =
-            self.next_frame_index_to_be_played.load(Ordering::SeqCst);
-        let minimum_buffer_length = i64::max(
-            0,
-            next_frame_index_to_be_played - self.next_frame_index_to_be_queued,
-        ) as usize;
-        let framecount_queued = self.samples_queue.len() / 2;
-
-        let target_buffer_length =
-            audio_seconds_to_frames(2.0 * target_frametime as f64, self.frames_per_second) as usize;
-        minimum_buffer_length
-            + if target_buffer_length >= framecount_queued {
-                target_buffer_length - framecount_queued
-            } else {
-                0
-            }
-    }
-
-    pub fn get_write_buffer(&mut self, target_frametime: f32) -> &mut [AudioFrame] {
-        let framecount = self.get_framecount_to_queue(target_frametime);
-        self.audio_output_buffer.reserve(framecount);
-        for frame in self.audio_output_buffer.iter_mut() {
-            *frame = AudioFrame::silence();
-        }
-        while self.audio_output_buffer.len() < framecount {
-            self.audio_output_buffer.push(AudioFrame::silence());
-        }
-        &mut self.audio_output_buffer[..framecount]
-    }
-
-    fn submit_rendered_frames(&mut self) {
-        for frame in self.audio_output_buffer.drain(..) {
-            if let Err(_) = self.samples_queue.push((
-                self.next_frame_index_to_be_queued,
-                (
-                    (frame.left * std::i16::MAX as f32) as i16,
-                    (frame.right * std::i16::MAX as f32) as i16,
-                ),
-            )) {
-                log::warn!(
-                    "Audiobuffer: Could not push frame {} to queue - queue full?",
-                    self.next_frame_index_to_be_queued,
-                );
-            }
-            self.next_frame_index_to_be_queued += 1;
-        }
-    }
-}
 struct SDLAudioCallback {
-    next_frame_index_to_be_played: Arc<AtomicI64>,
-    output_buffer: ringbuf::Consumer<(AudioFrameIndex, (i16, i16))>,
+    input_ringbuffer: ringbuf::Consumer<(i16, i16)>,
 
-    /// This is used fade in / out the volume when we drop frames to reduce clicking
+    // This is used fade in / out the volume when we drop frames to reduce clicking
+    fadestate: FadeState,
     fader_current: f32,
     last_frame_written: (i16, i16),
 }
-
+impl SDLAudioCallback {
+    fn new(audio_buffer_consumer: ringbuf::Consumer<(i16, i16)>) -> SDLAudioCallback {
+        SDLAudioCallback {
+            input_ringbuffer: audio_buffer_consumer,
+            fader_current: 0.0,
+            last_frame_written: (0, 0),
+            fadestate: FadeState::FadedOut,
+        }
+    }
+}
 impl sdl2::audio::AudioCallback for SDLAudioCallback {
     type Channel = i16;
 
     fn callback(&mut self, out_samples_stereo: &mut [i16]) {
         debug_assert!(out_samples_stereo.len() % 2 == 0);
 
-        let framecount_to_write = out_samples_stereo.len() / 2;
-        let mut next_frameindex_to_write =
-            self.next_frame_index_to_be_played.load(Ordering::SeqCst);
-
-        // Write out as many frames as we have
-        let mut out_next_sample_index = 0;
-        let mut framecount_written = 0;
-        while framecount_written < framecount_to_write {
-            if let Some((frameindex, audio_frame)) = self.output_buffer.pop() {
-                // NOTE: We only write frames with the current frameindex to avoid playing old
-                //       audio samples that should have been written out the last time this
-                //       function was called but weren't available then
-                if frameindex >= next_frameindex_to_write {
-                    self.fader_current = f32::min(1.0, self.fader_current + 1.0 / 512.0);
-
-                    if frameindex > next_frameindex_to_write {
-                        // NOTE: We want to keep up with the input stream
-                        next_frameindex_to_write = frameindex;
+        //dbg!(self.fader_current);
+        for frame_out in out_samples_stereo.chunks_exact_mut(2) {
+            match self.fadestate {
+                FadeState::FadingOut => {
+                    self.fader_current -= 1.0 / 2048.0;
+                    if self.fader_current <= 0.0 {
+                        self.fader_current = 0.0;
+                        self.fadestate = FadeState::FadedOut;
                     }
+                }
+                FadeState::FadedOut => self.fader_current = 0.0,
+                FadeState::FadingIn => {
+                    self.fader_current = f32::min(1.0, self.fader_current + 1.0 / 4096.0);
+                }
+            }
 
-                    self.last_frame_written = audio_frame;
-                    out_samples_stereo[out_next_sample_index + 0] =
-                        (self.fader_current * audio_frame.0 as f32) as i16;
-                    out_samples_stereo[out_next_sample_index + 1] =
-                        (self.fader_current * audio_frame.1 as f32) as i16;
-
-                    out_next_sample_index += 2;
-                    framecount_written += 1;
-
-                    next_frameindex_to_write += 1;
+            if let Some(frame) = self.input_ringbuffer.pop() {
+                if self.fadestate == FadeState::FadedOut {
+                    self.fadestate = FadeState::FadingIn;
+                }
+                if self.fadestate == FadeState::FadingOut {
+                    frame_out[0] = (self.fader_current * self.last_frame_written.0 as f32) as i16;
+                    frame_out[1] = (self.fader_current * self.last_frame_written.1 as f32) as i16;
                 } else {
-                    // frameindex < next_frameindex_to_write
-                    // NOTE: This is an old one that we can ignore
+                    self.last_frame_written = frame;
+                    frame_out[0] = (self.fader_current * frame.0 as f32) as i16;
+                    frame_out[1] = (self.fader_current * frame.1 as f32) as i16;
                 }
             } else {
-                break;
+                self.fadestate = FadeState::FadingOut;
+                frame_out[0] = (self.fader_current * self.last_frame_written.0 as f32) as i16;
+                frame_out[1] = (self.fader_current * self.last_frame_written.1 as f32) as i16;
             }
         }
+    }
+}
+pub struct AudioOutputSDL {
+    pub audio_playback_rate_hz: usize,
+    samples_queue: ringbuf::Producer<(i16, i16)>,
+    render_buffer: Vec<AudioFrame>,
+    _sdl_audio_device: sdl2::audio::AudioDevice<SDLAudioCallback>,
+}
 
-        // If we are missing frames we want to zero out the remaining buffer smoothly
-        if framecount_written < framecount_to_write {
-            if ENABLE_AUDIO_LOGGING {
-                #[cfg(debug_assertions)]
-                log::debug!(
-                    "Audiobuffer: expected {} got {} frames at frame index {}",
-                    framecount_to_write,
-                    framecount_written,
-                    next_frameindex_to_write
+impl AudioOutputSDL {
+    pub fn new(sdl_context: &sdl2::Sdl) -> AudioOutputSDL {
+        let audio_playback_rate_hz = 48000;
+        let audio_channelcount = 2;
+        let audio_format_desired = sdl2::audio::AudioSpecDesired {
+            freq: Some(audio_playback_rate_hz as i32),
+            channels: Some(audio_channelcount as u8),
+            // IMPORTANT: `samples` is a misnomer - it is actually the frames
+            samples: Some(256 as u16),
+        };
+
+        let audio_ringbuffer = ringbuf::RingBuffer::new(4 * audio_playback_rate_hz);
+        let (audio_ringbuffer_producer, audio_ringbuffer_consumer) = audio_ringbuffer.split();
+
+        let sdl_audio = sdl_context
+            .audio()
+            .expect("Failed to initialize SDL2 audio");
+        let audio_device = sdl_audio
+            .open_playback(None, &audio_format_desired, |spec| {
+                assert!(
+                    spec.freq == audio_playback_rate_hz as i32,
+                    "Cannot initialize audio output with frequency {}",
+                    audio_playback_rate_hz
                 );
-            }
+                assert!(
+                    spec.channels == audio_channelcount as u8,
+                    "Cannot initialize audio output with channel count {}",
+                    audio_channelcount
+                );
+                assert!(
+                    spec.samples == 256 as u16,
+                    "Cannot initialize audio output audiobuffersize {}",
+                    256
+                );
 
-            for frame in out_samples_stereo
-                .chunks_exact_mut(2)
-                .skip(framecount_written)
-            {
-                self.fader_current = f32::max(0.0, self.fader_current - 1.0 / 512.0);
-                frame[0] = (self.last_frame_written.0 as f32 * self.fader_current) as i16;
-                frame[1] = (self.last_frame_written.1 as f32 * self.fader_current) as i16;
-            }
+                SDLAudioCallback::new(audio_ringbuffer_consumer)
+            })
+            .expect("Cannot initialize audio output");
+        audio_device.resume();
 
-            next_frameindex_to_write += (framecount_to_write - framecount_written) as i64;
+        log::info!(
+            "Opened audio channel on default output device: (frequency: {}, channelcount: {})",
+            audio_playback_rate_hz,
+            audio_channelcount,
+        );
+
+        AudioOutputSDL {
+            _sdl_audio_device: audio_device,
+            audio_playback_rate_hz,
+            samples_queue: audio_ringbuffer_producer,
+            render_buffer: Vec::with_capacity(4 * audio_playback_rate_hz),
         }
+    }
 
-        self.next_frame_index_to_be_played
-            .store(next_frameindex_to_write, Ordering::SeqCst);
+    pub fn prepare_empty_render_buffer(
+        &mut self,
+        minimum_framecount_buffered: usize,
+    ) -> &mut [AudioFrame] {
+        let framecount_to_render = {
+            let framecount_queued = self.samples_queue.len() / 2;
+            if framecount_queued < minimum_framecount_buffered {
+                minimum_framecount_buffered - framecount_queued
+            } else {
+                0
+            }
+        };
+        self.render_buffer.reserve(framecount_to_render);
+        self.render_buffer.clear();
+        for _ in 0..framecount_to_render {
+            self.render_buffer.push(AudioFrame::silence());
+        }
+        &mut self.render_buffer[..framecount_to_render]
+    }
+
+    fn submit_rendered_frames(&mut self) {
+        for frame in self.render_buffer.drain(..) {
+            if let Err(_) = self.samples_queue.push((
+                (frame.left * std::i16::MAX as f32) as i16,
+                (frame.right * std::i16::MAX as f32) as i16,
+            )) {
+                log::warn!("Audiobuffer: Could not push frame to queue - queue full?");
+            }
+        }
+    }
+
+    fn render_frames(
+        &mut self,
+        audio: &mut Audiostate,
+        assets: &GameAssets,
+        input: &GameInput,
+        minimum_seconds_to_buffer: f32,
+    ) {
+        let minimum_frames_in_queue =
+            (self.audio_playback_rate_hz as f32 * minimum_seconds_to_buffer) as usize;
+        let mut audio_frames_to_queue = self.prepare_empty_render_buffer(minimum_frames_in_queue);
+        if audio_frames_to_queue.len() > 0 {
+            audio.render_audio(&mut audio_frames_to_queue, assets.get_audio_recordings());
+            if !input.keyboard.is_down(Scancode::Q) {
+                self.submit_rendered_frames();
+            }
+        }
     }
 }
 
@@ -399,9 +383,6 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     let sdl_video = sdl_context
         .video()
         .expect("Failed to initialize SDL2 video");
-    let sdl_audio = sdl_context
-        .audio()
-        .expect("Failed to initialize SDL2 audio");
 
     // ---------------------------------------------------------------------------------------------
     // SDL Window
@@ -452,57 +433,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     // ---------------------------------------------------------------------------------------------
     // Sound
 
-    let audio_frames_per_second = 48000;
-    let audio_channelcount = 2;
-    let audio_format_desired = sdl2::audio::AudioSpecDesired {
-        freq: Some(audio_frames_per_second as i32),
-        channels: Some(audio_channelcount as u8),
-        // IMPORTANT: `samples` is a misnomer - it is actually the frames
-        samples: Some(256 as u16),
-    };
-
-    let audio_ringbuffer = ringbuf::RingBuffer::new(4 * audio_frames_per_second);
-    let (audio_buffer_producer, audio_buffer_consumer) = audio_ringbuffer.split();
-    let audio_next_frame_index_to_be_played = Arc::new(AtomicI64::new(0));
-    let mut audio_output = AudioOutput::new(
-        audio_next_frame_index_to_be_played.clone(),
-        audio_buffer_producer,
-        audio_frames_per_second,
-    );
-
-    let audio_device = sdl_audio
-        .open_playback(None, &audio_format_desired, |spec| {
-            assert!(
-                spec.freq == audio_frames_per_second as i32,
-                "Cannot initialize audio output with frequency {}",
-                audio_frames_per_second
-            );
-            assert!(
-                spec.channels == audio_channelcount as u8,
-                "Cannot initialize audio output with channel count {}",
-                audio_channelcount
-            );
-            assert!(
-                spec.samples == 256 as u16,
-                "Cannot initialize audio output audiobuffersize {}",
-                256
-            );
-
-            SDLAudioCallback {
-                next_frame_index_to_be_played: audio_next_frame_index_to_be_played,
-                output_buffer: audio_buffer_consumer,
-                fader_current: 0.0,
-                last_frame_written: (0, 0),
-            }
-        })
-        .expect("Cannot initialize audio output");
-    audio_device.resume();
-
-    log::info!(
-        "Opened audio channel on default output device: (frequency: {}, channelcount: {})",
-        audio_frames_per_second,
-        audio_channelcount,
-    );
+    let mut audio_output = AudioOutputSDL::new(&sdl_context);
 
     // ---------------------------------------------------------------------------------------------
     // Input
@@ -1033,8 +964,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         input.real_world_uptime = frame_start_time
             .duration_since(launcher_start_time)
             .as_secs_f64();
-        input.audio_dsp_time = audio_output.get_audio_time_estimate();
-        input.audio_frames_per_second = audio_frames_per_second;
+        input.audio_playback_rate_hz = audio_output.audio_playback_rate_hz;
 
         game_memory.update(&input, &mut systemcommands);
 
@@ -1073,12 +1003,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             .assets
             .as_ref()
             .expect("No audio assets initialized");
-
-        let mut frames_to_queue = audio_output.get_write_buffer(target_seconds_per_frame);
-        audio.render_audio(&mut frames_to_queue, assets.get_audio_recordings());
-        if !input.keyboard.is_down(Scancode::Q) {
-            audio_output.submit_rendered_frames();
-        }
+        audio_output.render_frames(audio, assets, &input, 2.0 * target_seconds_per_frame);
 
         let post_sound_time = std::time::Instant::now();
 
@@ -1169,5 +1094,5 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     log::debug!("Playtime: {:.3}s", duration_gameplay);
 
     // Make sure our sound output has time to wind down
-    std::thread::sleep(Duration::from_secs_f32(4.0 * target_seconds_per_frame))
+    std::thread::sleep(Duration::from_secs_f32(2.0 * target_seconds_per_frame))
 }
