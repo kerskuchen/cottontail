@@ -88,8 +88,9 @@ pub fn crossfade_linear(factor: f32, percent: f32) -> (f32, f32) {
 /// Based on sinuoidal panning (http://gdsp.hf.ntnu.no/lessons/1/5/)
 #[inline]
 pub fn crossfade_sinuoidal(factor: f32, percent: f32) -> (f32, f32) {
-    let left = factor * f32::cos((PI / 2.0) * percent);
-    let right = factor * f32::sin((PI / 2.0) * percent);
+    // NOTE: We clamp here because we get `right = -0.00000004371139` for `percent = 1`
+    let left = factor * clampf(f32::cos((PI / 2.0) * percent), 0.0, 1.0);
+    let right = factor * clampf(f32::sin((PI / 2.0) * percent), 0.0, 1.0);
     (left, right)
 }
 
