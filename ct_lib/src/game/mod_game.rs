@@ -1968,6 +1968,65 @@ impl Afterimage {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Music
+
+#[derive(Debug, Clone, Copy)]
+pub enum MusicalInterval {
+    Measure {
+        beats_per_minute: usize,
+        beats_per_measure: usize,
+    },
+    Beat {
+        beats_per_minute: usize,
+    },
+    HalfBeat {
+        beats_per_minute: usize,
+    },
+    QuarterBeat {
+        beats_per_minute: usize,
+    },
+}
+impl MusicalInterval {
+    #[inline]
+    pub fn length_seconds(&self) -> f64 {
+        match self {
+            MusicalInterval::Measure {
+                beats_per_minute,
+                beats_per_measure,
+            } => music_measure_length_in_seconds(*beats_per_measure, *beats_per_minute),
+            MusicalInterval::Beat { beats_per_minute } => {
+                music_beat_length_in_seconds(*beats_per_minute)
+            }
+            MusicalInterval::HalfBeat {
+                ref beats_per_minute,
+            } => music_beat_length_in_seconds(*beats_per_minute) / 2.0,
+            MusicalInterval::QuarterBeat { beats_per_minute } => {
+                music_beat_length_in_seconds(*beats_per_minute) / 4.0
+            }
+        }
+    }
+}
+
+#[inline]
+pub fn music_beat_length_in_seconds(beats_per_minute: usize) -> f64 {
+    60.0 / (beats_per_minute as f64)
+}
+
+#[inline]
+pub fn music_measure_length_in_seconds(beats_per_measure: usize, beats_per_minute: usize) -> f64 {
+    beats_per_measure as f64 * music_beat_length_in_seconds(beats_per_minute)
+}
+
+#[inline]
+pub fn music_get_next_point_in_time(
+    current_time_seconds: f64,
+    interval_type: MusicalInterval,
+) -> f64 {
+    let segment_length_seconds = interval_type.length_seconds();
+    f64::ceil(current_time_seconds / segment_length_seconds) * segment_length_seconds
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Scene Management
 
 pub enum GameEvent {
@@ -2092,10 +2151,13 @@ impl Scene for SceneDebug {
         if self.music_stream_id == 0 {
             self.music_stream_id = audio.play(
                 "loop_bell",
-                SchedulePlay::OnNextMeasure {
-                    beats_per_minute: 120,
-                    beats_per_measure: 4,
-                },
+                music_get_next_point_in_time(
+                    audio.current_time_seconds(),
+                    MusicalInterval::Measure {
+                        beats_per_minute: 120,
+                        beats_per_measure: 4,
+                    },
+                ),
                 true,
                 0.1,
                 0.0,
@@ -2243,14 +2305,50 @@ impl Scene for SceneDebug {
         draw.draw_rect(rect1, true, DEPTH_DRAW, Color::white(), ADDITIVITY_NONE);
         draw.draw_rect(rect2, true, DEPTH_DRAW, Color::white(), ADDITIVITY_NONE);
 
+        // Drummydrumms
+        unsafe {
+            let measure_time = MusicalInterval::Measure {
+                beats_per_minute: 120,
+                beats_per_measure: 4,
+            }
+            .length_seconds();
+            let quarter_beat_time = MusicalInterval::QuarterBeat {
+                beats_per_minute: 120,
+            }
+            .length_seconds();
+
+            static mut next_measure: usize = 1;
+            if 1 + (audio.current_time_seconds() / measure_time) as usize == next_measure {
+                next_measure += 1;
+                for index in 0..16 {
+                    audio.play_oneshot(
+                        "drum",
+                        music_get_next_point_in_time(
+                            audio.current_time_seconds(),
+                            MusicalInterval::Measure {
+                                beats_per_minute: 120,
+                                beats_per_measure: 4,
+                            },
+                        ) + index as f64 * quarter_beat_time,
+                        0.3,
+                        0.0,
+                        1.0,
+                    );
+                }
+            }
+        }
+
         // HP BAR
         //
         if input.keyboard.recently_pressed(Scancode::D) {
             audio.play_oneshot(
                 "drum",
-                SchedulePlay::OnNextQuarterBeat {
-                    beats_per_minute: 140,
-                },
+                music_get_next_point_in_time(
+                    audio.current_time_seconds(),
+                    MusicalInterval::QuarterBeat {
+                        beats_per_minute: 120,
+                    },
+                ),
                 0.7,
                 0.0,
                 1.0,

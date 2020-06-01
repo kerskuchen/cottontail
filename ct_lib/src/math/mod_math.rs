@@ -1030,6 +1030,114 @@ pub fn sample_integer_upper_exclusive_floored(
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Intervals
+
+use std::ops::Range;
+
+/// This represents the half open integer interval [start, end[ or [start, end-1] respectively
+#[derive(Default, Copy, Clone, PartialEq, Eq)]
+pub struct Interval {
+    pub start: i64,
+    pub end: i64,
+}
+
+// Conversion
+impl Interval {
+    pub fn as_range(self) -> Range<i64> {
+        self.start..self.end
+    }
+
+    pub fn as_range_usize(self) -> Range<usize> {
+        use std::convert::TryFrom;
+        assert!(0 <= self.start && self.start <= self.end);
+        let start = usize::try_from(self.start).expect(&format!(
+            "Failed to create range: cannot convert start={} to usize",
+            self.start
+        ));
+        let end = usize::try_from(self.end).expect(&format!(
+            "Failed to create range: cannot convert end={} to usize",
+            self.end
+        ));
+        start..end
+    }
+}
+
+// Creation
+impl Interval {
+    #[inline]
+    pub fn new(start: i64, length: usize) -> Interval {
+        Interval {
+            start,
+            end: start + length as i64,
+        }
+    }
+
+    pub fn from_range(range: Range<i64>) -> Interval {
+        Interval {
+            start: range.start,
+            end: range.end,
+        }
+    }
+
+    pub fn from_start_end(start: i64, end: i64) -> Interval {
+        Interval { start, end }
+    }
+}
+
+// Operations
+impl Interval {
+    #[inline]
+    pub fn len(self) -> usize {
+        use std::convert::TryFrom;
+        let len = i64::max(0, self.end - self.start);
+        usize::try_from(len).expect(&format!(
+            "Failed to determine length of range: cannot convert {} to usize",
+            len
+        ))
+    }
+
+    #[inline]
+    pub fn is_empty(self) -> bool {
+        self.end <= self.start
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn offsetted_by(self, offset: i64) -> Interval {
+        Interval {
+            start: self.start + offset,
+            end: self.end + offset,
+        }
+    }
+
+    #[inline]
+    pub fn intersect(a: Interval, b: Interval) -> Interval {
+        Interval {
+            start: i64::max(a.start, b.start),
+            end: i64::min(a.end, b.end),
+        }
+    }
+
+    /// Returns the set-theoretic difference
+    ///   `a - b = a / (a intersection b)`
+    /// as (left, right)
+    #[inline]
+    pub fn difference(a: Interval, b: Interval) -> (Interval, Interval) {
+        let intersection = Interval::intersect(a, b);
+        let left = Interval {
+            start: a.start,
+            end: intersection.start,
+        };
+        let right = Interval {
+            start: intersection.end,
+            end: a.end,
+        };
+
+        (left, right)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Tests
 
 #[derive(Debug, Copy, Clone)]

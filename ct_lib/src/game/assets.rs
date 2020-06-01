@@ -1,6 +1,6 @@
 use super::*;
 
-use std::{collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 
 #[derive(Default, Clone)]
 pub struct GameAssets {
@@ -164,8 +164,8 @@ pub fn load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, AudioBu
             name: name.clone(),
             sample_rate_hz,
             samples,
-            loop_start_sampleindex: 0,
-            loop_end_sampleindex: samplecount - 1,
+            loopsection_start_sampleindex: 0,
+            loopsection_samplecount: samplecount,
         };
         audiorecordings.insert(name, recording);
     }

@@ -1,10 +1,12 @@
 use super::math::*;
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Samples and Frames
 
 pub type AudioSample = f32;
-
-const AUDIO_CHUNKLENGTH_IN_SAMPLES: usize = 256;
 
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
@@ -29,84 +31,21 @@ impl AudioFrame {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Audio output
+// Timing
 
 pub type AudioFrameIndex = i64;
-pub type AudioChunkIndex = i64;
 pub type AudioSampleIndex = i64;
 
 #[inline]
-pub fn audio_frames_to_seconds(framecount: AudioFrameIndex, audio_frames_per_second: usize) -> f64 {
-    framecount as f64 / audio_frames_per_second as f64
+pub fn audio_frames_to_seconds(framecount: AudioFrameIndex, audio_samplerate_hz: usize) -> f64 {
+    framecount as f64 / audio_samplerate_hz as f64
 }
 
 #[inline]
 /// NOTE: This returns a float so we can round it down ourselves or use the value for further
 ///       calculations without forced rounding errors
-pub fn audio_seconds_to_frames(time: f64, audio_frames_per_second: usize) -> f64 {
-    time * audio_frames_per_second as f64
-}
-
-#[inline]
-pub fn audio_beat_length_in_seconds(beats_per_minute: usize) -> f64 {
-    60.0 / (beats_per_minute as f64)
-}
-
-#[inline]
-pub fn audio_measure_length_in_seconds(beats_per_measure: usize, beats_per_minute: usize) -> f64 {
-    beats_per_measure as f64 * audio_beat_length_in_seconds(beats_per_minute)
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Streams
-
-/// This can never be zero for a valid stream
-pub type AudioStreamId = u64;
-
-#[derive(Debug, Clone, Copy)]
-pub enum SchedulePlay {
-    Immediately,
-    OnNextMeasure {
-        beats_per_minute: usize,
-        beats_per_measure: usize,
-    },
-    OnNextBeat {
-        beats_per_minute: usize,
-    },
-    OnNextHalfBeat {
-        beats_per_minute: usize,
-    },
-    OnNextQuarterBeat {
-        beats_per_minute: usize,
-    },
-}
-
-#[derive(Debug, Clone)]
-struct AudioStreamOld {
-    recording_name: String,
-
-    play_time: SchedulePlay,
-    start_frame: Option<AudioFrameIndex>,
-
-    remove_on_finish: bool,
-    has_finished: bool,
-    is_repeating: bool,
-
-    playback_speed_current: f32,
-    playback_speed_target: f32,
-
-    /// Ranges in [0,1]
-    /// Silence       = 0
-    /// Full loudness = 1
-    volume_current: f32,
-    volume_target: f32,
-
-    /// Ranges in [-1,1]
-    /// Left   = -1
-    /// Center =  0
-    /// Right  =  1
-    pan_current: f32,
-    pan_target: f32,
+pub fn audio_seconds_to_frames(time: f64, audio_samplerate_hz: usize) -> f64 {
+    time * audio_samplerate_hz as f64
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -242,10 +181,9 @@ pub struct AudioBuffer<FrameType> {
     pub samples: Vec<FrameType>,
 
     /// Defaults to 0
-    pub loop_start_sampleindex: usize,
-    /// NOTE: The end sample index is the last index played inside the loop
+    pub loopsection_start_sampleindex: usize,
     /// Defaults to samples.len()
-    pub loop_end_sampleindex: usize,
+    pub loopsection_samplecount: usize,
 }
 pub type AudioBufferMono = AudioBuffer<AudioSample>;
 pub type AudioBufferStereo = AudioBuffer<AudioFrame>;
@@ -254,6 +192,7 @@ trait AudioSourceMono: Iterator<Item = AudioSample> {
     fn sample_rate_hz(&self) -> usize;
     fn has_finished(&self) -> bool;
     fn is_looping(&self) -> bool;
+    fn completion_ratio(&self) -> Option<f32>;
 }
 
 struct AudioBufferSourceMono {
@@ -280,6 +219,9 @@ impl AudioSourceMono for AudioBufferSourceMono {
     fn is_looping(&self) -> bool {
         self.is_looping
     }
+    fn completion_ratio(&self) -> Option<f32> {
+        Some(self.play_cursor_buffer_index as f32 / self.source_buffer.samples.len() as f32)
+    }
 }
 impl Iterator for AudioBufferSourceMono {
     type Item = AudioSample;
@@ -295,8 +237,11 @@ impl Iterator for AudioBufferSourceMono {
             self.source_buffer.samples.len(),
         );
         if self.is_looping {
-            if self.play_cursor_buffer_index > self.source_buffer.loop_end_sampleindex {
-                self.play_cursor_buffer_index = self.source_buffer.loop_start_sampleindex;
+            if self.play_cursor_buffer_index
+                >= (self.source_buffer.loopsection_start_sampleindex
+                    + self.source_buffer.loopsection_samplecount)
+            {
+                self.play_cursor_buffer_index = self.source_buffer.loopsection_start_sampleindex;
             }
         }
         result
@@ -328,6 +273,9 @@ impl AudioSourceMono for AudioSourceSine {
     fn is_looping(&self) -> bool {
         true
     }
+    fn completion_ratio(&self) -> Option<f32> {
+        None
+    }
 }
 impl Iterator for AudioSourceSine {
     type Item = AudioSample;
@@ -342,11 +290,15 @@ impl Iterator for AudioSourceSine {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Audiostreams
+
 trait AudioStream {
     fn process_mono(&mut self, output_samples: &mut [AudioSample], output_sample_rate_hz: usize);
     fn process_stereo(&mut self, output_frames: &mut [AudioFrame], output_sample_rate_hz: usize);
+
     fn has_finished(&self) -> bool;
     fn is_looping(&self) -> bool;
+    fn completion_ratio(&self) -> Option<f32>;
+
     fn set_volume(&mut self, volume: f32);
     fn set_playback_speed(&mut self, playback_speed: f32);
 }
@@ -376,7 +328,11 @@ impl AudioStreamScheduledMono {
     }
 }
 impl AudioStream for AudioStreamScheduledMono {
-    fn process_stereo(&mut self, output_samples: &mut [AudioFrame], output_sample_rate_hz: usize) {
+    fn process_stereo(
+        &mut self,
+        _output_samples: &mut [AudioFrame],
+        _output_sample_rate_hz: usize,
+    ) {
         unimplemented!()
     }
 
@@ -425,6 +381,14 @@ impl AudioStream for AudioStreamScheduledMono {
         self.source.is_looping()
     }
 
+    fn completion_ratio(&self) -> Option<f32> {
+        if self.frames_left_till_start > 0 {
+            None
+        } else {
+            self.source.completion_ratio()
+        }
+    }
+
     fn set_volume(&mut self, _volume: f32) {
         unimplemented!()
     }
@@ -456,6 +420,9 @@ impl AudioStreamStereo {
     }
 }
 impl AudioStream for AudioStreamStereo {
+    fn process_mono(&mut self, _output_samples: &mut [AudioSample], _output_sample_rate_hz: usize) {
+        unimplemented!()
+    }
     fn process_stereo(&mut self, output_frames: &mut [AudioFrame], output_sample_rate_hz: usize) {
         // TODO: For this we need the Chunks
         let mut input_buffer_volume = vec![0.0; output_frames.len()];
@@ -466,14 +433,16 @@ impl AudioStream for AudioStreamStereo {
             .process(&input_buffer_volume, &mut input_buffer_pan);
         self.pan.process(&input_buffer_pan, output_frames);
     }
+
     fn has_finished(&self) -> bool {
         self.stream.has_finished()
     }
     fn is_looping(&self) -> bool {
         self.stream.is_looping()
     }
-    fn process_mono(&mut self, output_samples: &mut [AudioSample], output_sample_rate_hz: usize) {
-        unimplemented!()
+
+    fn completion_ratio(&self) -> Option<f32> {
+        self.stream.completion_ratio()
     }
     fn set_volume(&mut self, volume: f32) {
         self.volume.set_volume(volume);
@@ -485,20 +454,20 @@ impl AudioStream for AudioStreamStereo {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Audiostate
+
+/// This can never be zero for a valid stream
+pub type AudioStreamId = u64;
+
 pub struct Audiostate {
     next_frame_index_to_output: AudioFrameIndex,
     audio_playback_rate_hz: usize,
-
-    dsp_time: f64,
-    previous_dsp_query_time: std::time::Instant,
-    previous_dsp_query_next_frame_index: AudioFrameIndex,
 
     global_playback_speed: f32,
 
     listener_pos: Vec2,
     listener_vel: Vec2,
 
-    /// This can never be 0 when used with `get_next_stream_id` method
+    /// This can never be zero when used with `get_next_stream_id` method
     next_stream_id: AudioStreamId,
 
     streams: HashMap<AudioStreamId, Box<dyn AudioStream>>,
@@ -513,21 +482,11 @@ impl Clone for Audiostate {
     }
 }
 
-enum StreamCompletion {
-    StartingInSeconds(f32),
-    RunningPercentage(f32),
-    FinishedSecondsAgo(f32),
-}
-
 impl Audiostate {
     pub fn new(audio_playback_rate_hz: usize) -> Audiostate {
         Audiostate {
             next_frame_index_to_output: 0,
             audio_playback_rate_hz,
-
-            dsp_time: 0.0,
-            previous_dsp_query_time: std::time::Instant::now(),
-            previous_dsp_query_next_frame_index: 0,
 
             global_playback_speed: 1.0,
             listener_pos: Vec2::zero(),
@@ -561,28 +520,8 @@ impl Audiostate {
         }
     }
 
-    pub fn get_audio_time_estimate(&mut self) -> f64 {
-        // Easing algorithm based on
-        // https://www.reddit.com/r/gamedev/comments/13y26t/how_do_rhythm_games_stay_in_sync_with_the_music/
-
-        let now_time = std::time::Instant::now();
-        let time_since_last_query = now_time
-            .duration_since(self.previous_dsp_query_time)
-            .as_secs_f64();
-        self.previous_dsp_query_time = now_time;
-
-        self.dsp_time += time_since_last_query;
-        if self.next_frame_index_to_output != self.previous_dsp_query_next_frame_index {
-            self.dsp_time = (self.dsp_time
-                + audio_frames_to_seconds(
-                    self.next_frame_index_to_output,
-                    self.audio_playback_rate_hz,
-                ))
-                / 2.0;
-            self.previous_dsp_query_next_frame_index = self.next_frame_index_to_output;
-        }
-
-        self.dsp_time
+    pub fn current_time_seconds(&self) -> f64 {
+        audio_frames_to_seconds(self.next_frame_index_to_output, self.audio_playback_rate_hz)
     }
 
     fn get_stream(&self, stream_id: AudioStreamId) -> &Box<dyn AudioStream> {
@@ -611,32 +550,8 @@ impl Audiostate {
     }
 
     pub fn stream_completion_ratio(&self, stream_id: AudioStreamId) -> Option<f32> {
-        todo!()
-        /*
-        if let Some(stream) = self.streams_buffer_mono.get(&stream_id) {
-
-
-            self.currently_playing_frame_index < stream.start_frame
-            if stream.has_finished {
-                return Some(1.0);
-            }
-
-            if let Some(start_frame_index) = stream.start_frame {
-                if self.current_frame_index < start_frame_index {
-                    return None;
-                }
-                let stream_frames = recordings.get(&stream.recording_name).unwrap();
-                let stream_len = stream_frames.len() as AudioFrameIndex;
-
-                // NOTE: We use modulus here to account for repeating streams
-                let completed_frames_count =
-                    (self.current_frame_index - start_frame_index) % stream_len;
-                return Some(completed_frames_count as f32 / stream_len as f32);
-            }
-
-            return None;
-        }
-        */
+        let stream = self.get_stream(stream_id);
+        stream.completion_ratio()
     }
 
     fn get_next_stream_id(&mut self) -> AudioStreamId {
@@ -652,10 +567,10 @@ impl Audiostate {
         // Remove streams that have finished
         let mut streams_removed = vec![];
         for &stream_id in &self.streams_to_delete_after_finish {
-            if self.get_stream(stream_id).has_finished() {
+            if self.stream_has_finished(stream_id) {
                 self.streams.remove(&stream_id);
+                streams_removed.push(stream_id);
             }
-            streams_removed.push(stream_id);
         }
         for stream_id in streams_removed {
             self.streams_to_delete_after_finish.remove(&stream_id);
@@ -689,6 +604,10 @@ impl Audiostate {
         // TODO
     }
 
+    pub fn spatial_stream_set_vel(&mut self, stream_id: AudioStreamId, new_vel: Vec2) {
+        // TODO
+    }
+
     pub fn stream_set_volume(&mut self, stream_id: AudioStreamId, volume: f32) {
         let stream = self.get_stream_mut(stream_id);
         stream.set_volume(volume);
@@ -699,60 +618,33 @@ impl Audiostate {
         stream.set_playback_speed(playback_speed);
     }
 
-    fn start_delay_for_schedule(&self, schedule_time: SchedulePlay) -> usize {
-        let segment_length = match schedule_time {
-            SchedulePlay::Immediately => 0.0,
-            SchedulePlay::OnNextMeasure {
-                beats_per_minute,
-                beats_per_measure,
-            } => audio_measure_length_in_seconds(beats_per_measure, beats_per_minute),
-            SchedulePlay::OnNextBeat { beats_per_minute } => {
-                audio_beat_length_in_seconds(beats_per_minute)
-            }
-            SchedulePlay::OnNextHalfBeat { beats_per_minute } => {
-                audio_beat_length_in_seconds(beats_per_minute) / 2.0
-            }
-            SchedulePlay::OnNextQuarterBeat { beats_per_minute } => {
-                audio_beat_length_in_seconds(beats_per_minute) / 4.0
-            }
-        };
+    fn start_delay_framecount_for_time(&self, schedule_time_seconds: f64) -> usize {
+        let start_frame_index =
+            audio_seconds_to_frames(schedule_time_seconds, self.audio_playback_rate_hz).round()
+                as AudioFrameIndex;
 
-        let current_time =
-            audio_frames_to_seconds(self.next_frame_index_to_output, self.audio_playback_rate_hz);
-        let start_time = if segment_length == 0.0 {
-            current_time
-        } else {
-            audio_seconds_to_frames(
-                f64::ceil(current_time / segment_length) * segment_length,
-                self.audio_playback_rate_hz,
-            )
-        };
-
-        let start_frame =
-            audio_seconds_to_frames(start_time, self.audio_playback_rate_hz) as AudioFrameIndex;
-
-        (start_frame - self.next_frame_index_to_output).max(0) as usize
+        (start_frame_index - self.next_frame_index_to_output).max(0) as usize
     }
 
     #[must_use]
     pub fn play(
         &mut self,
         recording_name: &str,
-        schedule_time: SchedulePlay,
+        schedule_time_seconds: f64,
         play_looped: bool,
         volume: f32,
         pan: f32,
         playback_speed: f32,
     ) -> AudioStreamId {
         let id = self.get_next_stream_id();
-        let start_delay = self.start_delay_for_schedule(schedule_time);
+        let start_delay_framecount = self.start_delay_framecount_for_time(schedule_time_seconds);
         let stream = if recording_name == "sine" {
             Box::new(AudioStreamStereo::new(
                 Box::new(AudioSourceSine::new(440.0, 44100)),
-                start_delay,
-                1.0,
-                1.0,
-                0.0,
+                start_delay_framecount,
+                playback_speed,
+                volume,
+                pan,
             ))
         } else {
             let buffer = self
@@ -761,10 +653,10 @@ impl Audiostate {
                 .expect(&format!("Recording '{}' not found", recording_name));
             Box::new(AudioStreamStereo::new(
                 Box::new(AudioBufferSourceMono::new(buffer.clone(), play_looped)),
-                start_delay,
-                1.0,
-                1.0,
-                0.0,
+                start_delay_framecount,
+                playback_speed,
+                volume,
+                pan,
             ))
         };
         self.streams.insert(id, stream);
@@ -773,399 +665,19 @@ impl Audiostate {
     pub fn play_oneshot(
         &mut self,
         recording_name: &str,
-        play_time: SchedulePlay,
+        schedule_time_seconds: f64,
         volume: f32,
         pan: f32,
         playback_speed: f32,
     ) {
         let id = self.play(
             recording_name,
-            play_time,
+            schedule_time_seconds,
             false,
             volume,
             pan,
             playback_speed,
         );
         self.stream_forget(id);
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Clone)]
-pub struct AudiostateOld {
-    /// This is can be used for interpolating time-based things that are dependent on music / beats
-    current_frame_index: AudioFrameIndex,
-
-    streams: HashMap<AudioStreamId, AudioStreamOld>,
-    next_stream_id: AudioStreamId,
-}
-
-impl AudiostateOld {
-    pub fn new() -> AudiostateOld {
-        AudiostateOld {
-            current_frame_index: 0,
-
-            streams: HashMap::new(),
-            next_stream_id: 1,
-        }
-    }
-
-    pub fn update_frame_index(&mut self, current_frame_index: AudioFrameIndex) {
-        self.current_frame_index = current_frame_index;
-    }
-
-    pub fn play_oneshot(
-        &mut self,
-        recording_name: &str,
-        play_time: SchedulePlay,
-        volume: f32,
-        pan: f32,
-        playback_speed: f32,
-    ) {
-        let _ = self.play(
-            recording_name,
-            play_time,
-            false,
-            volume,
-            pan,
-            playback_speed,
-        );
-    }
-
-    #[must_use]
-    pub fn play(
-        &mut self,
-        recording_name: &str,
-        play_time: SchedulePlay,
-        is_repeating: bool,
-        volume: f32,
-        pan: f32,
-        playback_speed: f32,
-    ) -> AudioStreamId {
-        let id = self.next_stream_id;
-        let stream = AudioStreamOld {
-            recording_name: recording_name.to_owned(),
-            play_time,
-            remove_on_finish: false,
-            has_finished: false,
-            start_frame: None,
-            is_repeating,
-            volume_current: volume,
-            volume_target: volume,
-            pan_current: pan,
-            pan_target: pan,
-            playback_speed_current: playback_speed,
-            playback_speed_target: playback_speed,
-        };
-        self.streams.insert(id, stream);
-        self.next_stream_id += 1;
-
-        id
-    }
-
-    /*
-
-    /// NOTE: This method needs to be fast because we are effectively blocking our audio callback
-    ///       thread here
-    pub fn render_audio_old(
-        &mut self,
-        first_chunk_index: AudioChunkIndex,
-        out_chunk_count: usize,
-        out_chunks: &mut Vec<Audiochunk>,
-        recordings: &HashMap<String, Vec<AudioFrame>>,
-    ) {
-        // NOTE: We just want to make sure that the caller works with the same buffersize as we do
-        assert!(out_chunk_count == AUDIO_BUFFERSIZE_IN_CHUNKS);
-
-        // Clear output
-        self.out_frames.iter_mut().for_each(|frame| {
-            *frame = AudioFrame::silence();
-        });
-
-        let out_start_frame = audio_chunks_to_frames(first_chunk_index);
-
-        for stream in self.streams.values_mut() {
-            if stream.start_frame.is_none() {
-                let segment_length = match stream.play_time {
-                    SchedulePlay::Immediately => audio_frames_to_seconds(1),
-                    SchedulePlay::OnNextMeasure {
-                        beats_per_minute,
-                        beats_per_measure,
-                    } => audio_measure_length_in_seconds(beats_per_measure, beats_per_minute),
-                    SchedulePlay::OnNextBeat { beats_per_minute } => {
-                        audio_beat_length_in_seconds(beats_per_minute)
-                    }
-                    SchedulePlay::OnNextHalfBeat { beats_per_minute } => {
-                        audio_beat_length_in_seconds(beats_per_minute) / 2.0
-                    }
-                    SchedulePlay::OnNextQuarterBeat { beats_per_minute } => {
-                        audio_beat_length_in_seconds(beats_per_minute) / 4.0
-                    }
-                };
-
-                let start_second = audio_frames_to_seconds(out_start_frame);
-                let start_frame = audio_seconds_to_frames(
-                    f64::ceil(start_second / segment_length) * segment_length,
-                ) as AudioFrameIndex;
-
-                stream.start_frame = Some(start_frame);
-            }
-
-            let stream_start_frame = stream.start_frame.unwrap();
-            if out_start_frame + self.out_frames.len() as AudioFrameIndex <= stream_start_frame {
-                // This stream will not start yet
-                continue;
-            }
-
-            let pan = 0.5 * (stream.pan_current + 1.0); // Transform [-1,1] -> [0,1]
-            let (volume_left, volume_right) = crossfade_sinuoidal(stream.volume_current, pan);
-
-            let stream_frames = recordings.get(&stream.recording_name).unwrap();
-            stream.has_finished = if stream.is_repeating {
-                audio_add_stream_repeated(
-                    out_start_frame,
-                    &mut self.out_frames,
-                    stream_start_frame,
-                    stream_frames,
-                    volume_left,
-                    volume_right,
-                );
-                false
-            } else {
-                audio_add_stream(
-                    out_start_frame,
-                    &mut self.out_frames,
-                    stream_start_frame,
-                    stream_frames,
-                    volume_left,
-                    volume_right,
-                )
-            };
-        }
-
-        // Remove streams that have finished
-        self.streams.retain(|_id, stream| !stream.has_finished);
-
-        // Create audio chunks from our frames
-        for frame_chunk in self.out_frames.chunks_exact(AUDIO_CHUNKLENGTH_IN_FRAMES) {
-            let mut sample_chunk = [0; AUDIO_CHUNKLENGTH_IN_SAMPLES];
-            for (sample_pair, frame) in sample_chunk.chunks_exact_mut(2).zip(frame_chunk.iter()) {
-                sample_pair[0] = (frame.left * std::i16::MAX as f32) as i16;
-                sample_pair[1] = (frame.right * std::i16::MAX as f32) as i16;
-            }
-            out_chunks.push(sample_chunk);
-        }
-    }
-    */
-}
-
-/// Returns true if the given stream has finished
-fn audio_add_stream(
-    out_start_frame: AudioFrameIndex,
-    out_frames: &mut [AudioFrame],
-    stream_start_frame: AudioFrameIndex,
-    stream_frames: &[AudioFrame],
-    volume_left: f32,
-    volume_right: f32,
-) -> bool {
-    let out_interval = Interval::new(out_start_frame, out_frames.len());
-    let stream_interval = Interval::new(stream_start_frame, stream_frames.len());
-    let intersection_interval = Interval::intersect(out_interval, stream_interval);
-
-    // Check if our stream is even hit in this write cycle
-    if intersection_interval.len() == 0 {
-        if stream_interval.end <= out_start_frame {
-            // NOTE: The stream has finished
-            return true;
-        } else {
-            // NOTE: The stream has not started yet
-            return false;
-        }
-    }
-
-    // Calculate read and write ranges
-    let read_interval = intersection_interval.offsetted_by(-stream_start_frame);
-    let write_interval = intersection_interval.offsetted_by(-out_start_frame);
-    assert!(read_interval.len() == write_interval.len());
-
-    let read_range = read_interval.as_range_usize();
-    let write_range = write_interval.as_range_usize();
-
-    // Sum recording into our output
-    for (write_frame, read_frame) in out_frames[write_range]
-        .iter_mut()
-        .zip(stream_frames[read_range].iter())
-    {
-        write_frame.left += read_frame.left * volume_left;
-        write_frame.right += read_frame.right * volume_right;
-    }
-
-    false
-}
-
-fn audio_add_stream_repeated(
-    out_start_frame: AudioFrameIndex,
-    out_frames: &mut [AudioFrame],
-    stream_start_frame: AudioFrameIndex,
-    stream_frames: &[AudioFrame],
-    volume_left: f32,
-    volume_right: f32,
-) {
-    let out_interval = Interval::new(out_start_frame, out_frames.len());
-    let stream_interval_repeated = Interval::from_start_end(stream_start_frame, std::i64::MAX);
-
-    let intersection_interval = Interval::intersect(out_interval, stream_interval_repeated);
-    if intersection_interval.is_empty() {
-        // NOTE: The stream has not started yet
-        return;
-    }
-
-    // Examples:
-    // ..............[...|xx]xxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxx|
-    // ..................|xxxxx[xxxxxx]xxxx|xxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxx|
-    // ..................|xxxxxxxxxxxxxxxxx|xxxxxxxxxxxxx[xxx|xx]xxxxxxxxxxxxxx|
-    // ..............[...|xx|xx|xx|xx|x]|xx|xx|xx|xx|xx|xx|xx|xx|xx|xx|xx|xx|xx|
-    // ..................|xx|xx|xx|x[|xx|xx|xx|xx|xx|x]|xx|xx|xx|xx|xx|xx|xx|xx|
-    // ..[...............|]x|xx|xx|xx|xx|xx|xx|xx|xx|xx|xx|xx|xx|xx|xx|xx|xx|xx|
-    //
-    // We want to shift our stream_interval to the right just until we overlap with our
-    // out_interval such that the end of our shifted stream_interval window is right after the
-    // start of our out_interval.
-    //
-    // In other words: We want to find the smallest integer shift >= 0 such that:
-    // (stream_start_frame + stream_length) + shift * stream_length >= out_start_frame
-
-    // NOTE: We need to make sure that the shift is never negative so we max it with 0.
-    //       A negative shift can happen i.e. for the last case of the above examples
-    let shift = AudioFrameIndex::max(
-        0,
-        (out_start_frame - stream_start_frame) / (stream_frames.len() as AudioFrameIndex),
-    );
-
-    let adjusted_stream_start_frame =
-        stream_start_frame + shift * stream_frames.len() as AudioFrameIndex;
-    let mut window = Interval::new(adjusted_stream_start_frame, stream_frames.len());
-
-    // We can now render our frames while moving the window right until it does not overlap with the
-    // out_frames intervall anymore
-    while window.start < out_interval.end {
-        audio_add_stream(
-            out_start_frame,
-            out_frames,
-            window.start,
-            stream_frames,
-            volume_left,
-            volume_right,
-        );
-        window = window.offsetted_by(stream_frames.len() as i64);
-    }
-}
-
-//--------------------------------------------------------------------------------------------------
-// Intervals
-
-use std::ops::Range;
-
-/// This represents the half open integer interval [start, end[ or [start, end-1] respectively
-#[derive(Default, Copy, Clone, PartialEq, Eq)]
-pub struct Interval {
-    pub start: i64,
-    pub end: i64,
-}
-
-use std::{convert::TryFrom, rc::Rc, sync::Arc};
-
-// Conversion
-impl Interval {
-    pub fn as_range(self) -> Range<i64> {
-        self.start..self.end
-    }
-
-    pub fn as_range_usize(self) -> Range<usize> {
-        assert!(0 <= self.start && self.start <= self.end);
-        let start = usize::try_from(self.start).expect(&format!(
-            "Failed to create range: cannot convert start={} to usize",
-            self.start
-        ));
-        let end = usize::try_from(self.end).expect(&format!(
-            "Failed to create range: cannot convert end={} to usize",
-            self.end
-        ));
-        start..end
-    }
-}
-
-// Creation
-impl Interval {
-    #[inline]
-    pub fn new(start: i64, length: usize) -> Interval {
-        Interval {
-            start,
-            end: start + length as i64,
-        }
-    }
-
-    pub fn from_range(range: Range<i64>) -> Interval {
-        Interval {
-            start: range.start,
-            end: range.end,
-        }
-    }
-
-    pub fn from_start_end(start: i64, end: i64) -> Interval {
-        Interval { start, end }
-    }
-}
-
-// Operations
-impl Interval {
-    #[inline]
-    pub fn len(self) -> usize {
-        let len = i64::max(0, self.end - self.start);
-        usize::try_from(len).expect(&format!(
-            "Failed to determine length of range: cannot convert {} to usize",
-            len
-        ))
-    }
-
-    #[inline]
-    pub fn is_empty(self) -> bool {
-        self.end <= self.start
-    }
-
-    #[must_use]
-    #[inline]
-    pub fn offsetted_by(self, offset: i64) -> Interval {
-        Interval {
-            start: self.start + offset,
-            end: self.end + offset,
-        }
-    }
-
-    #[inline]
-    pub fn intersect(a: Interval, b: Interval) -> Interval {
-        Interval {
-            start: i64::max(a.start, b.start),
-            end: i64::min(a.end, b.end),
-        }
-    }
-
-    /// Returns the set-theoretic difference
-    ///   `a - b = a / (a intersection b)`
-    /// as (left, right)
-    #[inline]
-    pub fn difference(a: Interval, b: Interval) -> (Interval, Interval) {
-        let intersection = Interval::intersect(a, b);
-        let left = Interval {
-            start: a.start,
-            end: intersection.start,
-        };
-        let right = Interval {
-            start: intersection.end,
-            end: a.end,
-        };
-
-        (left, right)
     }
 }
