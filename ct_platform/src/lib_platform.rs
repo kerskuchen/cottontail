@@ -1039,7 +1039,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         let pre_wait_time = post_swap_time;
 
         if !vsync_enabled {
-            // NOTE: We need to manually wait to reach the target seconds a frame can take
+            // NOTE: We need to manually wait to reach target frame rate
             loop {
                 let time_left_till_flip = target_seconds_per_frame
                     - std::time::Instant::now()
@@ -1049,7 +1049,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
                 if time_left_till_flip > 0.002 {
                     std::thread::sleep(std::time::Duration::from_millis(1));
                 } else {
-                    // NOTE: busywait in this loop
+                    // NOTE: Busywait for the remaining time
                 }
 
                 if time_left_till_flip <= 0.0 {
