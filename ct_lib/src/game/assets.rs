@@ -1,16 +1,15 @@
 use super::*;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 #[derive(Default, Clone)]
 pub struct GameAssets {
-    assets_folder: String,
+    pub assets_folder: String,
     animations: HashMap<String, Animation<Sprite>>,
     animations_3d: HashMap<String, Animation<Sprite3D>>,
     sprites_3d: HashMap<String, Sprite3D>,
     fonts: HashMap<String, SpriteFont>,
     atlas: SpriteAtlas,
-    recordings: HashMap<String, Vec<AudioFrame>>,
 }
 
 impl GameAssets {
@@ -28,29 +27,8 @@ impl GameAssets {
         self.sprites_3d = load_sprites_3d(&self.assets_folder);
     }
 
-    pub fn load_audio(&mut self) {
-        let audiorecordings_mono = load_audiorecordings_mono(&self.assets_folder);
-        for (recording_name, buffer) in audiorecordings_mono.into_iter() {
-            self.add_recording_mono(&recording_name, buffer);
-        }
-    }
-
     pub fn get_atlas_textures(&self) -> &[Bitmap] {
         &self.atlas.textures
-    }
-
-    fn add_recording_mono(&mut self, name: &str, data: Vec<AudioSample>) {
-        assert!(!self.recordings.contains_key(name));
-
-        let recording_frames = data
-            .into_iter()
-            .map(|mono_sample| AudioFrame {
-                left: mono_sample,
-                right: mono_sample,
-            })
-            .collect();
-
-        self.recordings.insert(name.to_owned(), recording_frames);
     }
 
     pub fn get_anim(&self, animation_name: &str) -> &Animation<Sprite> {
@@ -69,17 +47,6 @@ impl GameAssets {
         self.fonts
             .get(font_name)
             .expect(&format!("Could not find font '{}'", font_name))
-    }
-
-    pub fn get_audio_recordings(&self) -> &HashMap<String, Vec<AudioFrame>> {
-        &self.recordings
-    }
-
-    pub fn get_audio_recording(&self, recording_name: &str) -> &Vec<AudioFrame> {
-        &self.recordings.get(recording_name).expect(&format!(
-            "Could not find audio recording '{}'",
-            recording_name
-        ))
     }
 
     pub fn get_sprite(&self, sprite_name: &str) -> &Sprite {
@@ -180,7 +147,7 @@ fn load_fonts(assets_folder: &str) -> HashMap<String, SpriteFont> {
     super::deserialize_from_file_binary(&fonts_filepath)
 }
 
-fn load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, Vec<AudioSample>> {
+pub fn load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, AudioBufferMono> {
     let mut audiorecordings = HashMap::new();
 
     let wav_filepaths = system::collect_files_by_extension_recursive(assets_folder, ".wav");
@@ -189,10 +156,24 @@ fn load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, Vec<AudioSa
             "Could not open audio file for reading: '{}'",
             wav_filepath
         ));
-        let wav_buffer: Vec<AudioSample> = wav_file.samples().map(Result::unwrap).collect();
-        let recording_name = system::path_to_filename_without_extension(wav_filepath);
-        audiorecordings.insert(recording_name, wav_buffer);
+        let name = system::path_to_filename_without_extension(wav_filepath);
+        let sample_rate_hz = wav_file.description().sample_rate() as usize;
+        let samples: Vec<AudioSample> = wav_file.samples().map(Result::unwrap).collect();
+        let samplecount = samples.len();
+        let recording = AudioBufferMono {
+            name: name.clone(),
+            sample_rate_hz,
+            samples,
+            loop_start_sampleindex: 0,
+            loop_end_sampleindex: samplecount - 1,
+        };
+        audiorecordings.insert(name, recording);
     }
 
     audiorecordings
+}
+
+pub fn load_audiorecordings_stereo(assets_folder: &str) -> HashMap<String, AudioBufferStereo> {
+    // TODO
+    HashMap::new()
 }

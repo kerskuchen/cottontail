@@ -233,7 +233,22 @@ impl PlaybackSpeedInterpolatorLinear {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Audiostate
+// Audiobuffers and sources
+
+#[derive(Clone)]
+pub struct AudioBuffer<FrameType> {
+    pub name: String,
+    pub sample_rate_hz: usize,
+    pub samples: Vec<FrameType>,
+
+    /// Defaults to 0
+    pub loop_start_sampleindex: usize,
+    /// NOTE: The end sample index is the last index played inside the loop
+    /// Defaults to samples.len()
+    pub loop_end_sampleindex: usize,
+}
+pub type AudioBufferMono = AudioBuffer<AudioSample>;
+pub type AudioBufferStereo = AudioBuffer<AudioFrame>;
 
 trait AudioSourceMono: Iterator<Item = AudioSample> {
     fn sample_rate_hz(&self) -> usize;
@@ -241,20 +256,19 @@ trait AudioSourceMono: Iterator<Item = AudioSample> {
     fn is_looping(&self) -> bool;
 }
 
-#[derive(Clone)]
-struct AudioBufferMono {
-    pub name: String,
-    pub sample_rate_hz: usize,
-    pub samples: Vec<AudioSample>,
-}
 struct AudioBufferSourceMono {
-    pub source_buffer: AudioBufferMono,
+    pub source_buffer: Rc<AudioBufferMono>,
     pub play_cursor_buffer_index: usize,
-
     pub is_looping: bool,
-    pub loop_start_sampleindex: usize,
-    /// NOTE: The end sample index is included in the loop
-    pub loop_end_sampleindex: usize,
+}
+impl AudioBufferSourceMono {
+    fn new(buffer: Rc<AudioBufferMono>, play_looped: bool) -> AudioBufferSourceMono {
+        AudioBufferSourceMono {
+            source_buffer: buffer,
+            play_cursor_buffer_index: 0,
+            is_looping: play_looped,
+        }
+    }
 }
 impl AudioSourceMono for AudioBufferSourceMono {
     fn sample_rate_hz(&self) -> usize {
@@ -276,13 +290,13 @@ impl Iterator for AudioBufferSourceMono {
             .get(self.play_cursor_buffer_index)
             .cloned();
 
-        self.play_cursor_buffer_index = usize::max(
+        self.play_cursor_buffer_index = usize::min(
             self.play_cursor_buffer_index + 1,
             self.source_buffer.samples.len(),
         );
         if self.is_looping {
-            if self.play_cursor_buffer_index > self.loop_end_sampleindex {
-                self.play_cursor_buffer_index = self.loop_start_sampleindex;
+            if self.play_cursor_buffer_index > self.source_buffer.loop_end_sampleindex {
+                self.play_cursor_buffer_index = self.source_buffer.loop_start_sampleindex;
             }
         }
         result
@@ -326,6 +340,8 @@ impl Iterator for AudioSourceSine {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Audiostreams
 trait AudioStream {
     fn process_mono(&mut self, output_samples: &mut [AudioSample], output_sample_rate_hz: usize);
     fn process_stereo(&mut self, output_frames: &mut [AudioFrame], output_sample_rate_hz: usize);
@@ -409,7 +425,7 @@ impl AudioStream for AudioStreamScheduledMono {
         self.source.is_looping()
     }
 
-    fn set_volume(&mut self, volume: f32) {
+    fn set_volume(&mut self, _volume: f32) {
         unimplemented!()
     }
 
@@ -467,6 +483,8 @@ impl AudioStream for AudioStreamStereo {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Audiostate
 pub struct Audiostate {
     next_frame_index_to_output: AudioFrameIndex,
     audio_playback_rate_hz: usize,
@@ -485,6 +503,9 @@ pub struct Audiostate {
 
     streams: HashMap<AudioStreamId, Box<dyn AudioStream>>,
     streams_to_delete_after_finish: HashSet<AudioStreamId>,
+
+    audio_recordings_mono: HashMap<String, Rc<AudioBufferMono>>,
+    audio_recordings_stereo: HashMap<String, Rc<AudioBufferStereo>>,
 }
 impl Clone for Audiostate {
     fn clone(&self) -> Self {
@@ -515,6 +536,28 @@ impl Audiostate {
             next_stream_id: 0,
             streams: HashMap::new(),
             streams_to_delete_after_finish: HashSet::new(),
+
+            audio_recordings_mono: HashMap::new(),
+            audio_recordings_stereo: HashMap::new(),
+        }
+    }
+
+    pub fn add_audio_recordings_mono(
+        &mut self,
+        mut audio_recordings_mono: HashMap<String, AudioBufferMono>,
+    ) {
+        for (name, audiobuffer) in audio_recordings_mono.drain() {
+            self.audio_recordings_mono
+                .insert(name, Rc::new(audiobuffer));
+        }
+    }
+    pub fn add_audio_recordings_stereo(
+        &mut self,
+        mut audio_recordings_stereo: HashMap<String, AudioBufferStereo>,
+    ) {
+        for (name, audiobuffer) in audio_recordings_stereo.drain() {
+            self.audio_recordings_stereo
+                .insert(name, Rc::new(audiobuffer));
         }
     }
 
@@ -567,11 +610,7 @@ impl Audiostate {
         self.streams_to_delete_after_finish.insert(stream_id);
     }
 
-    pub fn stream_completion_ratio(
-        &self,
-        stream_id: AudioStreamId,
-        recordings: &HashMap<String, Vec<AudioFrame>>,
-    ) -> Option<f32> {
+    pub fn stream_completion_ratio(&self, stream_id: AudioStreamId) -> Option<f32> {
         todo!()
         /*
         if let Some(stream) = self.streams_buffer_mono.get(&stream_id) {
@@ -609,11 +648,7 @@ impl Audiostate {
         self.global_playback_speed = global_playback_speed;
     }
 
-    pub fn render_audio(
-        &mut self,
-        out_frames: &mut [AudioFrame],
-        recordings: &HashMap<String, Vec<AudioFrame>>,
-    ) {
+    pub fn render_audio(&mut self, out_frames: &mut [AudioFrame]) {
         // Remove streams that have finished
         let mut streams_removed = vec![];
         for &stream_id in &self.streams_to_delete_after_finish {
@@ -627,9 +662,18 @@ impl Audiostate {
         }
 
         // Render samples
-        for stream in self.streams.values_mut() {
-            stream.process_stereo(out_frames, self.audio_playback_rate_hz);
+        for out_frame in out_frames.iter_mut() {
+            *out_frame = AudioFrame::silence();
         }
+        let mut temp_out = vec![AudioFrame::silence(); out_frames.len()];
+        for stream in self.streams.values_mut() {
+            stream.process_stereo(&mut temp_out, self.audio_playback_rate_hz);
+            for (out_frame, temp_frame) in out_frames.iter_mut().zip(temp_out.iter()) {
+                out_frame.left += temp_frame.left;
+                out_frame.right += temp_frame.right;
+            }
+        }
+        self.next_frame_index_to_output += out_frames.len() as AudioFrameIndex;
     }
 
     pub fn set_listener_pos(&mut self, new_listener_pos: Vec2) {
@@ -655,18 +699,39 @@ impl Audiostate {
         stream.set_playback_speed(playback_speed);
     }
 
-    #[must_use]
-    pub fn play_spatial(
-        &mut self,
-        recording_name: &str,
-        play_time: SchedulePlay,
-        is_repeating: bool,
-        volume: f32,
-        playback_speed: f32,
-        pos: Vec2,
-    ) -> AudioStreamId {
-        // TODO
-        0
+    fn start_delay_for_schedule(&self, schedule_time: SchedulePlay) -> usize {
+        let segment_length = match schedule_time {
+            SchedulePlay::Immediately => 0.0,
+            SchedulePlay::OnNextMeasure {
+                beats_per_minute,
+                beats_per_measure,
+            } => audio_measure_length_in_seconds(beats_per_measure, beats_per_minute),
+            SchedulePlay::OnNextBeat { beats_per_minute } => {
+                audio_beat_length_in_seconds(beats_per_minute)
+            }
+            SchedulePlay::OnNextHalfBeat { beats_per_minute } => {
+                audio_beat_length_in_seconds(beats_per_minute) / 2.0
+            }
+            SchedulePlay::OnNextQuarterBeat { beats_per_minute } => {
+                audio_beat_length_in_seconds(beats_per_minute) / 4.0
+            }
+        };
+
+        let current_time =
+            audio_frames_to_seconds(self.next_frame_index_to_output, self.audio_playback_rate_hz);
+        let start_time = if segment_length == 0.0 {
+            current_time
+        } else {
+            audio_seconds_to_frames(
+                f64::ceil(current_time / segment_length) * segment_length,
+                self.audio_playback_rate_hz,
+            )
+        };
+
+        let start_frame =
+            audio_seconds_to_frames(start_time, self.audio_playback_rate_hz) as AudioFrameIndex;
+
+        (start_frame - self.next_frame_index_to_output).max(0) as usize
     }
 
     #[must_use]
@@ -674,23 +739,35 @@ impl Audiostate {
         &mut self,
         recording_name: &str,
         schedule_time: SchedulePlay,
-        is_repeating: bool,
+        play_looped: bool,
         volume: f32,
         pan: f32,
         playback_speed: f32,
     ) -> AudioStreamId {
         let id = self.get_next_stream_id();
-        if recording_name == "sine" {
-            let stream = Box::new(AudioStreamStereo::new(
+        let start_delay = self.start_delay_for_schedule(schedule_time);
+        let stream = if recording_name == "sine" {
+            Box::new(AudioStreamStereo::new(
                 Box::new(AudioSourceSine::new(440.0, 44100)),
-                0,
+                start_delay,
                 1.0,
                 1.0,
                 0.0,
-            ));
-            self.streams.insert(id, stream);
-        }
-        // TODO
+            ))
+        } else {
+            let buffer = self
+                .audio_recordings_mono
+                .get(recording_name)
+                .expect(&format!("Recording '{}' not found", recording_name));
+            Box::new(AudioStreamStereo::new(
+                Box::new(AudioBufferSourceMono::new(buffer.clone(), play_looped)),
+                start_delay,
+                1.0,
+                1.0,
+                0.0,
+            ))
+        };
+        self.streams.insert(id, stream);
         id
     }
     pub fn play_oneshot(
@@ -701,7 +778,7 @@ impl Audiostate {
         pan: f32,
         playback_speed: f32,
     ) {
-        let _ = self.play(
+        let id = self.play(
             recording_name,
             play_time,
             false,
@@ -709,6 +786,7 @@ impl Audiostate {
             pan,
             playback_speed,
         );
+        self.stream_forget(id);
     }
 }
 
@@ -996,7 +1074,7 @@ pub struct Interval {
     pub end: i64,
 }
 
-use std::{convert::TryFrom, sync::Arc};
+use std::{convert::TryFrom, rc::Rc, sync::Arc};
 
 // Conversion
 impl Interval {

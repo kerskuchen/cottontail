@@ -17,8 +17,7 @@ use std::{collections::VecDeque, time::Duration};
 // Configuration
 
 const ENABLE_PANIC_MESSAGES: bool = false;
-const ENABLE_FRAMETIME_LOGGING: bool = false;
-const ENABLE_AUDIO_LOGGING: bool = false;
+const ENABLE_FRAMETIME_LOGGING: bool = true;
 
 #[derive(Serialize, Deserialize)]
 struct LauncherConfig {
@@ -276,7 +275,6 @@ impl AudioOutputSDL {
     fn render_frames(
         &mut self,
         audio: &mut Audiostate,
-        assets: &GameAssets,
         input: &GameInput,
         minimum_seconds_to_buffer: f32,
     ) {
@@ -284,7 +282,7 @@ impl AudioOutputSDL {
             (self.audio_playback_rate_hz as f32 * minimum_seconds_to_buffer) as usize;
         let mut audio_frames_to_queue = self.prepare_empty_render_buffer(minimum_frames_in_queue);
         if audio_frames_to_queue.len() > 0 {
-            audio.render_audio(&mut audio_frames_to_queue, assets.get_audio_recordings());
+            audio.render_audio(&mut audio_frames_to_queue);
             if input.has_focus {
                 // NOTE: When not submitting new frames the callback will automatically fade out
                 self.submit_rendered_frames();
@@ -999,11 +997,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             .audio
             .as_mut()
             .expect("No audiostate initialized");
-        let assets = game_memory
-            .assets
-            .as_ref()
-            .expect("No audio assets initialized");
-        audio_output.render_frames(audio, assets, &input, 2.0 * target_seconds_per_frame);
+        audio_output.render_frames(audio, &input, 2.0 * target_seconds_per_frame);
 
         let post_sound_time = std::time::Instant::now();
 

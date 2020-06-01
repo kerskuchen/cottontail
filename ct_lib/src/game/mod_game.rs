@@ -148,8 +148,8 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
         }
 
         let draw = self.draw.as_mut().unwrap();
-        let audio = self.audio.as_mut().unwrap();
         let assets = self.assets.as_mut().unwrap();
+        let audio = self.audio.as_mut().unwrap();
 
         draw.begin_frame();
 
@@ -188,7 +188,13 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
                     let _audiostate_setup_timer =
                         TimerScoped::new_scoped("Audiostate setup time", true);
 
-                    assets.load_audio();
+                    let audio_recordings_mono =
+                        game::load_audiorecordings_mono(&assets.assets_folder);
+                    let audio_recordings_stereo =
+                        game::load_audiorecordings_stereo(&assets.assets_folder);
+
+                    audio.add_audio_recordings_mono(audio_recordings_mono);
+                    audio.add_audio_recordings_stereo(audio_recordings_stereo);
                 }
 
                 {
@@ -2355,7 +2361,7 @@ impl Scene for SceneDebug {
         })();
 
         let measure_completion_ratio = audio
-            .stream_completion_ratio(self.music_stream_id, assets.get_audio_recordings())
+            .stream_completion_ratio(self.music_stream_id)
             .unwrap_or(0.0);
         let beat_completion_ratio = (4.0 * measure_completion_ratio) % 1.0;
 
