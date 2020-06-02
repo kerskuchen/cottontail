@@ -3,9 +3,7 @@ mod sdl_input;
 mod sdl_window;
 
 use ct_lib::audio::*;
-use ct_lib::game::{
-    GameAssets, GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand,
-};
+use ct_lib::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand};
 use ct_lib::system;
 
 use ct_lib::log;

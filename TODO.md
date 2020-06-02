@@ -1,34 +1,32 @@
 # DONE:
 
-* new queue based audio platform layer with fade-in/fade-out (needs further work) 
-* audiostate can now work in terms of a continous stream without the need to re-create samples 
-  from befoe
+* Encapsulate audio rendering, callback and atomics into AudioOutput struct. the render function
+  of AudioOutput should take a &Audiostate
+* Restore Audiostate to its previous functionalty
+* implement (linear) resampler stream adapter and/or mixixing with resampling
+* DungeonTracks
+  - Add movement sound
+* Make audio fader in platformlayer commit fully to fading in or out completely so i.e. we don't 
+  fade out halfway after loosing frames and fade from 0.5 back to 1.0 instead from 0.0 to 1.0
 
 # CURRENT
 
 * Simplify Platform Audio
-  - Encapsulate audio rendering, callback and atomics into AudioOutput struct. the render function
-    of AudioOutput should take a &Audiostate
-* Restore Audiostate to its previous functionalty
-* implement (linear) resampler stream adapter and/or mixixing with resampling
+  - Get rid of dynamically allocated buffers
 
 * DungeonTracks
   -
 
 # NEXT:
 
+* Add spatial audio
 * Add new method to GameMemory to simplify update method
 * Maybe we can make drawstate globally available for debug drawing so that we don't need it to 
   pass everywhere. this is of course highly unsafe but ok for debug
-* Make audio fader in platformlayer commit fully to fading in or out completely so i.e. we don't 
-  fade out halfway after loosing frames and fade from 0.5 back to 1.0 instead from 0.0 to 1.0
   
 
-* DungeonTracks
-  - Add movement sound
 
 * Repeaty:
-  - Check if we can automatically log on exit with fern?
   - When pressing start button and text input is empty (but previously valid) refill text input
     
 * Pixie Stitch: 

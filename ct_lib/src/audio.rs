@@ -424,7 +424,7 @@ impl AudioStream for AudioStreamStereo {
         unimplemented!()
     }
     fn process_stereo(&mut self, output_frames: &mut [AudioFrame], output_sample_rate_hz: usize) {
-        // TODO: For this we need the Chunks
+        let TODO = "For this we need the Chunks";
         let mut input_buffer_volume = vec![0.0; output_frames.len()];
         self.stream
             .process_mono(&mut input_buffer_volume, output_sample_rate_hz);
@@ -464,6 +464,7 @@ pub struct Audiostate {
 
     global_playback_speed: f32,
 
+    // TODO
     listener_pos: Vec2,
     listener_vel: Vec2,
 
