@@ -30,6 +30,10 @@ impl AudioFrame {
     }
 }
 
+pub const AUDIO_CHUNKSIZE_IN_FRAMES: usize = 256;
+pub type AudioChunkMono = [AudioSample; AUDIO_CHUNKSIZE_IN_FRAMES];
+pub type AudioChunkStereo = [AudioFrame; AUDIO_CHUNKSIZE_IN_FRAMES];
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Timing
 
@@ -98,10 +102,17 @@ impl VolumeAdapter {
     fn set_volume(&mut self, volume: f32) {
         self.fader.target = volume;
     }
-    fn process(&mut self, input_samples: &[AudioSample], output_samples: &mut [AudioSample]) {
+    fn process_mono(&mut self, input_samples: &[AudioSample], output_samples: &mut [AudioSample]) {
         for (in_sample, out_sample) in input_samples.iter().zip(output_samples.iter_mut()) {
             let volume = self.fader.next_value();
             *out_sample = volume * in_sample;
+        }
+    }
+    fn process_stereo(&mut self, input_frames: &[AudioFrame], output_frames: &mut [AudioFrame]) {
+        for (in_frame, out_frame) in input_frames.iter().zip(output_frames.iter_mut()) {
+            let volume = self.fader.next_value();
+            out_frame.left = volume * in_frame.left;
+            out_frame.right = volume * in_frame.right;
         }
     }
 }
@@ -292,8 +303,11 @@ impl Iterator for AudioSourceSine {
 // Audiostreams
 
 trait AudioStream {
-    fn process_mono(&mut self, output_samples: &mut [AudioSample], output_sample_rate_hz: usize);
-    fn process_stereo(&mut self, output_frames: &mut [AudioFrame], output_sample_rate_hz: usize);
+    fn process_output_mono(&mut self, output_sample_rate_hz: usize);
+    fn process_output_stereo(&mut self, output_sample_rate_hz: usize);
+
+    fn get_output_chunk_mono(&self) -> &AudioChunkMono;
+    fn get_output_chunk_stereo(&self) -> &AudioChunkStereo;
 
     fn has_finished(&self) -> bool;
     fn is_looping(&self) -> bool;
@@ -311,6 +325,8 @@ struct AudioStreamScheduledMono {
     /// Must be > 0
     pub playback_speed: f32,
     pub has_finished: bool,
+
+    output_buffer: [AudioSample; AUDIO_CHUNKSIZE_IN_FRAMES],
 }
 impl AudioStreamScheduledMono {
     fn new(
@@ -324,19 +340,15 @@ impl AudioStreamScheduledMono {
             frames_left_till_start: delay_framecount,
             playback_speed,
             has_finished: false,
+
+            output_buffer: [0.0; AUDIO_CHUNKSIZE_IN_FRAMES],
         }
     }
 }
 impl AudioStream for AudioStreamScheduledMono {
-    fn process_stereo(
-        &mut self,
-        _output_samples: &mut [AudioFrame],
-        _output_sample_rate_hz: usize,
-    ) {
-        unimplemented!()
-    }
+    fn process_output_mono(&mut self, output_sample_rate_hz: usize) {
+        let output_samples = &mut self.output_buffer;
 
-    fn process_mono(&mut self, output_samples: &mut [AudioSample], output_sample_rate_hz: usize) {
         // Fill up with silence if our stream has not started yet
         let output_samples = if self.frames_left_till_start != 0 {
             let silence_framecount = self.frames_left_till_start.min(output_samples.len());
@@ -372,6 +384,15 @@ impl AudioStream for AudioStreamScheduledMono {
             }
         }
     }
+    fn process_output_stereo(&mut self, output_sample_rate_hz: usize) {
+        unimplemented!()
+    }
+    fn get_output_chunk_mono(&self) -> &AudioChunkMono {
+        &self.output_buffer
+    }
+    fn get_output_chunk_stereo(&self) -> &AudioChunkStereo {
+        unimplemented!()
+    }
 
     fn has_finished(&self) -> bool {
         self.has_finished
@@ -402,6 +423,9 @@ struct AudioStreamStereo {
     pub stream: AudioStreamScheduledMono,
     pub volume: VolumeAdapter,
     pub pan: MonoToStereoAdapter,
+
+    output_buffer_mono: [AudioSample; AUDIO_CHUNKSIZE_IN_FRAMES],
+    output_buffer_stereo: [AudioFrame; AUDIO_CHUNKSIZE_IN_FRAMES],
 }
 impl AudioStreamStereo {
     fn new(
@@ -416,22 +440,29 @@ impl AudioStreamStereo {
             stream,
             volume: VolumeAdapter::new(volume),
             pan: MonoToStereoAdapter::new(pan),
+            output_buffer_mono: [0.0; AUDIO_CHUNKSIZE_IN_FRAMES],
+            output_buffer_stereo: [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES],
         }
     }
 }
 impl AudioStream for AudioStreamStereo {
-    fn process_mono(&mut self, _output_samples: &mut [AudioSample], _output_sample_rate_hz: usize) {
+    fn process_output_mono(&mut self, output_sample_rate_hz: usize) {
         unimplemented!()
     }
-    fn process_stereo(&mut self, output_frames: &mut [AudioFrame], output_sample_rate_hz: usize) {
-        let TODO = "For this we need the Chunks";
-        let mut input_buffer_volume = vec![0.0; output_frames.len()];
-        self.stream
-            .process_mono(&mut input_buffer_volume, output_sample_rate_hz);
-        let mut input_buffer_pan = vec![0.0; output_frames.len()];
-        self.volume
-            .process(&input_buffer_volume, &mut input_buffer_pan);
-        self.pan.process(&input_buffer_pan, output_frames);
+    fn process_output_stereo(&mut self, output_sample_rate_hz: usize) {
+        self.stream.process_output_mono(output_sample_rate_hz);
+        self.volume.process_mono(
+            self.stream.get_output_chunk_mono(),
+            &mut self.output_buffer_mono,
+        );
+        self.pan
+            .process(&self.output_buffer_mono, &mut self.output_buffer_stereo);
+    }
+    fn get_output_chunk_mono(&self) -> &AudioChunkMono {
+        unimplemented!()
+    }
+    fn get_output_chunk_stereo(&self) -> &AudioChunkStereo {
+        &self.output_buffer_stereo
     }
 
     fn has_finished(&self) -> bool {
@@ -476,6 +507,8 @@ pub struct Audiostate {
 
     audio_recordings_mono: HashMap<String, Rc<AudioBufferMono>>,
     audio_recordings_stereo: HashMap<String, Rc<AudioBufferStereo>>,
+
+    audio_output_chunk: AudioChunkStereo,
 }
 impl Clone for Audiostate {
     fn clone(&self) -> Self {
@@ -499,6 +532,8 @@ impl Audiostate {
 
             audio_recordings_mono: HashMap::new(),
             audio_recordings_stereo: HashMap::new(),
+
+            audio_output_chunk: [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES],
         }
     }
 
@@ -564,7 +599,8 @@ impl Audiostate {
         self.global_playback_speed = global_playback_speed;
     }
 
-    pub fn render_audio(&mut self, out_frames: &mut [AudioFrame]) {
+    /// It is assumed that `out_chunk` is filled with silence
+    pub fn render_audio_chunk(&mut self, out_chunk: &mut AudioChunkStereo) {
         // Remove streams that have finished
         let mut streams_removed = vec![];
         for &stream_id in &self.streams_to_delete_after_finish {
@@ -578,18 +614,17 @@ impl Audiostate {
         }
 
         // Render samples
-        for out_frame in out_frames.iter_mut() {
-            *out_frame = AudioFrame::silence();
-        }
-        let mut temp_out = vec![AudioFrame::silence(); out_frames.len()];
         for stream in self.streams.values_mut() {
-            stream.process_stereo(&mut temp_out, self.audio_playback_rate_hz);
-            for (out_frame, temp_frame) in out_frames.iter_mut().zip(temp_out.iter()) {
-                out_frame.left += temp_frame.left;
-                out_frame.right += temp_frame.right;
+            stream.process_output_stereo(self.audio_playback_rate_hz);
+            for (out_frame, rendered_chunk) in out_chunk
+                .iter_mut()
+                .zip(stream.get_output_chunk_stereo().iter())
+            {
+                out_frame.left += rendered_chunk.left;
+                out_frame.right += rendered_chunk.right;
             }
         }
-        self.next_frame_index_to_output += out_frames.len() as AudioFrameIndex;
+        self.next_frame_index_to_output += AUDIO_CHUNKSIZE_IN_FRAMES as AudioFrameIndex;
     }
 
     pub fn set_listener_pos(&mut self, new_listener_pos: Vec2) {

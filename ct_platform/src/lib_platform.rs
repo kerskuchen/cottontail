@@ -181,7 +181,6 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
 pub struct AudioOutputSDL {
     pub audio_playback_rate_hz: usize,
     samples_queue: ringbuf::Producer<(i16, i16)>,
-    render_buffer: Vec<AudioFrame>,
     _sdl_audio_device: sdl2::audio::AudioDevice<SDLAudioCallback>,
 }
 
@@ -235,32 +234,11 @@ impl AudioOutputSDL {
             _sdl_audio_device: audio_device,
             audio_playback_rate_hz,
             samples_queue: audio_ringbuffer_producer,
-            render_buffer: Vec::with_capacity(4 * audio_playback_rate_hz),
         }
     }
 
-    pub fn prepare_empty_render_buffer(
-        &mut self,
-        minimum_framecount_buffered: usize,
-    ) -> &mut [AudioFrame] {
-        let framecount_to_render = {
-            let framecount_queued = self.samples_queue.len() / 2;
-            if framecount_queued < minimum_framecount_buffered {
-                minimum_framecount_buffered - framecount_queued
-            } else {
-                0
-            }
-        };
-        self.render_buffer.reserve(framecount_to_render);
-        self.render_buffer.clear();
-        for _ in 0..framecount_to_render {
-            self.render_buffer.push(AudioFrame::silence());
-        }
-        &mut self.render_buffer[..framecount_to_render]
-    }
-
-    fn submit_rendered_frames(&mut self) {
-        for frame in self.render_buffer.drain(..) {
+    fn submit_rendered_chunk(&mut self, chunk: &AudioChunkStereo) {
+        for frame in chunk.iter() {
             if let Err(_) = self.samples_queue.push((
                 (frame.left * std::i16::MAX as f32) as i16,
                 (frame.right * std::i16::MAX as f32) as i16,
@@ -276,14 +254,30 @@ impl AudioOutputSDL {
         input: &GameInput,
         minimum_seconds_to_buffer: f32,
     ) {
-        let minimum_frames_in_queue =
-            (self.audio_playback_rate_hz as f32 * minimum_seconds_to_buffer) as usize;
-        let mut audio_frames_to_queue = self.prepare_empty_render_buffer(minimum_frames_in_queue);
-        if audio_frames_to_queue.len() > 0 {
-            audio.render_audio(&mut audio_frames_to_queue);
+        let chunkcount_to_render = {
+            let minimum_buffer_size =
+                (self.audio_playback_rate_hz as f32 * minimum_seconds_to_buffer) as usize;
+            let framecount_to_render = {
+                let framecount_queued = self.samples_queue.len() / 2;
+                if framecount_queued < minimum_buffer_size {
+                    minimum_buffer_size - framecount_queued
+                } else {
+                    0
+                }
+            };
+            (framecount_to_render as f32 / AUDIO_CHUNKSIZE_IN_FRAMES as f32).ceil() as usize
+        };
+
+        for _ in 0..chunkcount_to_render {
+            let mut out_chunk = [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES];
+            audio.render_audio_chunk(&mut out_chunk);
             if input.has_focus {
-                // NOTE: When not submitting new frames the callback will automatically fade out
-                self.submit_rendered_frames();
+                // NOTE: We want to avoid submitting frames because we cannot guarentee that it will
+                //       sound ok when our window is not in focus. We still want to let the
+                //       Audiostate render chunks though so that it can keep track of time.
+                //       When not submitting new frames the callback will automatically fade out
+                //       to avoid cracking
+                self.submit_rendered_chunk(&out_chunk);
             }
         }
     }
