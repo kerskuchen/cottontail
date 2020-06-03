@@ -173,7 +173,7 @@ pub fn load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, AudioBu
     audiorecordings
 }
 
-pub fn load_audiorecordings_stereo(assets_folder: &str) -> HashMap<String, AudioBufferStereo> {
-    // TODO
+pub fn load_audiorecordings_stereo(_assets_folder: &str) -> HashMap<String, AudioBufferStereo> {
+    let TODO = true;
     HashMap::new()
 }

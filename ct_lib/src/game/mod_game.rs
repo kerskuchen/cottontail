@@ -2088,6 +2088,8 @@ pub struct SceneDebug {
     hp_previous: f32,
 
     circle_radius: f32,
+
+    current_measure: usize,
 }
 
 impl SceneDebug {
@@ -2134,6 +2136,8 @@ impl SceneDebug {
             hp_previous: 1.0,
 
             circle_radius: 50.0,
+
+            current_measure: 0,
         }
     }
 }
@@ -2310,35 +2314,31 @@ impl Scene for SceneDebug {
         draw.draw_rect(rect2, true, DEPTH_DRAW, Color::white(), ADDITIVITY_NONE);
 
         // Drummydrumms
-        unsafe {
-            let measure_time = MusicalInterval::Measure {
-                beats_per_minute: 120,
-                beats_per_measure: 4,
-            }
-            .length_seconds();
-            let quarter_beat_time = MusicalInterval::QuarterBeat {
-                beats_per_minute: 120,
-            }
-            .length_seconds();
-
-            static mut next_measure: usize = 1;
-            if 1 + (audio.current_time_seconds() / measure_time) as usize == next_measure {
-                next_measure += 1;
-                for index in 0..16 {
-                    audio.play_oneshot(
-                        "drum",
-                        music_get_next_point_in_time(
-                            audio.current_time_seconds(),
-                            MusicalInterval::Measure {
-                                beats_per_minute: 120,
-                                beats_per_measure: 4,
-                            },
-                        ) + index as f64 * quarter_beat_time,
-                        0.3,
-                        1.0,
-                        0.0,
-                    );
-                }
+        let measure_time = MusicalInterval::Measure {
+            beats_per_minute: 120,
+            beats_per_measure: 4,
+        }
+        .length_seconds();
+        let quarter_beat_time = MusicalInterval::QuarterBeat {
+            beats_per_minute: 120,
+        }
+        .length_seconds();
+        if self.current_measure == (audio.current_time_seconds() / measure_time) as usize {
+            self.current_measure += 1;
+            for index in 0..16 {
+                audio.play_oneshot(
+                    "drum",
+                    music_get_next_point_in_time(
+                        audio.current_time_seconds(),
+                        MusicalInterval::Measure {
+                            beats_per_minute: 120,
+                            beats_per_measure: 4,
+                        },
+                    ) + index as f64 * quarter_beat_time,
+                    0.3,
+                    1.0,
+                    0.0,
+                );
             }
         }
 

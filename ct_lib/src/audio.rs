@@ -324,9 +324,6 @@ trait AudioStream {
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
-fn downcast_stream<T: AudioStream + 'static>(stream: &dyn AudioStream) -> Option<&T> {
-    stream.as_any().downcast_ref()
-}
 fn downcast_stream_mut<T: AudioStream + 'static>(stream: &mut dyn AudioStream) -> Option<&mut T> {
     stream.as_any_mut().downcast_mut()
 }
@@ -795,13 +792,6 @@ impl Audiostate {
             .get_mut(&stream_id)
             .expect(&format!("No audio stream found for id {}", stream_id))
     }
-    fn get_stream_spatial(&self, stream_id: AudioStreamId) -> &AudioStreamSpatial {
-        let stream = self.get_stream(stream_id);
-        downcast_stream::<AudioStreamSpatial>(&**stream).expect(&format!(
-            "Audio stream with id {} is not a spatial audiostream",
-            stream_id
-        ))
-    }
     fn get_stream_spatial_mut(&mut self, stream_id: AudioStreamId) -> &mut AudioStreamSpatial {
         let stream = self.get_stream_mut(stream_id);
         downcast_stream_mut::<AudioStreamSpatial>(&mut **stream).expect(&format!(
@@ -872,10 +862,6 @@ impl Audiostate {
 
     pub fn set_listener_vel(&mut self, listener_vel: Vec2) {
         self.ouput_render_params.listener_vel = listener_vel;
-    }
-
-    pub fn stereo_stream_set_pan(&mut self, stream_id: AudioStreamId, new_pan: f32) {
-        // TODO
     }
 
     pub fn spatial_stream_set_pos(&mut self, stream_id: AudioStreamId, pos: Vec2) {
