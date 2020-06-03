@@ -1,25 +1,18 @@
 # DONE:
 
-* Encapsulate audio rendering, callback and atomics into AudioOutput struct. the render function
-  of AudioOutput should take a &Audiostate
-* Restore Audiostate to its previous functionalty
-* implement (linear) resampler stream adapter and/or mixixing with resampling
-* DungeonTracks
-  - Add movement sound
-* Make audio fader in platformlayer commit fully to fading in or out completely so i.e. we don't 
-  fade out halfway after loosing frames and fade from 0.5 back to 1.0 instead from 0.0 to 1.0
+* Get rid of dynamically allocated buffers
+* Simplify Platform Audio
 
 # CURRENT
 
-* Simplify Platform Audio
-  - Get rid of dynamically allocated buffers
+
+* Add spatial audio
 
 * DungeonTracks
-  -
+  - Use spatial audio
 
 # NEXT:
 
-* Add spatial audio
 * Add new method to GameMemory to simplify update method
 * Maybe we can make drawstate globally available for debug drawing so that we don't need it to 
   pass everywhere. this is of course highly unsafe but ok for debug
@@ -38,6 +31,7 @@
 * Fix Vec2 to work with flipped_y only and remove special suffixes
 * Easy debug-printing text API that draws in screenspace (not canvas-space)
   - We need to add a debug layer to the drawstate with its own drawqueue
+* Ability to draw debug graphs to i.e. try out attenuation for audio distance
 
 * Find out why gamepad shoulder trigger axes does not work. directly can access the state 
   with `Gamepad::axis_or_btn_name()` or iterating axis does not let us find any state. We know that 

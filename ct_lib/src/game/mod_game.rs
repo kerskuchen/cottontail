@@ -144,7 +144,11 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
             self.draw = Some(draw);
         }
         if self.audio.is_none() {
-            self.audio = Some(Audiostate::new(input.audio_playback_rate_hz));
+            let window_config = GameStateType::get_window_config();
+            self.audio = Some(Audiostate::new(
+                input.audio_playback_rate_hz,
+                window_config.canvas_width as f32 / 2.0,
+            ));
         }
 
         let draw = self.draw.as_mut().unwrap();
@@ -401,9 +405,9 @@ impl Camera {
     #[inline]
     pub fn center(&self) -> Worldpoint {
         if self.is_centered {
-            self.pos + 0.5 * self.dim_frustum
-        } else {
             self.pos
+        } else {
+            self.pos + 0.5 * self.dim_frustum
         }
     }
 
@@ -2160,8 +2164,8 @@ impl Scene for SceneDebug {
                 ),
                 true,
                 0.1,
-                0.0,
                 1.0,
+                0.0,
             );
         }
 
@@ -2331,8 +2335,8 @@ impl Scene for SceneDebug {
                             },
                         ) + index as f64 * quarter_beat_time,
                         0.3,
-                        0.0,
                         1.0,
+                        0.0,
                     );
                 }
             }
@@ -2350,8 +2354,8 @@ impl Scene for SceneDebug {
                     },
                 ),
                 0.7,
-                0.0,
                 1.0,
+                0.0,
             );
 
             self.hp_previous = self.hp;

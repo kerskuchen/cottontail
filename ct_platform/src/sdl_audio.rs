@@ -147,7 +147,6 @@ impl AudioOutput {
                 (self.audio_playback_rate_hz as f32 * minimum_seconds_to_buffer) as usize;
             let framecount_to_render = {
                 let framecount_queued = self.samples_queue.len() / 2;
-                dbg!(framecount_queued);
                 if framecount_queued < minimum_buffer_size {
                     minimum_buffer_size - framecount_queued
                 } else {
