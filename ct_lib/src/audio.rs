@@ -566,9 +566,10 @@ fn spatial_playback_speed_factor(
     source_vel: Vec2,
     listener_pos: Vec2,
     listener_vel: Vec2,
+    doppler_abs_vel_max: f32,
 ) -> f32 {
-    // This uses the general doppler effect forumla
-    // https://en.wikipedia.org/wiki/Doppler_effect#General
+    // This uses the stationary observer doppler effect forumla
+    // https://en.wikipedia.org/wiki/Doppler_effect#Consequences
     let dir_to_source = {
         let listener_to_source = source_pos - listener_pos;
         let listener_to_source_distance = listener_to_source.magnitude();
@@ -578,9 +579,10 @@ fn spatial_playback_speed_factor(
             listener_to_source / listener_to_source_distance
         }
     };
-    let vel_relative_listener = Vec2::dot(listener_vel, dir_to_source);
-    let vel_relative_source = Vec2::dot(source_vel, dir_to_source);
-    (5000.0 + vel_relative_listener) / (5000.0 + vel_relative_source)
+    let vel_relative = source_vel - listener_vel;
+    let vel_relative_source = Vec2::dot(vel_relative, dir_to_source);
+    let vel_relative_source_ratio = clampf(vel_relative_source / doppler_abs_vel_max, -0.1, 0.1);
+    1.0 / (1.0 + vel_relative_source_ratio)
 }
 
 fn spatial_volume_factor(
@@ -600,6 +602,8 @@ struct AudioStreamSpatial {
     pub volume: f32,
     pub pos: Vec2,
     pub vel: Vec2,
+    pub doppler_abs_vel_max: f32,
+
     /// The higher the exponent, the faster the falloff
     /// ...
     /// 0.5 - squareroot
@@ -621,6 +625,7 @@ impl AudioStreamSpatial {
         initial_pan: f32,
         pos: Vec2,
         vel: Vec2,
+        doppler_abs_vel_max: f32,
         falloff_type: AudioFalloffType,
         falloff_distance_start: f32,
         falloff_distance_end: f32,
@@ -637,6 +642,7 @@ impl AudioStreamSpatial {
             volume,
             pos,
             vel,
+            doppler_abs_vel_max,
             falloff_type,
             falloff_distance_start,
             falloff_distance_end,
@@ -653,6 +659,7 @@ impl AudioStream for AudioStreamSpatial {
             self.vel,
             output_params.listener_pos,
             output_params.listener_vel,
+            self.doppler_abs_vel_max,
         );
         let volume_factor = spatial_volume_factor(
             self.pos,
@@ -966,6 +973,7 @@ impl Audiostate {
         playback_speed: f32,
         pos: Vec2,
         vel: Vec2,
+        doppler_abs_vel_max: f32,
         falloff_type: AudioFalloffType,
         falloff_distance_start: f32,
         falloff_distance_end: f32,
@@ -990,6 +998,7 @@ impl Audiostate {
                 initial_pan,
                 pos,
                 vel,
+                doppler_abs_vel_max,
                 falloff_type,
                 falloff_distance_start,
                 falloff_distance_end,
@@ -1008,6 +1017,7 @@ impl Audiostate {
         playback_speed: f32,
         pos: Vec2,
         vel: Vec2,
+        doppler_abs_vel_max: f32,
         falloff_type: AudioFalloffType,
         falloff_distance_start: f32,
         falloff_distance_end: f32,
@@ -1020,6 +1030,7 @@ impl Audiostate {
             playback_speed,
             pos,
             vel,
+            doppler_abs_vel_max,
             falloff_type,
             falloff_distance_start,
             falloff_distance_end,
