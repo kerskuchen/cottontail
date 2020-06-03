@@ -148,6 +148,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
             self.audio = Some(Audiostate::new(
                 input.audio_playback_rate_hz,
                 window_config.canvas_width as f32 / 2.0,
+                10_000.0,
             ));
         }
 
