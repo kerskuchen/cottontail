@@ -293,7 +293,7 @@ impl Iterator for AudioSourceSine {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Audiostreams
+// Audiostreams Basic
 
 #[derive(Clone, Copy)]
 struct AudioRenderParams {
@@ -422,7 +422,7 @@ impl AudioStream for AudioStreamScheduledMono {
         }
     }
 
-    fn process_output_stereo(&mut self, output_params: AudioRenderParams) {
+    fn process_output_stereo(&mut self, _output_params: AudioRenderParams) {
         unimplemented!()
     }
     fn set_volume(&mut self, _volume: f32) {
@@ -467,7 +467,7 @@ impl AudioStreamStereo {
     }
 }
 impl AudioStream for AudioStreamStereo {
-    fn process_output_mono(&mut self, ouput_params: AudioRenderParams) {
+    fn process_output_mono(&mut self, _ouput_params: AudioRenderParams) {
         unimplemented!()
     }
     fn process_output_stereo(&mut self, output_params: AudioRenderParams) {
@@ -508,6 +508,90 @@ impl AudioStream for AudioStreamStereo {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Audiostream Spatial
+
+#[derive(Copy, Clone)]
+pub enum AudioFalloffType {
+    /// For large non-focused sounds
+    Linear,
+    /// For focused sounds
+    Natural,
+    /// Like `Natural` but can still be heard outside the falloff distance
+    NaturalUnbounded { minimum_volume: f32 },
+}
+impl AudioFalloffType {
+    fn value_for_distance(
+        &self,
+        distance: f32,
+        falloff_distance_start: f32,
+        falloff_distance_end: f32,
+    ) -> f32 {
+        let minimum_volume = if let AudioFalloffType::NaturalUnbounded { minimum_volume } = self {
+            *minimum_volume
+        } else {
+            0.0
+        };
+
+        if distance < falloff_distance_start {
+            1.0
+        } else if distance > falloff_distance_end {
+            minimum_volume
+        } else {
+            let distance_ratio = (distance - falloff_distance_start)
+                / (falloff_distance_end - falloff_distance_start);
+            match self {
+                AudioFalloffType::Linear => distance_ratio,
+                AudioFalloffType::Natural => f32::exp(-6.0 * distance_ratio),
+                AudioFalloffType::NaturalUnbounded { minimum_volume } => {
+                    minimum_volume + (1.0 - minimum_volume) * f32::exp(-6.0 * distance_ratio)
+                }
+            }
+        }
+    }
+}
+
+fn spatial_pan(source_pos: Vec2, listener_pos: Vec2, distance_for_max_pan: f32) -> f32 {
+    clampf(
+        (source_pos.x - listener_pos.x) / distance_for_max_pan,
+        -1.0,
+        1.0,
+    )
+}
+
+fn spatial_playback_speed_factor(
+    source_pos: Vec2,
+    source_vel: Vec2,
+    listener_pos: Vec2,
+    listener_vel: Vec2,
+) -> f32 {
+    // This uses the general doppler effect forumla
+    // https://en.wikipedia.org/wiki/Doppler_effect#General
+    let dir_to_source = {
+        let listener_to_source = source_pos - listener_pos;
+        let listener_to_source_distance = listener_to_source.magnitude();
+        if is_effectively_zero(listener_to_source_distance) {
+            Vec2::unit_x()
+        } else {
+            listener_to_source / listener_to_source_distance
+        }
+    };
+    let vel_relative_listener = Vec2::dot(listener_vel, dir_to_source);
+    let vel_relative_source = Vec2::dot(source_vel, dir_to_source);
+    (5000.0 + vel_relative_listener) / (5000.0 + vel_relative_source)
+}
+
+fn spatial_volume_factor(
+    source_pos: Vec2,
+    listener_pos: Vec2,
+    falloff_type: AudioFalloffType,
+    falloff_distance_start: f32,
+    falloff_distance_end: f32,
+) -> f32 {
+    let distance = Vec2::distance(source_pos, listener_pos);
+    falloff_type.value_for_distance(distance, falloff_distance_start, falloff_distance_end)
 }
 
 struct AudioStreamSpatial {
@@ -558,72 +642,22 @@ impl AudioStreamSpatial {
             falloff_distance_end,
         }
     }
-
-    fn as_any_mut(&mut self) -> &mut std::any::Any {
-        self
-    }
-    fn as_any(&self) -> &std::any::Any {
-        self
-    }
 }
-
-pub enum AudioFalloffType {
-    /// For large non-focused sounds
-    Linear,
-    /// For focused sounds
-    Natural,
-    /// Like `Natural` but can still be heard outside the falloff distance
-    NaturalUnbounded { minimum_volume: f32 },
-}
-impl AudioFalloffType {
-    fn value_for_distance(
-        &self,
-        distance: f32,
-        falloff_distance_start: f32,
-        falloff_distance_end: f32,
-    ) -> f32 {
-        let minimum_volume = if let AudioFalloffType::NaturalUnbounded { minimum_volume } = self {
-            *minimum_volume
-        } else {
-            0.0
-        };
-
-        if distance < falloff_distance_start {
-            1.0
-        } else if distance > falloff_distance_end {
-            minimum_volume
-        } else {
-            let distance_ratio = (distance - falloff_distance_start)
-                / (falloff_distance_end - falloff_distance_start);
-            match self {
-                AudioFalloffType::Linear => distance_ratio,
-                AudioFalloffType::Natural => f32::exp(-6.0 * distance_ratio),
-                AudioFalloffType::NaturalUnbounded { minimum_volume } => {
-                    minimum_volume + (1.0 - minimum_volume) * f32::exp(-6.0 * distance_ratio)
-                }
-            }
-        }
-    }
-}
-
-fn spatial_pan(source_pos: Vec2, listener_pos: Vec2, distance_for_max_pan: f32) -> f32 {
-    clampf(
-        (source_pos.x - listener_pos.x) / distance_for_max_pan,
-        -1.0,
-        1.0,
-    )
-}
-
 impl AudioStream for AudioStreamSpatial {
-    fn process_output_mono(&mut self, output_params: AudioRenderParams) {
+    fn process_output_mono(&mut self, _output_params: AudioRenderParams) {
         unimplemented!()
     }
     fn process_output_stereo(&mut self, output_params: AudioRenderParams) {
-        let TODO_playback_speed_factor = 1.0;
-
-        let distance = Vec2::distance(self.pos, output_params.listener_pos);
-        let volume_factor = self.falloff_type.value_for_distance(
-            distance,
+        let playback_speed_factor = spatial_playback_speed_factor(
+            self.pos,
+            self.vel,
+            output_params.listener_pos,
+            output_params.listener_vel,
+        );
+        let volume_factor = spatial_volume_factor(
+            self.pos,
+            output_params.listener_pos,
+            self.falloff_type,
             self.falloff_distance_start,
             self.falloff_distance_end,
         );
@@ -635,9 +669,8 @@ impl AudioStream for AudioStreamSpatial {
 
         self.stream_stereo.set_volume(self.volume * volume_factor);
         self.stream_stereo.pan.set_pan(pan);
-        self.stream_stereo.set_playback_speed(
-            self.stream_stereo.stream.playback_speed * TODO_playback_speed_factor,
-        );
+        self.stream_stereo
+            .set_playback_speed(self.stream_stereo.stream.playback_speed * playback_speed_factor);
 
         self.stream_stereo.process_output_stereo(output_params);
     }
