@@ -7,6 +7,9 @@
 # CURRENT
 
 
+* DungeonTracks
+  - Try out nphysics
+
 
 
 # NEXT:
@@ -26,7 +29,7 @@
 * Easy debug-printing text API that draws in screenspace (not canvas-space)
   - We need to add a debug layer to the drawstate with its own drawqueue
 * Ability to draw debug graphs to i.e. try out attenuation for audio distance
-* Find out why gamepad shoulder trigger axes does not work. directly can access the state 
+* Find out why gamepad shoulder trigger axes does not work. Directly accessing the state 
   with `Gamepad::axis_or_btn_name()` or iterating axis does not let us find any state. We know that 
   it should work because it does so in the control panel
 

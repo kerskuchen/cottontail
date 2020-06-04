@@ -9,28 +9,40 @@ mkdir temp
 cargo run --package ct_assetbaker && cargo build --release --package launcher
 if %errorlevel% neq 0 goto :error
 
-REM Only run robocopy if resources folder is not empty or it will return an error
-for /F %%i in ('dir /b /a "resources\*"') do (
-    REM NOTE: robocopy has success error code 1
-    robocopy "resources" "shipping_windows\resources" /s /e > nul
-    if %errorlevel% neq 1 goto :error
-    goto :continue
+REM NOTE: robocopy has success error code 1
+robocopy "resources" "shipping_windows\resources" /s /e > nul
+if %errorlevel% neq 1 (
+    REM Repeat in non-silent mode so we get the error message
+    robocopy "resources" "shipping_windows\resources" /s /e 
+    goto :error
 )
-:continue
 
 REM Check if we have resource hacker in %path%
 where ResourceHacker.exe > nul 2> nul
 if %errorlevel% neq 0 goto :noicon
 
 ResourceHacker.exe -log temp/log1.txt -open resources_executable/versioninfo.rc -save temp/versioninfo.res -action compile 
-if %errorlevel% neq 0 goto :error
+if %errorlevel% neq 0 (
+    echo "Failed command: ResourceHacker.exe -log temp/log1.txt -open resources_executable/versioninfo.rc -save temp/versioninfo.res -action compile"
+    goto :error
+)
 ResourceHacker.exe -log temp/log2.txt -open target/release/launcher.exe -save temp/launcher_tmp1.exe -action add -res temp/versioninfo.res 
-if %errorlevel% neq 0 goto :error
+if %errorlevel% neq 0 (
+    echo "Failed command: ResourceHacker.exe -log temp/log2.txt -open target/release/launcher.exe -save temp/launcher_tmp1.exe -action add -res temp/versioninfo.res"
+    goto :error
+)
 ResourceHacker.exe -log temp/log3.txt -open temp/launcher_tmp1.exe -save temp/launcher_tmp2.exe -action add -res resources_executable/launcher.ico -mask ICONGROUP,MAINICON,  
-if %errorlevel% neq 0 goto :error
+if %errorlevel% neq 0 (
+    echo "Failed command: ResourceHacker.exe -log temp/log3.txt -open temp/launcher_tmp1.exe -save temp/launcher_tmp2.exe -action add -res resources_executable/launcher.ico -mask ICONGROUP,MAINICON,"
+    goto :error
+)
 
 copy ".\temp\launcher_tmp2.exe" ".\shipping_windows\{{project_name}}.exe" > nul
-if %errorlevel% neq 0 goto :error
+if %errorlevel% neq 0 (
+    REM Repeat in non-silent mode so we get the error
+    copy ".\temp\launcher_tmp2.exe" ".\shipping_windows\{{project_name}}.exe"
+    goto :error
+)
 
 goto :done
 
@@ -38,7 +50,11 @@ REM ----------------------------------------------------------------------------
 :noicon
 echo ResourceHacker.exe not detected in PATH - Skipping embedding launcher icon and version info
 copy ".\target\release\launcher.exe" ".\shipping_windows\{{project_name}}.exe" > nul
-if %errorlevel% neq 0 goto :error
+if %errorlevel% neq 0 (
+    REM Repeat in non-silent mode so we get the error
+    copy ".\target\release\launcher.exe" ".\shipping_windows\{{project_name}}.exe"
+    goto :error
+)
 goto :done
 
 REM ------------------------------------------------------------------------------------------------
