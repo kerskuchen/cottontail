@@ -722,7 +722,7 @@ pub type AudioStreamId = u64;
 
 pub struct Audiostate {
     next_frame_index_to_output: AudioFrameIndex,
-    ouput_render_params: AudioRenderParams,
+    output_render_params: AudioRenderParams,
 
     /// This can never be zero when used with `get_next_stream_id` method
     next_stream_id: AudioStreamId,
@@ -748,7 +748,7 @@ impl Audiostate {
         Audiostate {
             next_frame_index_to_output: 0,
 
-            ouput_render_params: AudioRenderParams {
+            output_render_params: AudioRenderParams {
                 audio_sample_rate_hz,
                 global_playback_speed: 1.0,
                 listener_pos: Vec2::zero(),
@@ -764,6 +764,18 @@ impl Audiostate {
             audio_recordings_mono: HashMap::new(),
             audio_recordings_stereo: HashMap::new(),
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.next_frame_index_to_output = 0;
+
+        self.output_render_params.global_playback_speed = 1.0;
+        self.output_render_params.listener_pos = Vec2::zero();
+        self.output_render_params.listener_vel = Vec2::zero();
+
+        self.next_stream_id = 0;
+        self.streams = HashMap::new();
+        self.streams_to_delete_after_finish = HashSet::new();
     }
 
     pub fn add_audio_recordings_mono(
@@ -788,7 +800,7 @@ impl Audiostate {
     pub fn current_time_seconds(&self) -> f64 {
         audio_frames_to_seconds(
             self.next_frame_index_to_output,
-            self.ouput_render_params.audio_sample_rate_hz,
+            self.output_render_params.audio_sample_rate_hz,
         )
     }
 
@@ -835,7 +847,7 @@ impl Audiostate {
     }
 
     pub fn set_global_playback_speed(&mut self, global_playback_speed: f32) {
-        self.ouput_render_params.global_playback_speed = global_playback_speed;
+        self.output_render_params.global_playback_speed = global_playback_speed;
     }
 
     /// It is assumed that `out_chunk` is filled with silence
@@ -854,7 +866,7 @@ impl Audiostate {
 
         // Render samples
         for stream in self.streams.values_mut() {
-            stream.process_output_stereo(self.ouput_render_params);
+            stream.process_output_stereo(self.output_render_params);
             for (out_frame, rendered_chunk) in out_chunk
                 .iter_mut()
                 .zip(stream.get_output_chunk_stereo().iter())
@@ -867,11 +879,11 @@ impl Audiostate {
     }
 
     pub fn set_listener_pos(&mut self, listener_pos: Vec2) {
-        self.ouput_render_params.listener_pos = listener_pos;
+        self.output_render_params.listener_pos = listener_pos;
     }
 
     pub fn set_listener_vel(&mut self, listener_vel: Vec2) {
-        self.ouput_render_params.listener_vel = listener_vel;
+        self.output_render_params.listener_vel = listener_vel;
     }
 
     pub fn spatial_stream_set_pos(&mut self, stream_id: AudioStreamId, pos: Vec2) {
@@ -897,7 +909,7 @@ impl Audiostate {
     fn start_delay_framecount_for_time(&self, schedule_time_seconds: f64) -> usize {
         let start_frame_index = audio_seconds_to_frames(
             schedule_time_seconds,
-            self.ouput_render_params.audio_sample_rate_hz,
+            self.output_render_params.audio_sample_rate_hz,
         )
         .round() as AudioFrameIndex;
 
@@ -979,8 +991,8 @@ impl Audiostate {
         let stream = {
             let initial_pan = spatial_pan(
                 pos,
-                self.ouput_render_params.listener_pos,
-                self.ouput_render_params.distance_for_max_pan,
+                self.output_render_params.listener_pos,
+                self.output_render_params.distance_for_max_pan,
             );
             let buffer = self
                 .audio_recordings_mono
