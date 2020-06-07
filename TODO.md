@@ -1,16 +1,14 @@
 # DONE:
 
-* Add spatial audio with doppler effect
 * DungeonTracks
-  - Use spatial audio
+  - Basic movement with collision
 
 # CURRENT
 
 
+
 * DungeonTracks
-  - Try out nphysics
-
-
+  - Turrent rotation
 
 # NEXT:
 

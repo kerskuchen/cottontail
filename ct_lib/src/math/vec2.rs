@@ -194,6 +194,16 @@ impl Vec2 {
         self / self.magnitude()
     }
 
+    #[must_use]
+    #[inline]
+    pub fn normalized_or(self, alternative_when_zero: Vec2) -> Vec2 {
+        if self.is_effectively_zero() {
+            alternative_when_zero
+        } else {
+            self.normalized()
+        }
+    }
+
     #[inline]
     pub fn is_normalized(self) -> bool {
         let normalized = Vec2::normalized(self);

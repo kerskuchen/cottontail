@@ -64,7 +64,7 @@ pub fn create_sheet_animations_3d(
                 let layer_index = layer_name.parse::<usize>().expect(&format!(
                     "Found layer named '{}' in 3D sprite '{}', expected layernumber.\n
             NOTE: 3D sprites only support layer names 0,1,2,.., `pivot` and 'attachment_*'",
-                    image_filepath, layer_name
+                    layer_name, image_filepath,
                 ));
                 layers.push(layer_index);
             }

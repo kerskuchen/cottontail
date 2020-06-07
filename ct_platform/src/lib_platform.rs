@@ -15,7 +15,7 @@ use std::{collections::VecDeque, time::Duration};
 // Configuration
 
 const ENABLE_PANIC_MESSAGES: bool = false;
-const ENABLE_FRAMETIME_LOGGING: bool = false;
+const ENABLE_FRAMETIME_LOGGING: bool = true;
 
 #[derive(Serialize, Deserialize)]
 struct LauncherConfig {
