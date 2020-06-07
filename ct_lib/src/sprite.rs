@@ -101,6 +101,11 @@ pub struct Sprite3D {
     pub name: String,
     pub layers: Vec<Sprite>,
 }
+impl Sprite3D {
+    pub fn draw_height(&self) -> f32 {
+        (self.layers.len() - 1) as f32
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 /// SpriteAtlas
