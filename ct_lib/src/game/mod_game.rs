@@ -152,6 +152,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
                     DEFAULT_WORLD_ZNEAR,
                     DEFAULT_WORLD_ZFAR,
                 ),
+                Vec2::zero(),
             );
             self.draw = Some(draw);
         }
@@ -424,6 +425,10 @@ impl Camera {
         }
     }
 
+    pub fn canvas_blit_offset(&mut self) -> Vec2 {
+        self.pos - self.pos_pixelsnapped
+    }
+
     /// Returns a project-view-matrix that can transform vertices into camera-view-space
     pub fn proj_view_matrix(&mut self) -> Mat4 {
         let view = Mat4::scale(self.zoom_level, self.zoom_level, 1.0)
@@ -528,6 +533,11 @@ pub struct GameCamera {
     pos_target: Vec2,
     use_pixel_perfect_smoothing: bool,
 
+    drag_margin_left: f32,
+    drag_margin_top: f32,
+    drag_margin_right: f32,
+    drag_margin_bottom: f32,
+
     screenshake_offset: Vec2,
     screenshakers: Vec<ModulatorScreenShake>,
 }
@@ -551,6 +561,11 @@ impl GameCamera {
             screenshakers: Vec::new(),
             pos_target: pos,
             use_pixel_perfect_smoothing: false,
+
+            drag_margin_left: 0.2,
+            drag_margin_top: 0.1,
+            drag_margin_right: 0.2,
+            drag_margin_bottom: 0.1,
         }
     }
 
@@ -598,7 +613,7 @@ impl GameCamera {
 
             *points_till_target.iter().skip(skip_count).next().unwrap()
         } else {
-            Vec2::lerp(self.pos, self.pos_target, 0.1)
+            Vec2::lerp(self.pos, self.pos_target, 0.05)
         };
     }
 
@@ -616,6 +631,15 @@ impl GameCamera {
     pub fn center(&mut self) -> Worldpoint {
         self.sync_pos_internal();
         self.cam.center()
+    }
+
+    pub fn canvas_blit_offset(&mut self) -> Vec2 {
+        self.sync_pos_internal();
+        if self.use_pixel_perfect_smoothing {
+            Vec2::zero()
+        } else {
+            self.cam.canvas_blit_offset()
+        }
     }
 
     /// Returns a project-view-matrix that can transform vertices into camera-view-space
@@ -1873,7 +1897,7 @@ impl ParticleSystem {
                 true,
                 true,
                 Vec2::zero(),
-                Transform::from_pos_uniform_scale(self.pos[index].pixel_snapped(), scale),
+                Transform::from_pos_scale_uniform(self.pos[index].pixel_snapped(), scale),
                 depth,
                 color,
                 additivity,

@@ -458,6 +458,8 @@ pub struct Drawstate {
     simple_drawables: Vec<Drawable>,
     simple_vertexbuffer: VertexbufferSimple,
 
+    canvas_blit_offset: Vec2,
+
     pub drawcommands: Vec<Drawcommand>,
 
     debug_use_flat_color_mode: bool,
@@ -518,10 +520,11 @@ impl Drawstate {
             simple_shaderparams_world: ShaderParamsSimple::default(),
             simple_shaderparams_canvas: ShaderParamsSimple::default(),
             simple_shaderparams_screen: ShaderParamsSimple::default(),
-
             simple_drawables: Vec::new(),
-
             simple_vertexbuffer: VertexbufferSimple::default(),
+
+            canvas_blit_offset: Vec2::zero(),
+
             drawcommands,
             debug_use_flat_color_mode: false,
             debug_log_font,
@@ -552,6 +555,7 @@ impl Drawstate {
         transform_world: Mat4,
         transform_canvas: Mat4,
         transform_screen: Mat4,
+        canvas_blit_offset: Vec2,
     ) {
         self.simple_shaderparams_world.texture_color_modulate = color_modulate;
         self.simple_shaderparams_world.transform = transform_world;
@@ -561,6 +565,8 @@ impl Drawstate {
 
         self.simple_shaderparams_screen.texture_color_modulate = color_modulate;
         self.simple_shaderparams_screen.transform = transform_screen;
+
+        self.canvas_blit_offset = canvas_blit_offset;
     }
 
     pub fn set_letterbox_color(&mut self, color: Color) {
@@ -754,12 +760,20 @@ impl Drawstate {
                 canvas_framebuffer_info.width,
                 canvas_framebuffer_info.height,
             );
-            let rect_screen = BlitRect::new_for_fixed_canvas_size(
+            let mut rect_screen = BlitRect::new_for_fixed_canvas_size(
                 screen_framebuffer_width,
                 screen_framebuffer_height,
                 canvas_framebuffer_info.width,
                 canvas_framebuffer_info.height,
             );
+
+            rect_screen.offset_x -= (self.canvas_blit_offset.x
+                * (screen_framebuffer_width as f32 / canvas_framebuffer_info.width as f32))
+                as i32;
+            rect_screen.offset_y += (self.canvas_blit_offset.y
+                * (screen_framebuffer_width as f32 / canvas_framebuffer_info.width as f32))
+                as i32;
+
             self.drawcommands.push(Drawcommand::FramebufferBlit {
                 source_framebuffer_info: canvas_framebuffer_info.clone(),
                 source_rect: rect_canvas,
@@ -1589,7 +1603,7 @@ impl Drawstate {
                     let quad =
                         glyph
                             .sprite
-                            .get_quad_transformed(Transform::from_pos_uniform_scale(
+                            .get_quad_transformed(Transform::from_pos_scale_uniform(
                                 draw_pos.into(),
                                 font_scale,
                             ));
@@ -1607,7 +1621,7 @@ impl Drawstate {
                     // Draw glyph
                     self.draw_sprite(
                         &glyph.sprite,
-                        Transform::from_pos_uniform_scale(draw_pos.into(), font_scale),
+                        Transform::from_pos_scale_uniform(draw_pos.into(), font_scale),
                         false,
                         false,
                         depth,
@@ -1629,7 +1643,7 @@ impl Drawstate {
                     // Draw glyph
                     self.draw_sprite(
                         &glyph.sprite,
-                        Transform::from_pos_uniform_scale(draw_pos.into(), font_scale),
+                        Transform::from_pos_scale_uniform(draw_pos.into(), font_scale),
                         false,
                         false,
                         depth,
@@ -1822,7 +1836,7 @@ impl Drawstate {
 
                 self.draw_sprite(
                     &glyph.sprite,
-                    Transform::from_pos_uniform_scale(origin + pos, self.debug_log_font_scale),
+                    Transform::from_pos_scale_uniform(origin + pos, self.debug_log_font_scale),
                     false,
                     false,
                     self.debug_log_depth,

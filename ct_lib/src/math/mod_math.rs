@@ -446,7 +446,7 @@ impl Transform {
         }
     }
 
-    pub const fn from_pos_uniform_scale(pos: Vec2, scale: f32) -> Transform {
+    pub const fn from_pos_scale_uniform(pos: Vec2, scale: f32) -> Transform {
         Transform {
             pos,
             scale: Vec2::filled(scale),

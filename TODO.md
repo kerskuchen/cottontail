@@ -2,13 +2,13 @@
 
 * DungeonTracks
   - Basic movement with collision
+  - Turrent rotation
 
 # CURRENT
 
 
-
 * DungeonTracks
-  - Turrent rotation
+  - Camera tracking
 
 # NEXT:
 
