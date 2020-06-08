@@ -140,6 +140,18 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
                     DEFAULT_WORLD_ZNEAR,
                     DEFAULT_WORLD_ZFAR,
                 ),
+                Mat4::ortho_origin_left_top(
+                    window_config.canvas_width as f32,
+                    window_config.canvas_height as f32,
+                    DEFAULT_WORLD_ZNEAR,
+                    DEFAULT_WORLD_ZFAR,
+                ),
+                Mat4::ortho_origin_left_top(
+                    input.screen_framebuffer_width as f32,
+                    input.screen_framebuffer_height as f32,
+                    DEFAULT_WORLD_ZNEAR,
+                    DEFAULT_WORLD_ZFAR,
+                ),
             );
             self.draw = Some(draw);
         }
@@ -1357,15 +1369,15 @@ impl Fader {
 // ScreenFader
 
 #[derive(Clone)]
-pub struct ScreenFader {
+pub struct CanvasFader {
     pub color_start: Color,
     pub color_end: Color,
     pub timer: TimerSimple,
 }
 
-impl ScreenFader {
-    pub fn new(color_start: Color, color_end: Color, fade_time_seconds: f32) -> ScreenFader {
-        ScreenFader {
+impl CanvasFader {
+    pub fn new(color_start: Color, color_end: Color, fade_time_seconds: f32) -> CanvasFader {
+        CanvasFader {
             color_start,
             color_end,
             timer: TimerSimple::new_started(fade_time_seconds),
@@ -1394,6 +1406,7 @@ impl ScreenFader {
                 DEPTH_SCREEN_FADER,
                 color,
                 ADDITIVITY_NONE,
+                DrawSpace::Canvas,
             );
         }
     }
@@ -1422,7 +1435,7 @@ pub struct SplashScreen {
     time_sustain_current: f32,
 
     sprite: Sprite,
-    fader: ScreenFader,
+    fader: CanvasFader,
     state: SplashscreenState,
 }
 
@@ -1439,7 +1452,7 @@ impl SplashScreen {
             time_sustain_max: time_sustain,
             time_sustain_current: 0.0,
             sprite,
-            fader: ScreenFader::new(Color::black(), Color::white(), time_fade_in),
+            fader: CanvasFader::new(Color::black(), Color::white(), time_fade_in),
             state: SplashscreenState::StartedFadingIn,
         }
     }
@@ -1485,6 +1498,7 @@ impl SplashScreen {
             DEPTH_SPLASH,
             opacity * Color::white(),
             ADDITIVITY_NONE,
+            DrawSpace::Canvas,
         );
 
         for letterbox_rect in &letterbox_rects {
@@ -1494,6 +1508,7 @@ impl SplashScreen {
                 DEPTH_SCREEN_FADER,
                 opacity * Color::white(),
                 ADDITIVITY_NONE,
+                DrawSpace::Canvas,
             );
         }
 
@@ -1518,7 +1533,7 @@ impl SplashScreen {
                 } else {
                     self.state = SplashscreenState::StartedFadingOut;
                     self.fader =
-                        ScreenFader::new(Color::white(), Color::transparent(), self.time_fade_out);
+                        CanvasFader::new(Color::white(), Color::transparent(), self.time_fade_out);
                 }
                 SplashscreenState::Sustain
             }
@@ -1773,6 +1788,7 @@ impl ParticleSystem {
         random: &mut Random,
         deltatime: f32,
         depth: f32,
+        drawspace: DrawSpace,
     ) {
         // Update
         for index in 0..self.pos.len() {
@@ -1812,6 +1828,7 @@ impl ParticleSystem {
                 depth,
                 color,
                 additivity,
+                drawspace,
             );
         }
 
@@ -1932,7 +1949,13 @@ impl Afterimage {
         }
     }
 
-    pub fn update_and_draw(&mut self, draw: &mut Drawstate, deltatime: f32, draw_depth: f32) {
+    pub fn update_and_draw(
+        &mut self,
+        draw: &mut Drawstate,
+        deltatime: f32,
+        draw_depth: f32,
+        drawspace: DrawSpace,
+    ) {
         for index in 0..self.sprite.len() {
             let age_percentage = self.age[index] / self.lifetime;
             let additivity = lerp(
@@ -1954,6 +1977,7 @@ impl Afterimage {
                 draw_depth,
                 color * self.color_modulate[index],
                 additivity * self.additivity[index],
+                drawspace,
             );
         }
 
@@ -2180,6 +2204,7 @@ impl Scene for SceneDebug {
             DEPTH_DRAW,
             Color::greyscale(0.5),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
 
         let center = Vec2::new(globals.canvas_width, globals.canvas_height) / 2.0;
@@ -2251,6 +2276,7 @@ impl Scene for SceneDebug {
             DEPTH_DRAW,
             Color::white(),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
 
         draw.draw_ring(
@@ -2260,6 +2286,7 @@ impl Scene for SceneDebug {
             DEPTH_DRAW,
             Color::white(),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
 
         // CROSS
@@ -2311,8 +2338,22 @@ impl Scene for SceneDebug {
         })();
         let rect1 = rect1_initial.with_new_width(rect1_width, AlignmentHorizontal::Center);
         let rect2 = rect2_initial.with_new_height(rect2_height, AlignmentVertical::Center);
-        draw.draw_rect(rect1, true, DEPTH_DRAW, Color::white(), ADDITIVITY_NONE);
-        draw.draw_rect(rect2, true, DEPTH_DRAW, Color::white(), ADDITIVITY_NONE);
+        draw.draw_rect(
+            rect1,
+            true,
+            DEPTH_DRAW,
+            Color::white(),
+            ADDITIVITY_NONE,
+            DrawSpace::World,
+        );
+        draw.draw_rect(
+            rect2,
+            true,
+            DEPTH_DRAW,
+            Color::white(),
+            ADDITIVITY_NONE,
+            DrawSpace::World,
+        );
 
         // Drummydrumms
         let measure_time = MusicalInterval::Measure {
@@ -2432,6 +2473,7 @@ impl Scene for SceneDebug {
             DEPTH_DRAW,
             Color::white(),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
         draw.draw_rect(
             hp_back_rect,
@@ -2439,6 +2481,7 @@ impl Scene for SceneDebug {
             DEPTH_DRAW,
             Color::from_hex_rgba(0x884242ff),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
         draw.draw_rect(
             hp_front_rect,
@@ -2446,6 +2489,7 @@ impl Scene for SceneDebug {
             DEPTH_DRAW,
             Color::from_hex_rgba(0xf06969ff),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
 
         // PRINTING RANDOM NUMBERS
@@ -2473,11 +2517,17 @@ impl Scene for SceneDebug {
             DEPTH_DEBUG,
             Color::magenta(),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
 
         self.glitter.move_to(globals.cursors.mouse_coords.pos_world);
-        self.glitter
-            .update_and_draw(draw, &mut globals.random, deltatime, DEPTH_DRAW);
+        self.glitter.update_and_draw(
+            draw,
+            &mut globals.random,
+            deltatime,
+            DEPTH_DRAW,
+            DrawSpace::World,
+        );
 
         draw.draw_rect(
             Rect::from_xy_width_height(5.0, 220.0, beat_completion_ratio * 30.0, 5.0),
@@ -2485,6 +2535,7 @@ impl Scene for SceneDebug {
             DEPTH_DEBUG,
             Color::magenta(),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
         draw.draw_rect(
             Rect::from_xy_width_height(5.0, 225.0, measure_completion_ratio * 30.0, 5.0),
@@ -2492,6 +2543,7 @@ impl Scene for SceneDebug {
             DEPTH_DEBUG,
             Color::blue(),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
 
         draw.draw_rect(
@@ -2505,6 +2557,7 @@ impl Scene for SceneDebug {
             DEPTH_DEBUG,
             Color::blue(),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
 
         // Text drawing test
@@ -2524,6 +2577,7 @@ impl Scene for SceneDebug {
             20.0,
             Color::magenta(),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
         draw.draw_line_bresenham(
             draw_pos + Vec2::new(0.0, test_font.baseline as f32),
@@ -2532,6 +2586,7 @@ impl Scene for SceneDebug {
             20.0,
             0.3 * Color::yellow(),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
         // Draw origin is baseline
         let draw_pos = Vec2::new(5.0, globals.canvas_height - 15.0);
@@ -2551,6 +2606,7 @@ impl Scene for SceneDebug {
             20.0,
             Color::magenta(),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
         draw.draw_line_bresenham(
             draw_pos,
@@ -2559,6 +2615,7 @@ impl Scene for SceneDebug {
             20.0,
             0.3 * Color::yellow(),
             ADDITIVITY_NONE,
+            DrawSpace::World,
         );
     }
 }

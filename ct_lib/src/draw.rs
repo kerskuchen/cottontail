@@ -209,6 +209,19 @@ impl VertexbufferSimple {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Drawawbles
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum DrawSpace {
+    World,
+    Canvas,
+    Screen,
+}
+
+impl Default for DrawSpace {
+    fn default() -> Self {
+        DrawSpace::World
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Geometry {
     QuadMesh {
@@ -228,6 +241,7 @@ pub enum Geometry {
 
 #[derive(Debug, Clone)]
 pub struct Drawable {
+    pub drawspace: DrawSpace,
     pub texture_index: TextureIndex,
     pub uv_region_contains_translucency: bool,
     pub depth: Depth,
@@ -413,6 +427,14 @@ impl std::fmt::Debug for Drawcommand {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Drawstate
 
+#[derive(Copy, Clone)]
+struct Drawparams {
+    pub depth: Depth,
+    pub color_modulate: Color,
+    pub additivity: Additivity,
+    pub space: DrawSpace,
+}
+
 #[derive(Clone)]
 pub struct Drawstate {
     pub canvas_framebuffer_target: FramebufferTarget,
@@ -430,7 +452,9 @@ pub struct Drawstate {
     current_clear_color: Color,
     current_clear_depth: Depth,
 
-    simple_shaderparams: ShaderParamsSimple,
+    simple_shaderparams_world: ShaderParamsSimple,
+    simple_shaderparams_canvas: ShaderParamsSimple,
+    simple_shaderparams_screen: ShaderParamsSimple,
     simple_drawables: Vec<Drawable>,
     simple_vertexbuffer: VertexbufferSimple,
 
@@ -491,12 +515,14 @@ impl Drawstate {
             current_clear_color: Color::black(),
             current_clear_depth: DEPTH_CLEAR,
 
-            simple_shaderparams: ShaderParamsSimple::default(),
+            simple_shaderparams_world: ShaderParamsSimple::default(),
+            simple_shaderparams_canvas: ShaderParamsSimple::default(),
+            simple_shaderparams_screen: ShaderParamsSimple::default(),
+
             simple_drawables: Vec::new(),
+
             simple_vertexbuffer: VertexbufferSimple::default(),
-
             drawcommands,
-
             debug_use_flat_color_mode: false,
             debug_log_font,
             debug_log_font_scale: 1.0,
@@ -520,9 +546,21 @@ impl Drawstate {
         }
     }
 
-    pub fn set_shaderparams_simple(&mut self, color_modulate: Color, transform: Mat4) {
-        self.simple_shaderparams.texture_color_modulate = color_modulate;
-        self.simple_shaderparams.transform = transform;
+    pub fn set_shaderparams_simple(
+        &mut self,
+        color_modulate: Color,
+        transform_world: Mat4,
+        transform_canvas: Mat4,
+        transform_screen: Mat4,
+    ) {
+        self.simple_shaderparams_world.texture_color_modulate = color_modulate;
+        self.simple_shaderparams_world.transform = transform_world;
+
+        self.simple_shaderparams_canvas.texture_color_modulate = color_modulate;
+        self.simple_shaderparams_canvas.transform = transform_canvas;
+
+        self.simple_shaderparams_screen.texture_color_modulate = color_modulate;
+        self.simple_shaderparams_screen.transform = transform_screen;
     }
 
     pub fn set_letterbox_color(&mut self, color: Color) {
@@ -642,19 +680,32 @@ impl Drawstate {
             new_depth: Some(self.current_clear_depth),
         });
 
+        struct DrawBatch {
+            drawspace: DrawSpace,
+            buffer: VertexbufferSimple,
+        };
+
         // Draw quadbatches
         self.simple_drawables.sort_by(Drawable::compare);
         if self.simple_drawables.len() > 0 {
             let mut batches = Vec::new();
-            let mut current_batch = VertexbufferSimple::new(self.simple_drawables[0].texture_index);
+            let mut current_batch = DrawBatch {
+                drawspace: self.simple_drawables[0].drawspace,
+                buffer: VertexbufferSimple::new(self.simple_drawables[0].texture_index),
+            };
 
             for drawable in self.simple_drawables.drain(..) {
-                if drawable.texture_index != current_batch.texture_index {
+                if drawable.texture_index != current_batch.buffer.texture_index
+                    || drawable.drawspace != current_batch.drawspace
+                {
                     batches.push(current_batch);
-                    current_batch = VertexbufferSimple::new(drawable.texture_index);
+                    current_batch = DrawBatch {
+                        drawspace: drawable.drawspace,
+                        buffer: VertexbufferSimple::new(drawable.texture_index),
+                    };
                 }
 
-                current_batch.push_drawable(drawable);
+                current_batch.buffer.push_drawable(drawable);
             }
             batches.push(current_batch);
 
@@ -664,10 +715,14 @@ impl Drawstate {
                     texture_info: Drawstate::textureinfo_for_page(
                         self.textures_size,
                         self.textures.len(),
-                        batch.texture_index,
+                        batch.buffer.texture_index,
                     ),
-                    shader_params: ShaderParams::Simple(self.simple_shaderparams),
-                    vertexbuffer: batch,
+                    shader_params: match batch.drawspace {
+                        DrawSpace::World => ShaderParams::Simple(self.simple_shaderparams_world),
+                        DrawSpace::Canvas => ShaderParams::Simple(self.simple_shaderparams_canvas),
+                        DrawSpace::Screen => ShaderParams::Simple(self.simple_shaderparams_screen),
+                    },
+                    vertexbuffer: batch.buffer,
                 });
             }
         }
@@ -713,9 +768,11 @@ impl Drawstate {
         depth: Depth,
         color_modulate: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         if !self.debug_use_flat_color_mode {
             self.simple_drawables.push(Drawable {
+                drawspace,
                 texture_index,
                 uv_region_contains_translucency,
                 depth,
@@ -734,6 +791,7 @@ impl Drawstate {
             };
 
             self.simple_drawables.push(Drawable {
+                drawspace,
                 texture_index,
                 uv_region_contains_translucency,
                 depth,
@@ -757,6 +815,7 @@ impl Drawstate {
         depth: Depth,
         color_modulate: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         let (sprite_quad, sprite_uvs, texture_index, has_translucency) = {
             let quad = sprite.get_quad_transformed(xform);
@@ -785,6 +844,7 @@ impl Drawstate {
             depth,
             color_modulate,
             additivity,
+            drawspace,
         );
     }
 
@@ -797,6 +857,7 @@ impl Drawstate {
         depth: Depth,
         color_modulate: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         let mut sprite_rect = sprite.trimmed_rect.scaled_from_origin(scale);
 
@@ -826,6 +887,7 @@ impl Drawstate {
                     depth,
                     color_modulate,
                     additivity,
+                    drawspace,
                 );
                 return;
             }
@@ -868,6 +930,7 @@ impl Drawstate {
                     depth,
                     color_modulate,
                     additivity,
+                    drawspace,
                 );
             }
         }
@@ -880,6 +943,7 @@ impl Drawstate {
         depth: Depth,
         color_modulate: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         let depth_increment = 1.0 / sprite.layers.len() as f32;
         let xform_snapped = xform.pixel_snapped();
@@ -896,6 +960,7 @@ impl Drawstate {
                 depth - (index as f32) * 0.5 * depth_increment,
                 color_modulate,
                 additivity,
+                drawspace,
             );
         }
     }
@@ -912,6 +977,7 @@ impl Drawstate {
         depth: Depth,
         color: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         let rect = rect.pixel_snapped();
         if filled {
@@ -924,6 +990,7 @@ impl Drawstate {
                 depth,
                 color,
                 additivity,
+                drawspace,
             );
         } else {
             let dim = rect.dim;
@@ -941,7 +1008,7 @@ impl Drawstate {
             let left_bottom = left_top + Vec2::filled_y(dim.y - 1.0);
 
             let linestrip = [left_top, right_top, right_bottom, left_bottom, left_top];
-            self.draw_linestrip_bresenham(&linestrip, true, depth, color, additivity);
+            self.draw_linestrip_bresenham(&linestrip, true, depth, color, additivity, drawspace);
         }
     }
 
@@ -960,6 +1027,7 @@ impl Drawstate {
         depth: Depth,
         color: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         let pivot = pivot
             + if centered {
@@ -978,10 +1046,11 @@ impl Drawstate {
                 depth,
                 color,
                 additivity,
+                drawspace,
             );
         } else {
             let linestrip = quad.to_linestrip();
-            self.draw_linestrip_bresenham(&linestrip, true, depth, color, additivity);
+            self.draw_linestrip_bresenham(&linestrip, true, depth, color, additivity, drawspace);
         }
     }
 
@@ -994,6 +1063,7 @@ impl Drawstate {
         depth: Depth,
         color: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         let vertices = Vec2::multi_transformed(vertices, pivot, xform);
         let indices = (0..vertices.len() as u32).collect();
@@ -1016,6 +1086,7 @@ impl Drawstate {
                 uvs,
                 indices,
             },
+            drawspace,
         });
     }
 
@@ -1026,9 +1097,10 @@ impl Drawstate {
         depth: Depth,
         color: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         if radius < 0.5 {
-            self.draw_pixel(center, depth, color, additivity);
+            self.draw_pixel(center, depth, color, additivity, drawspace);
             return;
         }
 
@@ -1083,6 +1155,7 @@ impl Drawstate {
                 uvs,
                 indices,
             },
+            drawspace,
         });
     }
 
@@ -1093,6 +1166,7 @@ impl Drawstate {
         depth: Depth,
         color: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         // Based on the Paper "A Fast Bresenham Type Algorithm For Drawing Circles" by John Kennedy
         // https://web.engr.oregonstate.edu/~sllu/bcircle.pdf
@@ -1101,7 +1175,7 @@ impl Drawstate {
         let radius = roundi(radius);
 
         if radius == 0 {
-            self.draw_pixel(center, depth, color, additivity);
+            self.draw_pixel(center, depth, color, additivity, drawspace);
             return;
         }
 
@@ -1136,10 +1210,10 @@ impl Drawstate {
             let octant5 = Vec2::new(-x as f32, -y as f32);
             let octant8 = Vec2::new(x as f32, -y as f32);
 
-            self.draw_pixel(center + octant1, depth, color, additivity);
-            self.draw_pixel(center + octant4, depth, color, additivity);
-            self.draw_pixel(center + octant5, depth, color, additivity);
-            self.draw_pixel(center + octant8, depth, color, additivity);
+            self.draw_pixel(center + octant1, depth, color, additivity, drawspace);
+            self.draw_pixel(center + octant4, depth, color, additivity, drawspace);
+            self.draw_pixel(center + octant5, depth, color, additivity, drawspace);
+            self.draw_pixel(center + octant8, depth, color, additivity, drawspace);
 
             // NOTE: For x == y the below points have been already drawn in octants 1,4,5,8
             if x != y {
@@ -1148,10 +1222,10 @@ impl Drawstate {
                 let octant6 = Vec2::new(-y as f32, -x as f32);
                 let octant7 = Vec2::new(y as f32, -x as f32);
 
-                self.draw_pixel(center + octant2, depth, color, additivity);
-                self.draw_pixel(center + octant3, depth, color, additivity);
-                self.draw_pixel(center + octant6, depth, color, additivity);
-                self.draw_pixel(center + octant7, depth, color, additivity);
+                self.draw_pixel(center + octant2, depth, color, additivity, drawspace);
+                self.draw_pixel(center + octant3, depth, color, additivity, drawspace);
+                self.draw_pixel(center + octant6, depth, color, additivity, drawspace);
+                self.draw_pixel(center + octant7, depth, color, additivity, drawspace);
             }
 
             y += 1;
@@ -1174,6 +1248,7 @@ impl Drawstate {
         depth: Depth,
         color: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         // Based on the Paper "A Fast Bresenham Type AlgorithmFor Drawing Ellipses"
         // https://dai.fmph.uniba.sk/upload/0/01/Ellipse.pdf
@@ -1182,7 +1257,7 @@ impl Drawstate {
         let radius_y = roundi(radius_y);
 
         if radius_x == 0 || radius_y == 0 {
-            self.draw_pixel(center, depth, color, additivity);
+            self.draw_pixel(center, depth, color, additivity, drawspace);
             return;
         }
 
@@ -1197,9 +1272,10 @@ impl Drawstate {
         depth: Depth,
         color: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         if radius < 0.5 {
-            self.draw_pixel(center, depth, color, additivity);
+            self.draw_pixel(center, depth, color, additivity, drawspace);
             return;
         }
 
@@ -1239,6 +1315,7 @@ impl Drawstate {
                 depth,
                 color,
                 additivity,
+                drawspace,
             );
 
             angle_current += angle_increment;
@@ -1247,13 +1324,21 @@ impl Drawstate {
     }
 
     /// WARNING: This can be slow if used often
-    pub fn draw_pixel(&mut self, pos: Vec2, depth: Depth, color: Color, additivity: Additivity) {
+    pub fn draw_pixel(
+        &mut self,
+        pos: Vec2,
+        depth: Depth,
+        color: Color,
+        additivity: Additivity,
+        drawspace: DrawSpace,
+    ) {
         self.draw_rect(
             Rect::from_pos_dim(pos, Vec2::ones()),
             true,
             depth,
             color,
             additivity,
+            drawspace,
         );
     }
 
@@ -1267,12 +1352,13 @@ impl Drawstate {
         depth: Depth,
         color: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         for pair in points.windows(2) {
-            self.draw_line_bresenham(pair[0], pair[1], true, depth, color, additivity);
+            self.draw_line_bresenham(pair[0], pair[1], true, depth, color, additivity, drawspace);
         }
         if !skip_last_pixel && !points.is_empty() {
-            self.draw_pixel(*points.last().unwrap(), depth, color, additivity);
+            self.draw_pixel(*points.last().unwrap(), depth, color, additivity, drawspace);
         }
     }
 
@@ -1287,6 +1373,7 @@ impl Drawstate {
         depth: Depth,
         color: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         // Based on (the last one of)
         // https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm#All_cases
@@ -1306,12 +1393,24 @@ impl Drawstate {
         loop {
             if x == end.x && y == end.y {
                 if !skip_last_pixel {
-                    self.draw_pixel(Vec2::new(x as f32, y as f32), depth, color, additivity);
+                    self.draw_pixel(
+                        Vec2::new(x as f32, y as f32),
+                        depth,
+                        color,
+                        additivity,
+                        drawspace,
+                    );
                 }
                 break;
             }
 
-            self.draw_pixel(Vec2::new(x as f32, y as f32), depth, color, additivity);
+            self.draw_pixel(
+                Vec2::new(x as f32, y as f32),
+                depth,
+                color,
+                additivity,
+                drawspace,
+            );
 
             let err_previous = 2 * err;
             if err_previous >= height {
@@ -1334,6 +1433,7 @@ impl Drawstate {
         depth: Depth,
         color: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         let perp_left = 0.5 * thickness * (end - start).perpendicular().normalized();
         let perp_right = -perp_left;
@@ -1455,6 +1555,7 @@ impl Drawstate {
             color_modulate: color,
             additivity,
             geometry: Geometry::LineMesh { vertices, indices },
+            drawspace,
         });
     }
 
@@ -1475,6 +1576,7 @@ impl Drawstate {
         depth: Depth,
         color_modulate: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) -> Vec2 {
         let origin = starting_origin.pixel_snapped_i32();
         let offset = starting_offset.pixel_snapped_i32();
@@ -1502,6 +1604,7 @@ impl Drawstate {
                         depth,
                         color_background,
                         additivity,
+                        drawspace,
                     );
 
                     // Draw glyph
@@ -1513,6 +1616,7 @@ impl Drawstate {
                         depth,
                         color_modulate,
                         additivity,
+                        drawspace,
                     );
                 },
             )
@@ -1534,6 +1638,7 @@ impl Drawstate {
                         depth,
                         color_modulate,
                         additivity,
+                        drawspace,
                     );
                 },
             )
@@ -1556,6 +1661,7 @@ impl Drawstate {
         depth: Depth,
         color_modulate: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         let origin = starting_origin.pixel_snapped_i32();
         let offset = starting_offset.pixel_snapped_i32();
@@ -1579,6 +1685,7 @@ impl Drawstate {
                     depth,
                     color_modulate,
                     additivity,
+                    drawspace,
                 );
             },
         )
@@ -1595,6 +1702,7 @@ impl Drawstate {
         color_a: Color,
         color_b: Color,
         depth: Depth,
+        drawspace: DrawSpace,
     ) {
         let origin = origin.pixel_snapped();
         for y in 0..cells_per_side {
@@ -1609,6 +1717,7 @@ impl Drawstate {
                         depth,
                         if x % 2 == 0 { color_a } else { color_b },
                         ADDITIVITY_NONE,
+                        drawspace,
                     );
                 } else {
                     self.draw_rect(
@@ -1617,6 +1726,7 @@ impl Drawstate {
                         depth,
                         if x % 2 == 0 { color_b } else { color_a },
                         ADDITIVITY_NONE,
+                        drawspace,
                     );
                 }
             }
@@ -1629,9 +1739,10 @@ impl Drawstate {
         dir: Vec2,
         color: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         let end = start + dir;
-        self.draw_line_bresenham(start, end, false, DEPTH_MAX, color, additivity);
+        self.draw_line_bresenham(start, end, false, DEPTH_MAX, color, additivity, drawspace);
 
         let size = clampf(dir.magnitude() / 10.0, 1.0, 5.0);
         let perp_left = size * (end - start).perpendicular().normalized();
@@ -1641,7 +1752,14 @@ impl Drawstate {
         let point_stump = end - size * dir.normalized();
         let point_left = point_stump + perp_left;
         let point_right = point_stump + perp_right;
-        self.debug_draw_triangle(point_tip, point_left, point_right, color, additivity);
+        self.debug_draw_triangle(
+            point_tip,
+            point_left,
+            point_right,
+            color,
+            additivity,
+            drawspace,
+        );
     }
 
     pub fn debug_draw_arrow_line(
@@ -1650,9 +1768,10 @@ impl Drawstate {
         end: Vec2,
         color: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         let dir = end - start;
-        self.debug_draw_arrow(start, dir, color, additivity);
+        self.debug_draw_arrow(start, dir, color, additivity, drawspace);
     }
 
     pub fn debug_draw_triangle(
@@ -1662,6 +1781,7 @@ impl Drawstate {
         point_c: Vec2,
         color: Color,
         additivity: Additivity,
+        drawspace: DrawSpace,
     ) {
         let vertices = vec![point_a, point_b, point_c];
         let indices = vec![0, 1, 2];
@@ -1684,6 +1804,7 @@ impl Drawstate {
                 uvs,
                 indices,
             },
+            drawspace,
         });
     }
 
@@ -1710,6 +1831,7 @@ impl Drawstate {
                     self.debug_log_depth,
                     color,
                     ADDITIVITY_NONE,
+                    DrawSpace::Canvas,
                 );
 
                 pos.x += self.debug_log_font_scale * glyph.horizontal_advance as f32;
