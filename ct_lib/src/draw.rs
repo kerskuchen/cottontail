@@ -525,7 +525,7 @@ impl Drawstate {
             drawcommands,
             debug_use_flat_color_mode: false,
             debug_log_font,
-            debug_log_font_scale: 1.0,
+            debug_log_font_scale: 3.0,
             debug_log_origin: Vec2::new(5.0, 5.0),
             debug_log_offset: Vec2::zero(),
             debug_log_depth: DEPTH_MAX,
@@ -663,8 +663,8 @@ impl Drawstate {
             }
         }
 
-        // NOTE: If we have our own offscreen framebuffer that we want to draw to, we still need to
-        //       clear the screen framebuffer
+        // NOTE: Even if we have our own offscreen framebuffer that we want to draw to, we still
+        //       need to clear the screen framebuffer
         if let FramebufferTarget::Offscreen(_) = &self.canvas_framebuffer_target {
             self.drawcommands.push(Drawcommand::FramebufferClear {
                 framebuffer_target: FramebufferTarget::Screen,
@@ -680,15 +680,16 @@ impl Drawstate {
             new_depth: Some(self.current_clear_depth),
         });
 
+        // Collect draw batches
         struct DrawBatch {
             drawspace: DrawSpace,
             buffer: VertexbufferSimple,
         };
-
-        // Draw quadbatches
         self.simple_drawables.sort_by(Drawable::compare);
-        if self.simple_drawables.len() > 0 {
-            let mut batches = Vec::new();
+        let mut batches_world = Vec::new();
+        let mut batches_canvas = Vec::new();
+        let mut batches_screen = Vec::new();
+        if !self.simple_drawables.is_empty() {
             let mut current_batch = DrawBatch {
                 drawspace: self.simple_drawables[0].drawspace,
                 buffer: VertexbufferSimple::new(self.simple_drawables[0].texture_index),
@@ -698,7 +699,11 @@ impl Drawstate {
                 if drawable.texture_index != current_batch.buffer.texture_index
                     || drawable.drawspace != current_batch.drawspace
                 {
-                    batches.push(current_batch);
+                    match current_batch.drawspace {
+                        DrawSpace::World => batches_world.push(current_batch),
+                        DrawSpace::Canvas => batches_canvas.push(current_batch),
+                        DrawSpace::Screen => batches_screen.push(current_batch),
+                    }
                     current_batch = DrawBatch {
                         drawspace: drawable.drawspace,
                         buffer: VertexbufferSimple::new(drawable.texture_index),
@@ -707,24 +712,38 @@ impl Drawstate {
 
                 current_batch.buffer.push_drawable(drawable);
             }
-            batches.push(current_batch);
 
-            for batch in batches.into_iter() {
-                self.drawcommands.push(Drawcommand::Draw {
-                    framebuffer_target: self.canvas_framebuffer_target.clone(),
-                    texture_info: Drawstate::textureinfo_for_page(
-                        self.textures_size,
-                        self.textures.len(),
-                        batch.buffer.texture_index,
-                    ),
-                    shader_params: match batch.drawspace {
-                        DrawSpace::World => ShaderParams::Simple(self.simple_shaderparams_world),
-                        DrawSpace::Canvas => ShaderParams::Simple(self.simple_shaderparams_canvas),
-                        DrawSpace::Screen => ShaderParams::Simple(self.simple_shaderparams_screen),
-                    },
-                    vertexbuffer: batch.buffer,
-                });
+            match current_batch.drawspace {
+                DrawSpace::World => batches_world.push(current_batch),
+                DrawSpace::Canvas => batches_canvas.push(current_batch),
+                DrawSpace::Screen => batches_screen.push(current_batch),
             }
+        }
+
+        // Draw world- and canvas-space batches
+        for world_batch in batches_world.into_iter() {
+            self.drawcommands.push(Drawcommand::Draw {
+                framebuffer_target: self.canvas_framebuffer_target.clone(),
+                texture_info: Drawstate::textureinfo_for_page(
+                    self.textures_size,
+                    self.textures.len(),
+                    world_batch.buffer.texture_index,
+                ),
+                shader_params: ShaderParams::Simple(self.simple_shaderparams_world),
+                vertexbuffer: world_batch.buffer,
+            });
+        }
+        for canvas_batch in batches_canvas.into_iter() {
+            self.drawcommands.push(Drawcommand::Draw {
+                framebuffer_target: self.canvas_framebuffer_target.clone(),
+                texture_info: Drawstate::textureinfo_for_page(
+                    self.textures_size,
+                    self.textures.len(),
+                    canvas_batch.buffer.texture_index,
+                ),
+                shader_params: ShaderParams::Simple(self.simple_shaderparams_canvas),
+                vertexbuffer: canvas_batch.buffer,
+            });
         }
 
         // If we drew to an offscreen-canvas we must blit it back to the screen
@@ -746,6 +765,20 @@ impl Drawstate {
                 source_rect: rect_canvas,
                 dest_framebuffer_target: FramebufferTarget::Screen,
                 dest_rect: rect_screen,
+            });
+        }
+
+        // Draw screenspace batches last so they won't get overdrawn by framebuffer blits
+        for screen_batch in batches_screen.into_iter() {
+            self.drawcommands.push(Drawcommand::Draw {
+                framebuffer_target: FramebufferTarget::Screen,
+                texture_info: Drawstate::textureinfo_for_page(
+                    self.textures_size,
+                    self.textures.len(),
+                    screen_batch.buffer.texture_index,
+                ),
+                shader_params: ShaderParams::Simple(self.simple_shaderparams_screen),
+                vertexbuffer: screen_batch.buffer,
             });
         }
     }
@@ -1831,7 +1864,7 @@ impl Drawstate {
                     self.debug_log_depth,
                     color,
                     ADDITIVITY_NONE,
-                    DrawSpace::Canvas,
+                    DrawSpace::Screen,
                 );
 
                 pos.x += self.debug_log_font_scale * glyph.horizontal_advance as f32;
