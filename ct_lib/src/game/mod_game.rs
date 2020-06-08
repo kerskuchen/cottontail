@@ -517,7 +517,7 @@ pub struct GameCamera {
 }
 
 impl GameCamera {
-    pub fn new(pos: Vec2, canvas_width: f32, canvas_height: f32) -> GameCamera {
+    pub fn new(pos: Vec2, canvas_width: f32, canvas_height: f32, is_centered: bool) -> GameCamera {
         let cam = Camera::new(
             pos,
             1.0,
@@ -525,7 +525,7 @@ impl GameCamera {
             canvas_height as u32,
             DEFAULT_WORLD_ZNEAR,
             DEFAULT_WORLD_ZFAR,
-            false,
+            is_centered,
         );
 
         GameCamera {
