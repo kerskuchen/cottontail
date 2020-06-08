@@ -1408,53 +1408,17 @@ impl Drawstate {
         additivity: Additivity,
         drawspace: DrawSpace,
     ) {
-        // Based on (the last one of)
-        // https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm#All_cases
         let start = start.pixel_snapped_i32();
         let end = end.pixel_snapped_i32();
-
-        let width = (end.x - start.x).abs();
-        let height = -(end.y - start.y).abs();
-
-        let increment_x = if start.x < end.x { 1 } else { -1 };
-        let increment_y = if start.y < end.y { 1 } else { -1 };
-
-        let mut err = width + height;
-
-        let mut x = start.x;
-        let mut y = start.y;
-        loop {
-            if x == end.x && y == end.y {
-                if !skip_last_pixel {
-                    self.draw_pixel(
-                        Vec2::new(x as f32, y as f32),
-                        depth,
-                        color,
-                        additivity,
-                        drawspace,
-                    );
-                }
-                break;
-            }
-
+        iterate_line_bresenham(start, end, skip_last_pixel, &mut |x, y| {
             self.draw_pixel(
                 Vec2::new(x as f32, y as f32),
                 depth,
                 color,
                 additivity,
                 drawspace,
-            );
-
-            let err_previous = 2 * err;
-            if err_previous >= height {
-                err += height;
-                x += increment_x;
-            }
-            if err_previous <= width {
-                err += width;
-                y += increment_y;
-            }
-        }
+            )
+        });
     }
 
     pub fn draw_line_with_thickness(

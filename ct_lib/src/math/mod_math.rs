@@ -577,6 +577,46 @@ impl Line {
     }
 }
 
+pub fn iterate_line_bresenham<FunctorType: FnMut(i32, i32)>(
+    start: Vec2i,
+    end: Vec2i,
+    skip_last_point: bool,
+    action: &mut FunctorType,
+) {
+    // Based on (the last one of)
+    // https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm#All_cases
+    let width = (end.x - start.x).abs();
+    let height = -(end.y - start.y).abs();
+
+    let increment_x = if start.x < end.x { 1 } else { -1 };
+    let increment_y = if start.y < end.y { 1 } else { -1 };
+
+    let mut err = width + height;
+
+    let mut x = start.x;
+    let mut y = start.y;
+    loop {
+        if x == end.x && y == end.y {
+            if !skip_last_point {
+                action(x, y);
+            }
+            break;
+        }
+
+        action(x, y);
+
+        let err_previous = 2 * err;
+        if err_previous >= height {
+            err += height;
+            x += increment_x;
+        }
+        if err_previous <= width {
+            err += width;
+            y += increment_y;
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Circle
 
