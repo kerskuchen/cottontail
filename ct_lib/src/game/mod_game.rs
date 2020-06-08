@@ -523,9 +523,13 @@ impl Camera {
 #[derive(Clone)]
 pub struct GameCamera {
     pub cam: Camera,
-    pub pos: Vec2,
-    pub screenshake_offset: Vec2,
-    pub screenshakers: Vec<ModulatorScreenShake>,
+
+    pos: Vec2,
+    pos_target: Vec2,
+    use_pixel_perfect_smoothing: bool,
+
+    screenshake_offset: Vec2,
+    screenshakers: Vec<ModulatorScreenShake>,
 }
 
 impl GameCamera {
@@ -545,6 +549,8 @@ impl GameCamera {
             pos,
             screenshake_offset: Vec2::zero(),
             screenshakers: Vec::new(),
+            pos_target: pos,
+            use_pixel_perfect_smoothing: false,
         }
     }
 
@@ -561,6 +567,49 @@ impl GameCamera {
 
         self.screenshakers
             .retain(|shaker| shaker.timer.is_running());
+
+        self.pos = if self.use_pixel_perfect_smoothing {
+            let mut points_till_target = Vec::new();
+            iterate_line_bresenham(
+                self.pos.pixel_snapped_i32(),
+                self.pos_target.pixel_snapped_i32(),
+                false,
+                &mut |x, y| points_till_target.push(Vec2::new(x as f32, y as f32)),
+            );
+
+            let point_count = points_till_target.len();
+            let skip_count = if point_count <= 1 {
+                0
+            } else if point_count <= 10 {
+                1
+            } else if point_count <= 20 {
+                2
+            } else if point_count <= 40 {
+                3
+            } else if point_count <= 80 {
+                4
+            } else if point_count <= 160 {
+                5
+            } else if point_count <= 320 {
+                6
+            } else {
+                7
+            };
+
+            *points_till_target.iter().skip(skip_count).next().unwrap()
+        } else {
+            Vec2::lerp(self.pos, self.pos_target, 0.1)
+        };
+    }
+
+    pub fn set_pos(&mut self, pos: Vec2) {
+        self.pos = pos;
+        self.pos_target = pos;
+    }
+
+    pub fn set_target_pos(&mut self, target_pos: Vec2, use_pixel_perfect_smoothing: bool) {
+        self.use_pixel_perfect_smoothing = use_pixel_perfect_smoothing;
+        self.pos_target = target_pos;
     }
 
     #[inline]
