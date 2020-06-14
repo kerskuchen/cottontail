@@ -1,15 +1,8 @@
 # DONE:
 
-* DungeonTracks
-  - Basic movement with collision
-  - Turrent rotation
-
 # CURRENT
 
 
-* DungeonTracks
-  - Recreate camera behaviour of original dungeontracks
-    
 
 # NEXT:
 
