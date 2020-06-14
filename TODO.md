@@ -8,7 +8,8 @@
 
 
 * DungeonTracks
-  - Camera tracking
+  - Recreate camera behaviour of original dungeontracks
+    
 
 # NEXT:
 
