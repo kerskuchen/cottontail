@@ -556,7 +556,7 @@ pub fn atlas_create_from_pngs(
 
     // Pack sprites
     let (atlas_textures, result_sprite_positions) = {
-        let mut packer = BitmapMultiAtlas::new(atlas_texture_size as i32);
+        let mut packer = BitmapMultiAtlas::new(atlas_texture_size);
         for image_path in sprite_imagepaths.into_iter() {
             let image = Bitmap::from_png_file_or_panic(&image_path);
             let sprite_name = system::path_without_extension(&image_path)
@@ -572,7 +572,7 @@ pub fn atlas_create_from_pngs(
         let mut texture_imagepaths = Vec::new();
         for (index, atlas_texture) in atlas_textures.iter().enumerate() {
             let texture_path = format!("{}-{}.png", atlas_path_without_extension, index);
-            Bitmap::write_to_png_file(&atlas_texture.to_premultiplied(), &texture_path);
+            Bitmap::write_to_png_file(&atlas_texture.to_premultiplied_alpha(), &texture_path);
 
             // NOTE: We assume that our atlas textures will be located at the root of our final destination,
             //       so we drop the prefix
