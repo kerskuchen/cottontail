@@ -276,7 +276,101 @@ where
         None
     }
 
-    pub fn trim(
+    /// Returns the minimum Rect that contains all non-`trim_value`-values of the grid
+    /// Returns `None` if image is filled with `trim_value`
+    pub fn get_trimming_rect_for_value(
+        &self,
+        trim_left: bool,
+        trim_top: bool,
+        trim_right: bool,
+        trim_bottom: bool,
+        trim_value: CellType,
+    ) -> Option<Recti> {
+        let trimmed_left = if trim_left {
+            if let Some(coord) = self.find_first(SearchDirection::LeftToRight, |cell_value| {
+                cell_value != trim_value
+            }) {
+                coord.x
+            } else {
+                return None;
+            }
+        } else {
+            0
+        };
+        let trimmed_top = if trim_top {
+            if let Some(coord) = self.find_first(SearchDirection::TopToBottom, |cell_value| {
+                cell_value != trim_value
+            }) {
+                coord.y
+            } else {
+                return None;
+            }
+        } else {
+            0
+        };
+        let trimmed_right = if trim_right {
+            if let Some(coord) = self.find_first(SearchDirection::RightToLeft, |cell_value| {
+                cell_value != trim_value
+            }) {
+                coord.x
+            } else {
+                return None;
+            }
+        } else {
+            self.width - 1
+        };
+        let trimmed_bottom = if trim_bottom {
+            if let Some(coord) = self.find_first(SearchDirection::BottomToTop, |cell_value| {
+                cell_value != trim_value
+            }) {
+                coord.y
+            } else {
+                return None;
+            }
+        } else {
+            self.height - 1
+        };
+
+        let trimmed_width = 1 + trimmed_right - trimmed_left;
+        let trimmed_height = 1 + trimmed_bottom - trimmed_top;
+        Some(Recti::from_xy_width_height(
+            trimmed_left,
+            trimmed_top,
+            trimmed_width,
+            trimmed_height,
+        ))
+    }
+
+    pub fn crop_by_rect(&mut self, crop_rect: Recti) {
+        *self = self.cropped_by_rect(crop_rect);
+    }
+
+    #[must_use]
+    pub fn cropped_by_rect(&self, crop_rect: Recti) -> Grid<CellType> {
+        if let Some(crop_rect) =
+            crop_rect.clipped_by(Recti::from_width_height(self.width, self.height))
+        {
+            let mut result = Grid::new(crop_rect.width() as u32, crop_rect.height() as u32);
+            Grid::copy_region(
+                &self,
+                Recti::from_xy_width_height(
+                    crop_rect.left(),
+                    crop_rect.top(),
+                    crop_rect.width(),
+                    crop_rect.height(),
+                ),
+                &mut result,
+                Recti::from_width_height(crop_rect.width(), crop_rect.height()),
+                None,
+            );
+
+            result
+        } else {
+            Grid::empty()
+        }
+    }
+
+    pub fn trim_by_value(
         &mut self,
         trim_left: bool,
         trim_top: bool,
@@ -284,10 +378,11 @@ where
         trim_bottom: bool,
         trim_value: CellType,
     ) {
-        *self = self.trimmed(trim_left, trim_top, trim_right, trim_bottom, trim_value);
+        *self = self.trimmed_by_value(trim_left, trim_top, trim_right, trim_bottom, trim_value);
     }
 
-    pub fn trimmed(
+    #[must_use]
+    pub fn trimmed_by_value(
         &self,
         trim_left: bool,
         trim_top: bool,
@@ -295,70 +390,24 @@ where
         trim_bottom: bool,
         trim_value: CellType,
     ) -> Grid<CellType> {
-        let new_left = if trim_left {
-            if let Some(coord) = self.find_first(SearchDirection::LeftToRight, |cell_value| {
-                cell_value != trim_value
-            }) {
-                coord.x
-            } else {
-                return Grid::empty();
-            }
+        if let Some(trimmed_rect) = self.get_trimming_rect_for_value(
+            trim_left,
+            trim_top,
+            trim_right,
+            trim_bottom,
+            trim_value,
+        ) {
+            self.cropped_by_rect(trimmed_rect)
         } else {
-            0
-        };
-        let new_top = if trim_top {
-            if let Some(coord) = self.find_first(SearchDirection::TopToBottom, |cell_value| {
-                cell_value != trim_value
-            }) {
-                coord.y
-            } else {
-                return Grid::empty();
-            }
-        } else {
-            0
-        };
-        let new_right = if trim_right {
-            if let Some(coord) = self.find_first(SearchDirection::RightToLeft, |cell_value| {
-                cell_value != trim_value
-            }) {
-                coord.x
-            } else {
-                return Grid::empty();
-            }
-        } else {
-            self.width - 1
-        };
-        let new_bottom = if trim_bottom {
-            if let Some(coord) = self.find_first(SearchDirection::BottomToTop, |cell_value| {
-                cell_value != trim_value
-            }) {
-                coord.y
-            } else {
-                return Grid::empty();
-            }
-        } else {
-            self.height - 1
-        };
-
-        let new_width = 1 + new_right - new_left;
-        let new_height = 1 + new_bottom - new_top;
-
-        let mut trimmed_result = Grid::new(new_width as u32, new_height as u32);
-        Grid::copy_region(
-            &self,
-            Recti::from_xy_width_height(new_left, new_top, new_width, new_height),
-            &mut trimmed_result,
-            Recti::from_width_height(new_width, new_height),
-            None,
-        );
-
-        trimmed_result
+            Grid::empty()
+        }
     }
 
     pub fn crop(&mut self, left: i32, top: i32, right: i32, bottom: i32) {
         *self = self.cropped(left, top, right, bottom);
     }
 
+    #[must_use]
     pub fn cropped(&self, left: i32, top: i32, right: i32, bottom: i32) -> Grid<CellType> {
         let new_width = self.width - left - right;
         let new_height = self.height - top - bottom;

@@ -117,7 +117,6 @@ impl Recti {
     }
 
     /// Clips the given rect by another
-    /// Panics if the clipping_rect does not contain our rect
     #[must_use]
     #[inline]
     pub fn clipped_by(self, clipping_rect: Recti) -> Option<Recti> {

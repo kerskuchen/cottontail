@@ -33,8 +33,27 @@ impl Bitmap {
         result
     }
 
-    pub fn from_premultiplied(&self) -> Bitmap {
+    pub fn premultiply_alpha(&mut self) {
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let mut color = self.get(x, y);
+                let alpha = color.a as f32 / 255.0;
+                color.r = math::roundi(color.r as f32 * alpha) as u8;
+                color.g = math::roundi(color.g as f32 * alpha) as u8;
+                color.b = math::roundi(color.b as f32 * alpha) as u8;
+                self.set(x, y, color);
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn to_premultiplied_alpha(&self) -> Bitmap {
         let mut result = self.clone();
+        result.premultiply_alpha();
+        result
+    }
+
+    pub fn unpremultiply_alpha(&mut self) {
         for y in 0..self.height {
             for x in 0..self.width {
                 let mut color = self.get(x, y);
@@ -44,24 +63,15 @@ impl Bitmap {
                     color.g = i32::min(math::roundi(color.g as f32 / alpha), 255) as u8;
                     color.b = i32::min(math::roundi(color.b as f32 / alpha), 255) as u8;
                 }
-                result.set(x, y, color);
+                self.set(x, y, color);
             }
         }
-        result
     }
 
-    pub fn to_premultiplied(&self) -> Bitmap {
+    #[must_use]
+    pub fn to_unpremultiplied_alpha(&self) -> Bitmap {
         let mut result = self.clone();
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let mut color = self.get(x, y);
-                let alpha = color.a as f32 / 255.0;
-                color.r = math::roundi(color.r as f32 * alpha) as u8;
-                color.g = math::roundi(color.g as f32 * alpha) as u8;
-                color.b = math::roundi(color.b as f32 * alpha) as u8;
-                result.set(x, y, color);
-            }
-        }
+        result.unpremultiply_alpha();
         result
     }
 
@@ -210,17 +220,12 @@ pub struct BitmapAtlas {
 }
 
 impl BitmapAtlas {
-    pub fn new(atlas_texture_size_initial: i32) -> BitmapAtlas {
-        assert!(atlas_texture_size_initial > 0);
-
+    pub fn new(atlas_texture_size_initial: u32) -> BitmapAtlas {
         BitmapAtlas {
-            atlas_texture: Bitmap::new(
-                atlas_texture_size_initial as u32,
-                atlas_texture_size_initial as u32,
-            ),
+            atlas_texture: Bitmap::new(atlas_texture_size_initial, atlas_texture_size_initial),
             rect_packer: rect_packer::DensePacker::new(
-                atlas_texture_size_initial,
-                atlas_texture_size_initial,
+                atlas_texture_size_initial as i32,
+                atlas_texture_size_initial as i32,
             ),
             sprite_positions: IndexMap::new(),
         }
@@ -241,7 +246,7 @@ impl BitmapAtlas {
         }
     }
 
-    /// NOTE: Resizes by squaring the current size
+    /// NOTE: Resizes by doubling the current image dimensions
     pub fn pack_bitmap_with_resize(&mut self, name: &str, image: &Bitmap) -> Option<Vec2i> {
         if let Some(pos) = self.pack_bitmap(name, image) {
             return Some(pos);
@@ -259,17 +264,15 @@ impl BitmapAtlas {
 
 /// An atlaspacker that can have multiple fixed size atlas textures
 pub struct BitmapMultiAtlas {
-    pub atlas_texture_size: i32,
+    pub atlas_texture_size: u32,
     pub atlas_packers: Vec<BitmapAtlas>,
     pub sprite_positions: IndexMap<String, BitmapAtlasPosition>,
 }
 
 impl BitmapMultiAtlas {
-    pub fn new(atlas_texture_size: i32) -> BitmapMultiAtlas {
-        assert!(atlas_texture_size > 0);
-
+    pub fn new(atlas_texture_size: u32) -> BitmapMultiAtlas {
         BitmapMultiAtlas {
-            atlas_texture_size,
+            atlas_texture_size: atlas_texture_size,
             atlas_packers: vec![BitmapAtlas::new(atlas_texture_size)],
             sprite_positions: IndexMap::new(),
         }
@@ -283,7 +286,7 @@ impl BitmapMultiAtlas {
         // NOTE: At this point our image did not fit in any of the existing atlas textures, so we
         //       create a new atlas texture and try again
         self.atlas_packers
-            .push(BitmapAtlas::new(self.atlas_texture_size));
+            .push(BitmapAtlas::new(self.atlas_texture_size as u32));
         if let Some(atlas_position) = self.pack_bitmap_internal(sprite_name, image) {
             atlas_position
         } else {
