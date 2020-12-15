@@ -1,13 +1,15 @@
+use crate::{GraphicsSheet, Imagename};
+
 use super::{
     Animationname, Animationname3D, AssetAnimation, AssetAnimation3D, AssetSprite, AssetSprite3D,
     Spritename, Spritename3D,
 };
 
-use ct_lib::bitmap::*;
 use ct_lib::math::*;
 use ct_lib::sprite::*;
 use ct_lib::system;
 
+use ct_lib::indexmap::indexmap;
 use ct_lib::indexmap::IndexMap;
 use ct_lib::serde_derive::Deserialize;
 use ct_lib::serde_json;
@@ -15,29 +17,40 @@ use ct_lib::serde_json;
 use rayon::prelude::*;
 use std::collections::HashSet;
 
-pub fn create_sheet_animations(
+pub fn create_sheet(
     image_filepath: &str,
     sheet_name: &str,
     output_filepath_without_extension: &str,
-) -> (
-    IndexMap<Spritename, AssetSprite>,
-    IndexMap<Spritename3D, AssetSprite3D>,
-    IndexMap<Animationname, AssetAnimation>,
-    IndexMap<Animationname3D, AssetAnimation3D>,
-) {
-    if image_filepath.ends_with("_3d.ase") {
-        create_sheet_animations_3d(
-            image_filepath,
-            sheet_name,
-            output_filepath_without_extension,
-        )
-    } else {
-        let (sprites, animations) = create_sheet_animations_2d(
-            image_filepath,
-            sheet_name,
-            output_filepath_without_extension,
-        );
-        (sprites, IndexMap::new(), animations, IndexMap::new())
+) -> GraphicsSheet {
+    let (images, sprites, sprites_3d, animations, animations_3d) =
+        if image_filepath.ends_with("_3d.ase") {
+            create_sheet_animations_3d(
+                image_filepath,
+                sheet_name,
+                output_filepath_without_extension,
+            )
+        } else {
+            let (images, sprites, animations) = create_sheet_animations_2d(
+                image_filepath,
+                sheet_name,
+                output_filepath_without_extension,
+            );
+            (
+                images,
+                sprites,
+                IndexMap::new(),
+                animations,
+                IndexMap::new(),
+            )
+        };
+
+    GraphicsSheet {
+        images,
+        fonts: IndexMap::new(),
+        sprites,
+        sprites_3d,
+        animations,
+        animations_3d,
     }
 }
 
@@ -46,6 +59,7 @@ pub fn create_sheet_animations_3d(
     sheet_name: &str,
     output_filepath_without_extension: &str,
 ) -> (
+    IndexMap<Imagename, Bitmap>,
     IndexMap<Spritename, AssetSprite>,
     IndexMap<Spritename3D, AssetSprite3D>,
     IndexMap<Animationname, AssetAnimation>,
@@ -95,9 +109,11 @@ pub fn create_sheet_animations_3d(
 
     // Split out each of the 3D sprites stack layers into their own files and process each
     // separately
+    let mut result_images: IndexMap<Imagename, Bitmap> = IndexMap::new();
     let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
     let mut result_animations: IndexMap<Animationname, AssetAnimation> = IndexMap::new();
     let sprites_and_animations: Vec<(
+        IndexMap<Imagename, Bitmap>,
         IndexMap<Spritename, AssetSprite>,
         IndexMap<Animationname, AssetAnimation>,
     )> = (0..stack_layer_count)
@@ -138,7 +154,8 @@ pub fn create_sheet_animations_3d(
             )
         })
         .collect();
-    for (sprites, animations) in sprites_and_animations {
+    for (images, sprites, animations) in sprites_and_animations {
+        result_images.extend(images);
         result_sprites.extend(sprites);
         result_animations.extend(animations);
     }
@@ -227,6 +244,7 @@ pub fn create_sheet_animations_3d(
     }
 
     (
+        result_images,
         result_sprites,
         result_sprites_3d,
         result_animations,
@@ -239,6 +257,7 @@ pub fn create_sheet_animations_2d(
     sheet_name: &str,
     output_path_without_extension: &str,
 ) -> (
+    IndexMap<Imagename, Bitmap>,
     IndexMap<Spritename, AssetSprite>,
     IndexMap<Animationname, AssetAnimation>,
 ) {
@@ -246,6 +265,8 @@ pub fn create_sheet_animations_2d(
     let output_path_meta = output_path_without_extension.to_string() + ".json";
 
     aseprite_run_sheet_packer(&image_filepath, &output_path_image, &output_path_meta);
+    let result_images =
+        indexmap! { sheet_name.to_owned() => Bitmap::from_png_file_or_panic(&output_path_image), };
 
     let metadata_string = std::fs::read_to_string(&output_path_meta).unwrap();
     let meta: AsepriteJSON = serde_json::from_str(&metadata_string).expect(&format!(
@@ -398,7 +419,7 @@ pub fn create_sheet_animations_2d(
         result_animations.insert(animation_name, new_animation);
     }
 
-    (result_sprites, result_animations)
+    (result_images, result_sprites, result_animations)
 }
 
 fn sprite_name_for_frameindex(sheet_name: &str, frame_index: usize) -> Spritename {

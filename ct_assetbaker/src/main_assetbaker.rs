@@ -10,6 +10,7 @@ use ct_lib::sprite::*;
 use ct_lib::system;
 
 use ct_lib::bincode;
+use ct_lib::indexmap::indexmap;
 use ct_lib::indexmap::IndexMap;
 use ct_lib::log;
 use ct_lib::serde_derive::{Deserialize, Serialize};
@@ -24,6 +25,7 @@ use std::{
     path::PathBuf,
 };
 
+type Imagename = String;
 type Spritename = String;
 type Spritename3D = String;
 type Fontname = String;
@@ -100,23 +102,19 @@ pub struct AssetAtlas {
 }
 
 fn bake_graphics_resources() {
-    let mut result_fonts: IndexMap<Fontname, AssetFont> = IndexMap::new();
-    let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
-    let mut result_sprites_3d: IndexMap<Spritename3D, AssetSprite3D> = IndexMap::new();
-    let mut result_animations: IndexMap<Animationname, AssetAnimation> = IndexMap::new();
-    let mut result_animations_3d: IndexMap<Animationname3D, AssetAnimation3D> = IndexMap::new();
+    let mut result_sheet: GraphicsSheet = GraphicsSheet::new_empty();
 
     // Create fonts and its correspronding sprites
     let font_styles = load_font_styles();
     let font_properties = load_font_properties();
-    let sprites_and_fonts: Vec<(IndexMap<Spritename, AssetSprite>, AssetFont)> = font_styles
+    let font_sheets: Vec<GraphicsSheet> = font_styles
         .par_iter()
         .map(|style| {
             let properties = font_properties.get(&style.fontname).expect(&format!(
                 "No font and/or render parameters found for font name '{}'",
                 &style.fontname
             ));
-            bitmapfont_create_from_ttf(
+            create_sheet_from_ttf(
                 &style.fontname,
                 &properties.ttf_data_bytes,
                 "target/assets_temp",
@@ -128,18 +126,12 @@ fn bake_graphics_resources() {
             )
         })
         .collect();
-    for (sprites, font) in sprites_and_fonts {
-        result_sprites.extend(sprites);
-        result_fonts.insert(font.name.clone(), font);
+    for sheet in font_sheets {
+        result_sheet.extend_by(sheet);
     }
 
     // Convert png and aseprite files to png sheets and move to them to `target/assets_temp`
-    let sprites_and_animations: Vec<(
-        IndexMap<Spritename, AssetSprite>,
-        IndexMap<Spritename3D, AssetSprite3D>,
-        IndexMap<Animationname, AssetAnimation>,
-        IndexMap<Animationname3D, AssetAnimation3D>,
-    )> = {
+    let sprite_sheets: Vec<GraphicsSheet> = {
         let mut imagepaths = vec![];
         imagepaths.append(&mut system::collect_files_by_extension_recursive(
             "assets", ".ase",
@@ -153,96 +145,15 @@ fn bake_graphics_resources() {
                 let sheet_name = system::path_without_extension(imagepath).replace("assets/", "");
                 let output_path_without_extension = system::path_without_extension(imagepath)
                     .replace("assets", "target/assets_temp");
-                aseprite::create_sheet_animations(
-                    imagepath,
-                    &sheet_name,
-                    &output_path_without_extension,
-                )
+                aseprite::create_sheet(imagepath, &sheet_name, &output_path_without_extension)
             })
             .collect()
     };
-    for (sprites, sprites_3d, animations, animations_3d) in sprites_and_animations {
-        result_sprites.extend(sprites);
-        result_sprites_3d.extend(sprites_3d);
-        result_animations.extend(animations);
-        result_animations_3d.extend(animations_3d);
+    for sheet in sprite_sheets {
+        result_sheet.extend_by(sheet)
     }
 
-    // Create texture atlas and Adjust positions of our sprites according to the final packed
-    // atlas positions
-    let result_atlas = atlas_create_from_pngs("target/assets_temp", "resources", 1024);
-    for (packed_sprite_name, sprite_pos) in &result_atlas.sprite_positions {
-        if result_sprites.contains_key(packed_sprite_name) {
-            // Atlas-sprite is a regular sprite
-            let mut sprite = result_sprites.get_mut(packed_sprite_name).unwrap();
-            sprite.atlas_texture_index = sprite_pos.atlas_texture_index;
-            sprite.trimmed_uvs = sprite
-                .trimmed_uvs
-                .translated_by(sprite_pos.atlas_texture_pixel_offset);
-        } else if result_fonts.contains_key(packed_sprite_name) {
-            // Atlas-sprite is a glyph-sheet of some font
-            let font = &result_fonts[packed_sprite_name];
-            for sprite_glyph_name in font.glyphs.values().map(|glyph| &glyph.sprite_name) {
-                let mut sprite = result_sprites.get_mut(sprite_glyph_name).unwrap();
-                sprite.atlas_texture_index = sprite_pos.atlas_texture_index;
-                sprite.trimmed_uvs = sprite
-                    .trimmed_uvs
-                    .translated_by(sprite_pos.atlas_texture_pixel_offset);
-            }
-        } else {
-            // AssetSprite must be an animation-sheet of some animation(s)
-            let mut found_anim = false;
-            for (animation_name, animation) in &result_animations {
-                if animation_name.starts_with(&(packed_sprite_name.to_owned() + ":"))
-                    || animation_name == packed_sprite_name
-                {
-                    found_anim = true;
-                    for sprite_frame_name in &animation.sprite_names {
-                        let mut sprite = result_sprites.get_mut(sprite_frame_name).unwrap();
-                        sprite.atlas_texture_index = sprite_pos.atlas_texture_index;
-                        sprite.trimmed_uvs = sprite
-                            .trimmed_uvs
-                            .translated_by(sprite_pos.atlas_texture_pixel_offset);
-                    }
-                }
-            }
-
-            assert!(
-                found_anim,
-                "Packed unknown sprite name '{}' into atlas at position ({},{},{})",
-                packed_sprite_name,
-                sprite_pos.atlas_texture_index,
-                sprite_pos.atlas_texture_pixel_offset.x,
-                sprite_pos.atlas_texture_pixel_offset.y,
-            );
-        }
-    }
-
-    let final_sprites_by_name: IndexMap<Spritename, Sprite> = result_sprites
-        .iter()
-        .map(|(name, sprite)| {
-            (
-                name.clone(),
-                convert_sprite(&sprite, result_atlas.texture_size),
-            )
-        })
-        .collect();
-    let final_sprites_by_name_3d: IndexMap<Spritename3D, Sprite3D> = result_sprites_3d
-        .iter()
-        .map(|(name, sprite)| {
-            (
-                name.clone(),
-                convert_sprite_3d(&sprite, &final_sprites_by_name),
-            )
-        })
-        .collect();
-
-    serialize_sprites(&result_sprites, &final_sprites_by_name);
-    serialize_sprites_3d(&result_sprites_3d, &final_sprites_by_name_3d);
-    serialize_fonts(&result_fonts, &final_sprites_by_name);
-    serialize_animations(&result_animations, &final_sprites_by_name);
-    serialize_animations_3d(&result_animations_3d, &final_sprites_by_name_3d);
-    serialize_atlas(&result_atlas);
+    result_sheet.pack_and_serialize();
 }
 
 fn bake_audio_resources() {
@@ -478,7 +389,7 @@ fn sprite_create_from_glyph(
     }
 }
 
-pub fn bitmapfont_create_from_ttf(
+fn create_sheet_from_ttf(
     font_name: &str,
     font_ttf_bytes: &[u8],
     output_dir: &str,
@@ -487,7 +398,7 @@ pub fn bitmapfont_create_from_ttf(
     draw_border: bool,
     color_glyph: PixelRGBA,
     color_border: PixelRGBA,
-) -> (IndexMap<Spritename, AssetSprite>, AssetFont) {
+) -> GraphicsSheet {
     let font_name = font_name.to_owned() + if draw_border { "_bordered" } else { "" };
 
     let output_filepath_without_extension = system::path_join(output_dir, &font_name);
@@ -541,27 +452,28 @@ pub fn bitmapfont_create_from_ttf(
         glyphs: result_glyphs,
     };
 
-    (result_sprites, result_font)
+    GraphicsSheet {
+        images: indexmap! { font_name.clone() => font_atlas_texture, },
+        fonts: indexmap! { font_name.clone() => result_font, },
+        sprites: result_sprites,
+        sprites_3d: IndexMap::new(),
+        animations: IndexMap::new(),
+        animations_3d: IndexMap::new(),
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Atlas packing
 
-pub fn atlas_create_from_pngs(
-    png_search_dir: &str,
+pub fn atlas_create_from_images(
+    images: &IndexMap<Imagename, Bitmap>,
     output_dir: &str,
     atlas_texture_size: u32,
 ) -> AssetAtlas {
-    let sprite_imagepaths = system::collect_files_by_extension_recursive(png_search_dir, ".png");
-
-    // Pack sprites
     let (atlas_textures, result_sprite_positions) = {
         let mut packer = BitmapMultiAtlas::new(atlas_texture_size);
-        for image_path in sprite_imagepaths.into_iter() {
-            let image = Bitmap::from_png_file_or_panic(&image_path);
-            let sprite_name = system::path_without_extension(&image_path)
-                .replace(&format!("{}/", png_search_dir), "");
-            packer.pack_bitmap(&sprite_name, &image);
+        for (image_name, image) in images.iter() {
+            packer.pack_bitmap(image_name, image);
         }
         packer.finish()
     };
@@ -1063,4 +975,118 @@ fn main() {
         "ASSETS SUCCESSFULLY BAKED: Elapsed time: {:.3}s",
         start_time.elapsed().as_secs_f64()
     );
+}
+
+//==================================================================================================
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct GraphicsSheet {
+    images: IndexMap<Imagename, Bitmap>,
+    fonts: IndexMap<Fontname, AssetFont>,
+    sprites: IndexMap<Spritename, AssetSprite>,
+    sprites_3d: IndexMap<Spritename3D, AssetSprite3D>,
+    animations: IndexMap<Animationname, AssetAnimation>,
+    animations_3d: IndexMap<Animationname3D, AssetAnimation3D>,
+}
+
+impl GraphicsSheet {
+    fn new_empty() -> GraphicsSheet {
+        GraphicsSheet {
+            images: IndexMap::new(),
+            fonts: IndexMap::new(),
+            sprites: IndexMap::new(),
+            sprites_3d: IndexMap::new(),
+            animations: IndexMap::new(),
+            animations_3d: IndexMap::new(),
+        }
+    }
+
+    fn extend_by(&mut self, other: GraphicsSheet) {
+        self.images.extend(other.images);
+        self.fonts.extend(other.fonts);
+        self.sprites.extend(other.sprites);
+        self.sprites_3d.extend(other.sprites_3d);
+        self.animations.extend(other.animations);
+        self.animations_3d.extend(other.animations_3d);
+    }
+
+    fn pack_and_serialize(mut self) {
+        // Create texture atlas and adjust positions of our sprites according to the final packed
+        // atlas positions
+        let result_atlas = atlas_create_from_images(&self.images, "resources", 1024);
+        for (packed_sprite_name, sprite_pos) in &result_atlas.sprite_positions {
+            if self.sprites.contains_key(packed_sprite_name) {
+                // Atlas-sprite is a regular sprite
+                let mut sprite = self.sprites.get_mut(packed_sprite_name).unwrap();
+                sprite.atlas_texture_index = sprite_pos.atlas_texture_index;
+                sprite.trimmed_uvs = sprite
+                    .trimmed_uvs
+                    .translated_by(sprite_pos.atlas_texture_pixel_offset);
+            } else if self.fonts.contains_key(packed_sprite_name) {
+                // Atlas-sprite is a glyph-sheet of some font
+                let font = &self.fonts[packed_sprite_name];
+                for sprite_glyph_name in font.glyphs.values().map(|glyph| &glyph.sprite_name) {
+                    let mut sprite = self.sprites.get_mut(sprite_glyph_name).unwrap();
+                    sprite.atlas_texture_index = sprite_pos.atlas_texture_index;
+                    sprite.trimmed_uvs = sprite
+                        .trimmed_uvs
+                        .translated_by(sprite_pos.atlas_texture_pixel_offset);
+                }
+            } else {
+                // AssetSprite must be an animation-sheet of some animation(s)
+                let mut found_anim = false;
+                for (animation_name, animation) in &self.animations {
+                    if animation_name.starts_with(&(packed_sprite_name.to_owned() + ":"))
+                        || animation_name == packed_sprite_name
+                    {
+                        found_anim = true;
+                        for sprite_frame_name in &animation.sprite_names {
+                            let mut sprite = self.sprites.get_mut(sprite_frame_name).unwrap();
+                            sprite.atlas_texture_index = sprite_pos.atlas_texture_index;
+                            sprite.trimmed_uvs = sprite
+                                .trimmed_uvs
+                                .translated_by(sprite_pos.atlas_texture_pixel_offset);
+                        }
+                    }
+                }
+
+                assert!(
+                    found_anim,
+                    "Packed unknown sprite name '{}' into atlas at position ({},{},{})",
+                    packed_sprite_name,
+                    sprite_pos.atlas_texture_index,
+                    sprite_pos.atlas_texture_pixel_offset.x,
+                    sprite_pos.atlas_texture_pixel_offset.y,
+                );
+            }
+        }
+
+        let final_sprites_by_name: IndexMap<Spritename, Sprite> = self
+            .sprites
+            .iter()
+            .map(|(name, sprite)| {
+                (
+                    name.clone(),
+                    convert_sprite(&sprite, result_atlas.texture_size),
+                )
+            })
+            .collect();
+        let final_sprites_by_name_3d: IndexMap<Spritename3D, Sprite3D> = self
+            .sprites_3d
+            .iter()
+            .map(|(name, sprite)| {
+                (
+                    name.clone(),
+                    convert_sprite_3d(&sprite, &final_sprites_by_name),
+                )
+            })
+            .collect();
+
+        serialize_sprites(&self.sprites, &final_sprites_by_name);
+        serialize_sprites_3d(&self.sprites_3d, &final_sprites_by_name_3d);
+        serialize_fonts(&self.fonts, &final_sprites_by_name);
+        serialize_animations(&self.animations, &final_sprites_by_name);
+        serialize_animations_3d(&self.animations_3d, &final_sprites_by_name_3d);
+        serialize_atlas(&result_atlas);
+    }
 }
