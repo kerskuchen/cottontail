@@ -492,6 +492,7 @@ impl BitmapFont {
         (atlas.atlas_texture, atlas.sprite_positions)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn test_font_sizes(
         font_name: &str,
         font_ttf_bytes: &[u8],

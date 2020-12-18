@@ -1,10 +1,9 @@
-use crate::{transmute_to_byte_slice, transmute_to_byte_slice_mut};
-
 pub use super::color::{Color, PixelRGBA};
 pub use super::font::{BitmapFont, Font, TextAlignment};
 pub use super::grid::GluePosition;
 pub use super::math;
 pub use super::math::{AlignmentHorizontal, AlignmentVertical, Vec2i};
+
 pub use super::system;
 
 use serde_derive::Serialize;
@@ -94,9 +93,11 @@ impl Bitmap {
     }
 
     pub fn from_png_file(png_filepath: &str) -> Result<Bitmap, String> {
-        let file_reader = std::fs::File::open(png_filepath)
+        use crate::transmute_to_byte_slice_mut;
+        let file_content = system::read_file_whole(png_filepath)
             .map_err(|error| format!("Could not open png file '{}': {}", png_filepath, error))?;
-        let mut decoder = png::Decoder::new(file_reader);
+
+        let mut decoder = png::Decoder::new(std::io::Cursor::new(file_content));
         decoder.set_transformations(png::Transformations::EXPAND);
         let (png_info, mut png_reader) = decoder.read_info().map_err(|error| {
             format!("Could not read png file info '{}': {}", png_filepath, error)
@@ -140,7 +141,10 @@ impl Bitmap {
         result
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn write_to_png_file(bitmap: &Bitmap, png_filepath: &str) {
+        use crate::transmute_to_byte_slice;
+
         std::fs::create_dir_all(system::path_without_filename(png_filepath)).expect(&format!(
             "Could not create necessary directories to write to '{}'",
             png_filepath

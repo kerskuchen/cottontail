@@ -82,9 +82,11 @@ impl Window {
     }
 
     pub fn create_renderer(&self) -> Renderer {
-        let context = glow::Context::from_loader_function(|s| {
-            self.sdl_video.gl_get_proc_address(s) as *const _
-        });
+        let context = unsafe {
+            glow::Context::from_loader_function(|s| {
+                self.sdl_video.gl_get_proc_address(s) as *const _
+            })
+        };
         Renderer::new(context)
     }
 

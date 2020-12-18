@@ -3,6 +3,11 @@ use std::path::Path;
 
 pub use easy_process;
 
+pub fn read_file_whole(filepath: &str) -> Result<Vec<u8>, String> {
+    file_fetcher::open_bytes_str(filepath)
+        .map_err(|error| format!("Could not fetch file '{}' : {}", filepath, error))
+}
+
 pub trait PathHelper {
     fn to_string_borrowed(&self) -> Result<&str, String>;
 

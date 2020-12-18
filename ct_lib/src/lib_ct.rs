@@ -7,6 +7,13 @@ pub mod font;
 pub mod grid;
 pub mod random;
 pub mod sprite;
+
+#[cfg(not(target_arch = "wasm32"))]
+#[path = "system_windows.rs"]
+pub mod system;
+
+#[cfg(target_arch = "wasm32")]
+#[path = "system_wasm.rs"]
 pub mod system;
 
 #[path = "game/mod_game.rs"]
@@ -75,6 +82,12 @@ impl TimerScoped {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Logger
 
+#[cfg(target_arch = "wasm32")]
+pub fn init_logging(logfile_path: &str, loglevel: log::LevelFilter) -> Result<(), String> {
+    todo!();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn init_logging(logfile_path: &str, loglevel: log::LevelFilter) -> Result<(), String> {
     let logfile = std::fs::OpenOptions::new()
         .write(true)
@@ -144,11 +157,11 @@ pub fn deserialize_from_file_binary<T>(filepath: &str) -> T
 where
     for<'de> T: serde::Deserialize<'de>,
 {
-    let file = std::fs::File::open(filepath).expect(&format!(
+    let file_content = system::read_file_whole(filepath).expect(&format!(
         "Could not open binary file '{}' for deserialization",
         filepath
     ));
-    bincode::deserialize_from(&file).expect(&format!(
+    bincode::deserialize_from(std::io::Cursor::new(file_content)).expect(&format!(
         "Could not deserialize from binary file '{}'",
         filepath
     ))
@@ -158,11 +171,11 @@ pub fn deserialize_from_file_json<T>(filepath: &str) -> T
 where
     for<'de> T: serde::Deserialize<'de>,
 {
-    let file = std::fs::File::open(filepath).expect(&format!(
-        "Could not open json file '{}' for deserialization",
+    let file_content = system::read_file_whole(filepath).expect(&format!(
+        "Could not open binary file '{}' for deserialization",
         filepath
     ));
-    serde_json::from_reader(&file).expect(&format!(
+    serde_json::from_reader(std::io::Cursor::new(file_content)).expect(&format!(
         "Could not deserialize from json file '{}'",
         filepath
     ))

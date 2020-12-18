@@ -228,7 +228,7 @@ fn gl_texture_update(
 ) {
     unsafe {
         gl.bind_texture(glow::TEXTURE_2D, Some(texture.id));
-        gl.tex_sub_image_2d_u8_slice(
+        gl.tex_sub_image_2d(
             glow::TEXTURE_2D,
             0,
             offset_x as i32,
@@ -237,7 +237,7 @@ fn gl_texture_update(
             region_height as i32,
             glow::RGBA,
             glow::UNSIGNED_BYTE,
-            Some(std::mem::transmute::<&[PixelRGBA], &[u8]>(pixels)),
+            PixelUnpackData::Slice(std::mem::transmute::<&[PixelRGBA], &[u8]>(pixels)),
         );
         gl.bind_texture(glow::TEXTURE_2D, None);
     }
@@ -612,14 +612,14 @@ impl ShaderSimple {
     fn activate(&self, gl: &glow::Context, params: &ShaderParamsSimple) {
         gl_program_enable(gl, &self.program);
         unsafe {
-            gl.uniform_1_i32(Some(self.u_texture), 0);
+            gl.uniform_1_i32(Some(&self.u_texture), 0);
             gl.uniform_matrix_4_f32_slice(
-                Some(self.u_transform),
+                Some(&self.u_transform),
                 false,
                 &params.transform.into_column_array(),
             );
             gl.uniform_4_f32(
-                Some(self.u_texture_color_modulate),
+                Some(&self.u_texture_color_modulate),
                 params.texture_color_modulate.r,
                 params.texture_color_modulate.g,
                 params.texture_color_modulate.b,
@@ -709,9 +709,9 @@ impl ShaderBlit {
     fn activate(&self, gl: &glow::Context, params: &ShaderParamsBlit) {
         gl_program_enable(gl, &self.program);
         unsafe {
-            gl.uniform_1_i32(Some(self.u_texture), 0);
+            gl.uniform_1_i32(Some(&self.u_texture), 0);
             gl.uniform_matrix_4_f32_slice(
-                Some(self.u_transform),
+                Some(&self.u_transform),
                 false,
                 &params.transform.into_column_array(),
             );

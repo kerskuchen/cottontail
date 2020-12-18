@@ -10,8 +10,9 @@ use super::draw::*;
 use super::math::*;
 use super::random::*;
 use super::sprite::*;
-use super::system;
 use super::*;
+
+use super::system;
 
 use serde_derive::{Deserialize, Serialize};
 

@@ -84,6 +84,7 @@ impl GameAssets {
         self.atlas.debug_get_bitmap_for_sprite(sprite_name)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn debug_save_sprite_as_png(&self, sprite_name: &str, filepath: &str) {
         let sprite_bitmap = self.debug_get_sprite_as_bitmap(sprite_name);
         Bitmap::write_to_png_file(&sprite_bitmap, filepath);
@@ -147,6 +148,12 @@ fn load_fonts(assets_folder: &str) -> HashMap<String, SpriteFont> {
     super::deserialize_from_file_binary(&fonts_filepath)
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, AudioBufferMono> {
+    todo!()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, AudioBufferMono> {
     let mut audiorecordings = HashMap::new();
 
