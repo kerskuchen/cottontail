@@ -1,3 +1,5 @@
+use crate::transmute_to_byte_slice;
+
 pub use super::color::{Color, PixelRGBA};
 pub use super::font::{BitmapFont, Font, TextAlignment};
 pub use super::grid::GluePosition;
@@ -137,9 +139,10 @@ impl Bitmap {
             "Could not create necessary directories to write to '{}'",
             png_filepath
         ));
+        let pixels_raw = unsafe { transmute_to_byte_slice(&bitmap.data) };
         lodepng::encode32_file(
             png_filepath,
-            &bitmap.data,
+            pixels_raw,
             bitmap.width as usize,
             bitmap.height as usize,
         )
