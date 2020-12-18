@@ -16,8 +16,8 @@ pub mod math;
 
 pub use bincode;
 pub use indexmap;
-pub use lodepng;
 pub use log;
+pub use png;
 pub use serde;
 pub use serde_derive;
 pub use serde_json;
@@ -203,6 +203,13 @@ pub fn panic_set_hook_wait_for_keypress() {
 pub unsafe fn transmute_to_byte_slice<S>(from: &[S]) -> &[u8] {
     std::slice::from_raw_parts(
         from.as_ptr() as *const u8,
+        from.len() * std::mem::size_of::<S>(),
+    )
+}
+
+pub unsafe fn transmute_to_byte_slice_mut<S>(from: &mut [S]) -> &mut [u8] {
+    std::slice::from_raw_parts_mut(
+        from.as_mut_ptr() as *mut u8,
         from.len() * std::mem::size_of::<S>(),
     )
 }

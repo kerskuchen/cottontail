@@ -1,4 +1,4 @@
-use crate::transmute_to_byte_slice;
+use crate::{transmute_to_byte_slice, transmute_to_byte_slice_mut};
 
 pub use super::color::{Color, PixelRGBA};
 pub use super::font::{BitmapFont, Font, TextAlignment};
@@ -94,21 +94,27 @@ impl Bitmap {
     }
 
     pub fn from_png_file(png_filepath: &str) -> Result<Bitmap, String> {
-        let file_bytes = std::fs::read(png_filepath)
+        let file_reader = std::fs::File::open(png_filepath)
             .map_err(|error| format!("Could not open png file '{}': {}", png_filepath, error))?;
-        let image = lodepng::decode32(file_bytes)
-            .map_err(|error| format!("Could not decode png file '{}': {}", png_filepath, error))?;
+        let mut decoder = png::Decoder::new(file_reader);
+        decoder.set_transformations(png::Transformations::EXPAND);
+        let (png_info, mut png_reader) = decoder.read_info().map_err(|error| {
+            format!("Could not read png file info '{}': {}", png_filepath, error)
+        })?;
 
-        let buffer: Vec<PixelRGBA> = image
-            .buffer
-            .into_iter()
-            // NOTE: We use our own color type because rbg::RRBA8 does not properly compile with serde
-            .map(|color| unsafe { std::mem::transmute::<lodepng::RGBA, PixelRGBA>(color) })
-            .collect();
+        let size_bytes = png_info.buffer_size();
+        let mut buffer =
+            vec![PixelRGBA::transparent(); size_bytes / std::mem::size_of::<PixelRGBA>()];
+        {
+            let buffer_raw = unsafe { transmute_to_byte_slice_mut(&mut buffer) };
+            png_reader.next_frame(buffer_raw).map_err(|error| {
+                format!("Could not decode png file '{}': {}", png_filepath, error)
+            })?;
+        }
 
         Ok(Bitmap::new_from_buffer(
-            image.width as u32,
-            image.height as u32,
+            png_info.width,
+            png_info.height,
             buffer,
         ))
     }
@@ -139,14 +145,20 @@ impl Bitmap {
             "Could not create necessary directories to write to '{}'",
             png_filepath
         ));
+
+        let file = std::fs::File::create(png_filepath)
+            .expect(&format!("Could not open png file '{}'", png_filepath));
+
+        let ref mut file_writer = std::io::BufWriter::new(file);
+        let mut encoder = png::Encoder::new(file_writer, bitmap.width as u32, bitmap.height as u32);
+        encoder.set_color(png::ColorType::RGBA);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().unwrap();
+
         let pixels_raw = unsafe { transmute_to_byte_slice(&bitmap.data) };
-        lodepng::encode32_file(
-            png_filepath,
-            pixels_raw,
-            bitmap.width as usize,
-            bitmap.height as usize,
-        )
-        .expect(&format!("Could not write png file to '{}'", png_filepath));
+        writer
+            .write_image_data(pixels_raw)
+            .expect(&format!("Could not write png file to '{}'", png_filepath));
     }
 
     /// Draws a given utf8 text to a given bitmap
