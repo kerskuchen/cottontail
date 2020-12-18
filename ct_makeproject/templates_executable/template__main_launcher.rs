@@ -50,7 +50,7 @@ impl GameStateInterface for GameState {
     ) -> GameState {
         let random = Random::new_from_seed((input.deltatime * 1000000.0) as u64);
 
-        let camera = GameCamera::new(Vec2::zero(), CANVAS_WIDTH, CANVAS_HEIGHT);
+        let camera = GameCamera::new(Vec2::zero(), CANVAS_WIDTH, CANVAS_HEIGHT, false);
 
         let cursors = Cursors::new(
             &camera.cam,
@@ -61,9 +61,6 @@ impl GameStateInterface for GameState {
             CANVAS_WIDTH as u32,
             CANVAS_HEIGHT as u32,
         );
-
-        let font_default = draw.get_font("default_tiny_bordered").clone();
-        let font_default_no_border = draw.get_font("default_tiny").clone();
 
         let globals = Globals {
             random,
@@ -76,9 +73,6 @@ impl GameStateInterface for GameState {
 
             canvas_width: CANVAS_WIDTH,
             canvas_height: CANVAS_HEIGHT,
-
-            font_default,
-            font_default_no_border,
         };
 
         let scene_debug = SceneDebug::new(draw, audio, assets, input, "Grand9K_Pixel_bordered");
@@ -158,7 +152,23 @@ impl GameStateInterface for GameState {
 
         let deltatime = self.globals.deltatime;
         self.globals.camera.update(deltatime);
-        draw.set_shaderparams_simple(Color::white(), self.globals.camera.proj_view_matrix());
+        draw.set_shaderparams_simple(
+            Color::white(),
+            self.globals.camera.proj_view_matrix(),
+            Mat4::ortho_origin_left_top(
+                CANVAS_WIDTH as f32,
+                CANVAS_HEIGHT as f32,
+                DEFAULT_WORLD_ZNEAR,
+                DEFAULT_WORLD_ZFAR,
+            ),
+            Mat4::ortho_origin_left_top(
+                input.screen_framebuffer_width as f32,
+                input.screen_framebuffer_height as f32,
+                DEFAULT_WORLD_ZNEAR,
+                DEFAULT_WORLD_ZFAR,
+            ),
+            self.globals.camera.canvas_blit_offset(),
+        );
     }
 }
 
