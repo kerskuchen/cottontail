@@ -2,7 +2,7 @@ mod renderer_opengl;
 
 use ct_lib::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand};
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, fs::File, rc::Rc};
 
 use renderer_opengl::Renderer;
 
@@ -11,7 +11,9 @@ use log::Level;
 
 pub use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{WebGlProgram, WebGlRenderingContext, WebGlShader};
+use web_sys::{
+    WebGlProgram, WebGlRenderingContext, WebGlShader, XmlHttpRequest, XmlHttpRequestResponseType,
+};
 
 const ENABLE_PANIC_MESSAGES: bool = false;
 const ENABLE_FRAMETIME_LOGGING: bool = true;
@@ -107,6 +109,60 @@ fn log_frametimes(
     }
 }
 
+enum FileReadRequestResult {
+    Pending,
+    Success(Vec<u8>),
+    Failed(String),
+}
+struct FileReadRequest {
+    request: web_sys::XmlHttpRequest,
+}
+
+impl FileReadRequest {
+    pub fn new(filepath: &str) -> FileReadRequest {
+        let request = web_sys::XmlHttpRequest::new().expect("Failed to make XmlHttpRequest");
+        request
+            .open("GET", filepath)
+            .expect(&format!("Failed to create GET request for '{}'", filepath));
+        request.set_response_type(XmlHttpRequestResponseType::Arraybuffer);
+        request
+            .send()
+            .expect(&format!("Failed to send GET request for '{}'", filepath));
+
+        FileReadRequest { request }
+    }
+
+    pub fn check(&mut self) -> FileReadRequestResult {
+        let ready_state = self.request.ready_state();
+        if ready_state == 4 {
+            // We are done
+            let status = self.request.status().expect(&format!(
+                "Failed to get request status for '{}'",
+                &self.request.response_url()
+            ));
+            if status / 100 == 2 {
+                // Success (statuscode 2xx)
+                let response = self.request.response().expect(&format!(
+                    "Failed to read response for '{}'",
+                    &self.request.response_url()
+                ));
+                let array = js_sys::Uint8Array::new(&response);
+                let mut result = vec![0u8; array.length() as usize];
+                array.copy_to(&mut result);
+
+                FileReadRequestResult::Success(result)
+            } else {
+                // Failed (statuscode != 2xx)
+                let status_text = self.request.status_text().unwrap_or("Unknown".to_owned());
+                FileReadRequestResult::Failed(format!("Status: {} - {}", status, status_text))
+            }
+        } else {
+            // Request is still running
+            FileReadRequestResult::Pending
+        }
+    }
+}
+
 pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
 
@@ -114,6 +170,28 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     log::info!("Hello world!");
 
     let launcher_start_time = performance_now();
+
+    let mut file_read = FileReadRequest::new("resources/credits.txt");
+    let f = Rc::new(RefCell::new(None));
+    let g = f.clone();
+
+    *g.borrow_mut() = Some(Closure::wrap(Box::new(move || match file_read.check() {
+        FileReadRequestResult::Pending => {
+            log::info!("PENDING");
+            html_request_animation_frame(f.borrow().as_ref().unwrap());
+        }
+        FileReadRequestResult::Success(content) => {
+            let result_string = String::from_utf8_lossy(&content).to_owned();
+            log::info!("SUCCESS: {}", result_string);
+        }
+        FileReadRequestResult::Failed(status) => {
+            log::error!("FAILED: {}", status);
+        }
+    }) as Box<dyn FnMut()>));
+
+    html_request_animation_frame(g.borrow().as_ref().unwrap());
+
+    return Ok(());
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // AUDIO
