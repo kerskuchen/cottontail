@@ -5,5 +5,9 @@ pub fn read_file_whole(filepath: &str) -> Result<Vec<u8>, String> {
 }
 
 pub fn path_join(first: &str, second: &str) -> String {
-    (String::from(first) + "/" + second).replace("\\", "/")
+    if first.ends_with('/') || first.ends_with('\\') {
+        format!("{}{}", first, second).replace("\\", "/")
+    } else {
+        format!("{}/{}", first, second).replace("\\", "/")
+    }
 }
