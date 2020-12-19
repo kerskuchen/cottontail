@@ -970,7 +970,8 @@ fn main() {
     for filepath in &filelist {
         filelist_content += &format!("{}\n", filepath);
     }
-    std::fs::write("resources/index.txt", filelist_content.as_bytes());
+    std::fs::write("resources/index.txt", filelist_content.as_bytes())
+        .expect("Could not write indexfile to 'resources/index.txt'");
 
     log::info!(
         "ASSETS SUCCESSFULLY BAKED: Elapsed time: {:.3}s",

@@ -104,6 +104,7 @@ impl GameAssets {
                 if self.files_loaders.is_empty() {
                     assert!(self.files_bindata.len() == self.files_list.len());
                     self.files_loading_stage = AssetLoadingStage::Finished;
+                    log::info!("Finished loading asset files");
                     true
                 } else {
                     false

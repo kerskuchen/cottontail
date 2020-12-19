@@ -27,7 +27,7 @@ fn gl_state_ok(gl: &glow::Context) -> bool {
         if error == glow::NO_ERROR {
             break;
         } else {
-            log::warn!("OpenGL error: {}", gl_error_string(error));
+            log::error!("OpenGL error: {}", gl_error_string(error));
             is_ok = false;
         }
     }
@@ -778,7 +778,7 @@ impl Renderer {
         let drawobject_simple = gl_drawobject_create(&gl, &shader_simple.vertex_config);
         let drawobject_blit = gl_drawobject_create(&gl, &shader_blit.vertex_config);
 
-        assert!(gl_state_ok(&gl));
+        assert!(gl_state_ok(&gl), "Error while creating renderer");
 
         Renderer {
             gl,
@@ -1010,9 +1010,12 @@ impl Renderer {
                     );
                 }
             }
+            assert!(
+                gl_state_ok(&self.gl),
+                "Error after drawcommand {:?}",
+                drawcommand
+            );
         }
-
-        assert!(gl_state_ok(&self.gl));
     }
 
     fn framebuffer_blit(

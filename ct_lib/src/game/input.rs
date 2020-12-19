@@ -307,19 +307,35 @@ impl KeyboardState {
     }
 
     pub fn is_down(&self, scancode: Scancode) -> bool {
-        self.keys[&scancode].button.is_pressed
+        if let Some(key) = self.keys.get(&scancode) {
+            key.button.is_pressed
+        } else {
+            false
+        }
     }
 
     pub fn recently_pressed(&self, scancode: Scancode) -> bool {
-        self.keys[&scancode].button.recently_pressed()
+        if let Some(key) = self.keys.get(&scancode) {
+            key.button.recently_pressed()
+        } else {
+            false
+        }
     }
 
     pub fn recently_pressed_or_repeated(&self, scancode: Scancode) -> bool {
-        self.keys[&scancode].button.recently_pressed_or_repeated()
+        if let Some(key) = self.keys.get(&scancode) {
+            key.button.recently_pressed_or_repeated()
+        } else {
+            false
+        }
     }
 
     pub fn recently_released(&self, scancode: Scancode) -> bool {
-        self.keys[&scancode].button.recently_released()
+        if let Some(key) = self.keys.get(&scancode) {
+            key.button.recently_released()
+        } else {
+            false
+        }
     }
 }
 

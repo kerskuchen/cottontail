@@ -605,12 +605,13 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
 
         let pre_sound_time = post_update_time;
 
-        let audio = game_memory
-            .audio
-            .as_mut()
-            .expect("No audiostate initialized");
-        let TODO = true;
-        // audio_output.render_frames(audio, input.has_focus, 2.0 * target_seconds_per_frame);
+        if game_memory.audio.is_some() {
+            let audio = game_memory
+                .audio
+                .as_mut()
+                .expect("No audiostate initialized");
+            // audio_output.render_frames(audio, input.has_focus, 2.0 * target_seconds_per_frame);
+        }
 
         let post_sound_time = current_time_seconds();
 
@@ -619,7 +620,8 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
 
         let pre_render_time = post_sound_time;
 
-        {
+        let TODO = "make it so that draw is always there and can handle loading its sounds later";
+        if game_memory.draw.is_some() {
             let input = input.borrow();
             renderer.process_drawcommands(
                 input.screen_framebuffer_width,
