@@ -4,7 +4,7 @@ mod input;
 pub use assets::*;
 pub use input::*;
 
-use crate::system::TimerScoped;
+use crate::platform::TimerScoped;
 
 use super::audio::*;
 use super::bitmap::*;
@@ -14,7 +14,7 @@ use super::random::*;
 use super::sprite::*;
 use super::*;
 
-use super::system;
+use super::platform;
 
 use serde_derive::{Deserialize, Serialize};
 

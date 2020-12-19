@@ -4,7 +4,7 @@ mod sdl_input;
 mod sdl_window;
 
 use ct_lib::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand};
-use ct_lib::system;
+use ct_lib::platform;
 
 use ct_lib::log;
 use ct_lib::serde_derive::{Deserialize, Serialize};
@@ -138,7 +138,7 @@ fn log_frametimes(
 pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     let launcher_start_time = std::time::Instant::now();
     let game_config = GameStateType::get_game_config();
-    let savedata_dir = system::get_savegame_dir(
+    let savedata_dir = platform::get_savegame_dir(
         &game_config.game_company_name,
         &game_config.game_save_folder_name,
         true,
@@ -154,8 +154,8 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     // ---------------------------------------------------------------------------------------------
     // Logging and error handling
 
-    let logfile_path = ct_lib::system::path_join(&savedata_dir, "logging.txt");
-    if let Err(error) = ct_lib::system::init_logging(&logfile_path, log::LevelFilter::Trace) {
+    let logfile_path = platform::path_join(&savedata_dir, "logging.txt");
+    if let Err(error) = platform::init_logging(&logfile_path, log::LevelFilter::Trace) {
         sdl_window::Window::show_error_messagebox(&format!(
             "Could not initialize logger at '{}' : {}",
             &logfile_path, error,
@@ -167,7 +167,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
 
         if ENABLE_PANIC_MESSAGES {
             let logfile_path_canonicalized =
-                system::path_canonicalize(&logfile_path).unwrap_or(logfile_path.to_string());
+                platform::path_canonicalize(&logfile_path).unwrap_or(logfile_path.to_string());
             let messagebox_text = format!(
                 "A Fatal error has occured:\n{}\nLogfile written to '{}'",
                 &panic_info, &logfile_path_canonicalized,
@@ -181,8 +181,8 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
 
     // Get launcher config
     let launcher_config: LauncherConfig = {
-        let config_filepath = system::path_join(&savedata_dir, "launcher_config.json");
-        if system::path_exists(&config_filepath) {
+        let config_filepath = platform::path_join(&savedata_dir, "launcher_config.json");
+        if platform::path_exists(&config_filepath) {
             ct_lib::deserialize_from_json_file(&config_filepath)
         } else {
             let config = LauncherConfig {
@@ -258,7 +258,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     // Input
 
     let mut gamepad_subsystem = {
-        let savedata_mappings_path = system::path_join(&savedata_dir, "gamecontrollerdb.txt");
+        let savedata_mappings_path = platform::path_join(&savedata_dir, "gamecontrollerdb.txt");
         let gamedata_mappings_path = "resources/gamecontrollerdb.txt".to_string();
         let gamepad_mappings = std::fs::read_to_string(&savedata_mappings_path)
             .or_else(|_error| {

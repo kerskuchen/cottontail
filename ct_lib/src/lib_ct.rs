@@ -27,12 +27,12 @@ use std::collections::HashSet;
 // Filesystem
 
 #[cfg(not(target_arch = "wasm32"))]
-#[path = "system_windows.rs"]
-pub mod system;
+#[path = "platform_desktop.rs"]
+pub mod platform;
 
 #[cfg(target_arch = "wasm32")]
-#[path = "system_wasm.rs"]
-pub mod system;
+#[path = "platform_wasm.rs"]
+pub mod platform;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Debugging and performance
@@ -111,7 +111,7 @@ pub fn deserialize_from_binary_file<T>(filepath: &str) -> T
 where
     for<'de> T: serde::Deserialize<'de>,
 {
-    let file_content = system::read_file_whole(filepath).expect(&format!(
+    let file_content = platform::read_file_whole(filepath).expect(&format!(
         "Could not open binary file '{}' for deserialization",
         filepath
     ));
@@ -126,7 +126,7 @@ pub fn deserialize_from_json_file<T>(filepath: &str) -> T
 where
     for<'de> T: serde::Deserialize<'de>,
 {
-    let file_content = system::read_file_whole(filepath).expect(&format!(
+    let file_content = platform::read_file_whole(filepath).expect(&format!(
         "Could not open binary file '{}' for deserialization",
         filepath
     ));

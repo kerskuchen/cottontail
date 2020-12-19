@@ -7,7 +7,7 @@ use super::{
 
 use ct_lib::math::*;
 use ct_lib::sprite::*;
-use ct_lib::system;
+use ct_lib::platform;
 
 use ct_lib::indexmap::indexmap;
 use ct_lib::indexmap::IndexMap;
@@ -138,10 +138,10 @@ pub fn create_sheet_animations_3d(
             command += " --save-as ";
             command += &stack_layer_image_filepath;
 
-            system::run_systemcommand_fail_on_error(&command, false);
+            platform::run_systemcommand_fail_on_error(&command, false);
 
             assert!(
-                system::path_exists(&stack_layer_image_filepath),
+                platform::path_exists(&stack_layer_image_filepath),
                 "Failed to generate 3D sprite stack layer for '{}' - '{}' is missing",
                 image_filepath,
                 stack_layer_image_filepath
@@ -463,16 +463,16 @@ fn aseprite_run_sheet_packer(
         + output_filepath_image
         + " --data "
         + output_filepath_meta;
-    system::run_systemcommand_fail_on_error(&command, false);
+    platform::run_systemcommand_fail_on_error(&command, false);
 
     assert!(
-        system::path_exists(&output_filepath_image),
+        platform::path_exists(&output_filepath_image),
         "Failed to generate sprite sheet for '{}' - '{}' is missing",
         image_filepath,
         output_filepath_image
     );
     assert!(
-        system::path_exists(&output_filepath_meta),
+        platform::path_exists(&output_filepath_meta),
         "Failed to generate sprite sheet for '{}' - '{}' is missing",
         image_filepath,
         output_filepath_meta
@@ -505,16 +505,16 @@ fn aseprite_get_offsets_for_layer(
         + output_filepath_image
         + " --data "
         + output_filepath_meta;
-    system::run_systemcommand_fail_on_error(&command, false);
+    platform::run_systemcommand_fail_on_error(&command, false);
 
     assert!(
-        system::path_exists(&output_filepath_image),
+        platform::path_exists(&output_filepath_image),
         "Failed to generate offset information for '{}' - '{}' is missing",
         image_filepath,
         output_filepath_image
     );
     assert!(
-        system::path_exists(&output_filepath_meta),
+        platform::path_exists(&output_filepath_meta),
         "Failed to generate offset information for '{}' - '{}' is missing",
         image_filepath,
         output_filepath_meta
@@ -554,7 +554,7 @@ fn aseprite_get_offsets_for_layer(
 
 fn aseprite_list_layers_of_file(file_path: &str) -> Vec<String> {
     let command = String::from("aseprite ") + " --batch" + " --list-layers " + file_path;
-    let command_stdout = system::run_systemcommand_fail_on_error(&command, false).stdout;
+    let command_stdout = platform::run_systemcommand_fail_on_error(&command, false).stdout;
     command_stdout.lines().map(|line| line.to_owned()).collect()
 }
 

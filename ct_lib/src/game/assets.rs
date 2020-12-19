@@ -1,4 +1,4 @@
-use system::Fileloader;
+use platform::Fileloader;
 
 use super::*;
 
@@ -62,7 +62,7 @@ impl GameAssets {
     pub fn load_files(&mut self) -> bool {
         match self.files_loading_stage {
             AssetLoadingStage::Start => {
-                let index_filepath = system::path_join(&self.assets_folder, "index.txt");
+                let index_filepath = platform::path_join(&self.assets_folder, "index.txt");
                 let index_loader = self
                     .files_loaders
                     .entry(index_filepath.clone())
@@ -181,39 +181,39 @@ impl GameAssets {
     }
 
     fn load_sprites(&self) -> HashMap<String, Sprite> {
-        let filepath = system::path_join(&self.assets_folder, "sprites.data");
+        let filepath = platform::path_join(&self.assets_folder, "sprites.data");
         super::deserialize_from_binary(&self.files_bindata[&filepath])
     }
 
     fn load_sprites_3d(&self) -> HashMap<String, Sprite3D> {
-        let filepath = system::path_join(&self.assets_folder, "sprites_3d.data");
+        let filepath = platform::path_join(&self.assets_folder, "sprites_3d.data");
         super::deserialize_from_binary(&self.files_bindata[&filepath])
     }
 
     fn load_animations(&self) -> HashMap<String, Animation<Sprite>> {
-        let filepath = system::path_join(&self.assets_folder, "animations.data");
+        let filepath = platform::path_join(&self.assets_folder, "animations.data");
         super::deserialize_from_binary(&self.files_bindata[&filepath])
     }
 
     fn load_animations_3d(&self) -> HashMap<String, Animation<Sprite3D>> {
-        let filepath = system::path_join(&self.assets_folder, "animations_3d.data");
+        let filepath = platform::path_join(&self.assets_folder, "animations_3d.data");
         super::deserialize_from_binary(&self.files_bindata[&filepath])
     }
 
     fn load_fonts(&self) -> HashMap<String, SpriteFont> {
-        let filepath = system::path_join(&self.assets_folder, "fonts.data");
+        let filepath = platform::path_join(&self.assets_folder, "fonts.data");
         super::deserialize_from_binary(&self.files_bindata[&filepath])
     }
 
     fn load_atlas(&self) -> SpriteAtlas {
-        let textures_list_filepath = system::path_join(&self.assets_folder, "atlas.data");
+        let textures_list_filepath = platform::path_join(&self.assets_folder, "atlas.data");
         let textures_list: Vec<String> =
             super::deserialize_from_binary(&self.files_bindata[&textures_list_filepath]);
 
         let mut textures = Vec::new();
         for texture_filepath_relative in &textures_list {
             let texture_filepath =
-                system::path_join(&self.assets_folder, texture_filepath_relative);
+                platform::path_join(&self.assets_folder, texture_filepath_relative);
             textures.push(
                 Bitmap::from_png_data(&self.files_bindata[&texture_filepath])
                     .expect(&format!("Could load texture '{}'", texture_filepath)),
@@ -261,13 +261,13 @@ pub fn load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, AudioBu
 pub fn load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, AudioBufferMono> {
     let mut audiorecordings = HashMap::new();
 
-    let wav_filepaths = system::collect_files_by_extension_recursive(assets_folder, ".wav");
+    let wav_filepaths = platform::collect_files_by_extension_recursive(assets_folder, ".wav");
     for wav_filepath in &wav_filepaths {
         let mut wav_file = audrey::open(&wav_filepath).expect(&format!(
             "Could not open audio file for reading: '{}'",
             wav_filepath
         ));
-        let name = system::path_to_filename_without_extension(wav_filepath);
+        let name = platform::path_to_filename_without_extension(wav_filepath);
         let sample_rate_hz = wav_file.description().sample_rate() as usize;
         let samples: Vec<AudioSample> = wav_file.samples().map(Result::unwrap).collect();
         let samplecount = samples.len();

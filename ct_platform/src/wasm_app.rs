@@ -2,7 +2,7 @@ mod renderer_opengl;
 
 use ct_lib::{
     game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand},
-    system::{current_time_seconds, init_logging},
+    platform::{current_time_seconds, init_logging},
 };
 
 use std::{cell::RefCell, rc::Rc};
@@ -101,7 +101,7 @@ fn log_frametimes(
 }
 
 pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result<(), JsValue> {
-    init_logging("", log::Level::Trace);
+    init_logging("", log::Level::Trace).unwrap();
     log::info!("Starting up...");
 
     let launcher_start_time = current_time_seconds();
