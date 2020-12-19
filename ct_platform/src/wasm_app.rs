@@ -512,7 +512,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
                     log::trace!("`WindowedModeSetSize` Not available on this platform");
                 }
                 SystemCommand::ScreenSetGrabInput(grab_input) => {
-                    todo!();
+                    let TODO = true;
                 }
                 SystemCommand::Shutdown => {
                     log::trace!("`Shutdown` Not available on this platform");

@@ -239,8 +239,9 @@ fn gl_texture_update(
             region_height as i32,
             glow::RGBA,
             glow::UNSIGNED_BYTE,
-            PixelUnpackData::Slice(std::mem::transmute::<&[PixelRGBA], &[u8]>(pixels)),
+            PixelUnpackData::Slice(ct_lib::transmute_to_byte_slice(pixels)),
         );
+
         gl.bind_texture(glow::TEXTURE_2D, None);
     }
 }
