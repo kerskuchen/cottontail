@@ -1,6 +1,9 @@
 mod renderer_opengl;
 
-use ct_lib::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand};
+use ct_lib::{
+    game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand},
+    system::Fileloader,
+};
 
 use std::{cell::RefCell, fs::File, rc::Rc};
 
@@ -117,21 +120,17 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
 
     let launcher_start_time = performance_now();
 
-    let mut file_read = FileReadRequest::new("resources/credits.txt");
+    let mut loader = Fileloader::new("http://google.resources/creditsa.txt").unwrap();
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
 
-    *g.borrow_mut() = Some(Closure::wrap(Box::new(move || match file_read.check() {
-        FileReadRequestResult::Pending => {
-            log::info!("PENDING");
-            html_request_animation_frame(f.borrow().as_ref().unwrap());
-        }
-        FileReadRequestResult::Success(content) => {
+    *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+        if let Some(content) = loader.poll().unwrap() {
             let result_string = String::from_utf8_lossy(&content).to_owned();
             log::info!("SUCCESS: {}", result_string);
-        }
-        FileReadRequestResult::Failed(status) => {
-            log::error!("FAILED: {}", status);
+        } else {
+            log::info!("PENDING");
+            html_request_animation_frame(f.borrow().as_ref().unwrap());
         }
     }) as Box<dyn FnMut()>));
 

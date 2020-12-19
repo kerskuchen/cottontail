@@ -1,10 +1,13 @@
-pub struct FileReadRequest {
+pub struct Fileloader {
+    // NOTE: We save filepath here because sometimes `request.response_url()` gives us an empty
+    //       string (i.e. when crashing while doing a Cross-Origin Requests (COR))
+    filepath: String,
     request: web_sys::XmlHttpRequest,
     finished: bool,
 }
 
-impl FileReadRequest {
-    pub fn new(filepath: &str) -> Result<FileReadRequest, String> {
+impl Fileloader {
+    pub fn new(filepath: &str) -> Result<Fileloader, String> {
         let request = web_sys::XmlHttpRequest::new().expect("Failed to make XmlHttpRequest");
         request.open("GET", filepath).map_err(|error| {
             format!(
@@ -21,7 +24,8 @@ impl FileReadRequest {
             )
         })?;
 
-        Ok(FileReadRequest {
+        Ok(Fileloader {
+            filepath: filepath.to_owned(),
             request,
             finished: false,
         })
@@ -39,8 +43,7 @@ impl FileReadRequest {
                 let status = self.request.status().map_err(|error| {
                     format!(
                         "Failed to get request status for '{}' - {:?}",
-                        &self.request.response_url(),
-                        error
+                        &self.filepath, error
                     )
                 })?;
 
@@ -50,8 +53,7 @@ impl FileReadRequest {
                     let response = self.request.response().map_err(|error| {
                         format!(
                             "Failed to read response for '{}' - {:?}",
-                            &self.request.response_url(),
-                            error
+                            &self.filepath, error
                         )
                     })?;
                     let array = js_sys::Uint8Array::new(&response);
@@ -62,7 +64,10 @@ impl FileReadRequest {
                     // Failed (statuscode != 2xx)
                     self.finished = true;
                     let status_text = self.request.status_text().unwrap_or("Unknown".to_owned());
-                    Err(format!("Status: {} - {:?}", status, status_text))
+                    Err(format!(
+                        "Failed to load file '{}' - Status: {} - {:?}",
+                        &self.filepath, status, status_text
+                    ))
                 }
             }
             _ => Ok(None),

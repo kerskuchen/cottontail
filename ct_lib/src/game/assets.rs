@@ -1,4 +1,4 @@
-use system::FileReadRequest;
+use system::Fileloader;
 
 use super::*;
 
@@ -29,7 +29,7 @@ pub struct GameAssets {
     files_loading_stage: AssetLoadingStage,
     files_list: Vec<String>,
     files_bindata: HashMap<String, Vec<u8>>,
-    files_loaders: HashMap<String, FileReadRequest>,
+    files_loaders: HashMap<String, Fileloader>,
 }
 
 impl Clone for GameAssets {
@@ -66,7 +66,7 @@ impl GameAssets {
                 let index_loader = self
                     .files_loaders
                     .entry(index_filepath.clone())
-                    .or_insert(FileReadRequest::new(&index_filepath).unwrap());
+                    .or_insert(Fileloader::new(&index_filepath).unwrap());
 
                 if let Some(index_content) = index_loader
                     .poll()
@@ -80,7 +80,7 @@ impl GameAssets {
 
                     for filepath in &self.files_list {
                         self.files_loaders
-                            .insert(filepath.clone(), FileReadRequest::new(&filepath).unwrap());
+                            .insert(filepath.clone(), Fileloader::new(&filepath).unwrap());
                     }
                     self.files_loading_stage = AssetLoadingStage::LoadingFiles;
                 }

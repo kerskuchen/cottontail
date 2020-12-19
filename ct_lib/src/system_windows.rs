@@ -7,19 +7,23 @@ pub fn read_file_whole(filepath: &str) -> Result<Vec<u8>, String> {
     std::fs::read(filepath)
         .map_err(|error| format!("Could not read file '{}' : {}", filepath, error))
 }
-pub struct FileReadRequest {
+pub struct Fileloader {
     content: Option<Vec<u8>>,
     finished: bool,
 }
 
-impl FileReadRequest {
-    pub fn new(filepath: &str) -> Result<FileReadRequest, String> {
+impl Fileloader {
+    pub fn new(filepath: &str) -> Result<Fileloader, String> {
         let content = std::fs::read(filepath)
             .map_err(|error| format!("Could not fetch file '{}' : {}", filepath, error))?;
-        Ok(FileReadRequest {
+        Ok(Fileloader {
             content: Some(content),
             finished: false,
         })
+    }
+
+    pub fn is_done(&self) -> bool {
+        true
     }
 
     pub fn poll(&mut self) -> Result<Option<Vec<u8>>, String> {
