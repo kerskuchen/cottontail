@@ -133,32 +133,30 @@ impl FileReadRequest {
     }
 
     pub fn check(&mut self) -> FileReadRequestResult {
-        let ready_state = self.request.ready_state();
-        if ready_state == 4 {
-            // We are done
-            let status = self.request.status().expect(&format!(
-                "Failed to get request status for '{}'",
-                &self.request.response_url()
-            ));
-            if status / 100 == 2 {
-                // Success (statuscode 2xx)
-                let response = self.request.response().expect(&format!(
-                    "Failed to read response for '{}'",
+        match self.request.ready_state() {
+            XmlHttpRequest::DONE => {
+                let status = self.request.status().expect(&format!(
+                    "Failed to get request status for '{}'",
                     &self.request.response_url()
                 ));
-                let array = js_sys::Uint8Array::new(&response);
-                let mut result = vec![0u8; array.length() as usize];
-                array.copy_to(&mut result);
+                if status / 100 == 2 {
+                    // Success (statuscode 2xx)
+                    let response = self.request.response().expect(&format!(
+                        "Failed to read response for '{}'",
+                        &self.request.response_url()
+                    ));
+                    let array = js_sys::Uint8Array::new(&response);
+                    let mut result = vec![0u8; array.length() as usize];
+                    array.copy_to(&mut result);
 
-                FileReadRequestResult::Success(result)
-            } else {
-                // Failed (statuscode != 2xx)
-                let status_text = self.request.status_text().unwrap_or("Unknown".to_owned());
-                FileReadRequestResult::Failed(format!("Status: {} - {}", status, status_text))
+                    FileReadRequestResult::Success(result)
+                } else {
+                    // Failed (statuscode != 2xx)
+                    let status_text = self.request.status_text().unwrap_or("Unknown".to_owned());
+                    FileReadRequestResult::Failed(format!("Status: {} - {}", status, status_text))
+                }
             }
-        } else {
-            // Request is still running
-            FileReadRequestResult::Pending
+            _ => FileReadRequestResult::Pending,
         }
     }
 }
