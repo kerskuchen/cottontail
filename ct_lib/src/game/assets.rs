@@ -72,6 +72,7 @@ impl GameAssets {
                     .poll()
                     .expect("Could not load resource index file")
                 {
+                    log::debug!("Loaded index file '{}'", index_filepath);
                     self.files_list = String::from_utf8_lossy(&index_content)
                         .lines()
                         .filter(|&filepath| !filepath.is_empty())
@@ -98,6 +99,7 @@ impl GameAssets {
                 for (filepath, loader) in self.files_loaders.iter_mut() {
                     if let Some(content) = loader.poll().unwrap() {
                         self.files_bindata.insert(filepath.clone(), content);
+                        log::debug!("Loaded resource file '{}'", filepath);
                     }
                 }
 
@@ -126,6 +128,7 @@ impl GameAssets {
             self.fonts = self.load_fonts();
             self.animations_3d = self.load_animations_3d();
             self.sprites_3d = self.load_sprites_3d();
+            log::debug!("Loaded graphic resources");
         }
 
         return true;

@@ -14,7 +14,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{WebGlProgram, WebGlRenderingContext, WebGlShader};
 
 const ENABLE_PANIC_MESSAGES: bool = false;
-const ENABLE_FRAMETIME_LOGGING: bool = true;
+const ENABLE_FRAMETIME_LOGGING: bool = false;
 
 fn html_get_window() -> web_sys::Window {
     web_sys::window().expect("no global `window` exists")
@@ -207,13 +207,14 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     let mut mouse_pos_previous_x = 0;
     let mut mouse_pos_previous_y = 0;
 
+    let TODO = "we need some onfocus/lost callbacks to pause the game and save cpu";
     // Mouse down
     {
         let input = input.clone();
         let audio_ctx = audio_ctx.clone();
         let mousedown_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
             // Need handle fullscreen change here because of browser UX limitations
-            // fullscreen_toggle(Some(SCREEN_ORIENTATION));
+            fullscreen_toggle(Some(SCREEN_ORIENTATION));
 
             // Need enable audio here because of browser UX limitations
             let audio_ctx = audio_ctx.borrow();
