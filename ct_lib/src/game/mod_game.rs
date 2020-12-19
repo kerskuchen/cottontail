@@ -207,13 +207,8 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
             SplashscreenState::IsFadingIn => {}
             SplashscreenState::FinishedFadingIn => {
                 {
-                    let _audiostate_setup_timer =
-                        TimerScoped::new_scoped("Audiostate setup time", true);
-
-                    let audio_recordings_mono =
-                        game::load_audiorecordings_mono(&assets.assets_folder);
-                    let audio_recordings_stereo =
-                        game::load_audiorecordings_stereo(&assets.assets_folder);
+                    let audio_recordings_mono = assets.load_audiorecordings_mono();
+                    let audio_recordings_stereo = assets.load_audiorecordings_stereo();
 
                     audio.add_audio_recordings_mono(audio_recordings_mono);
                     audio.add_audio_recordings_stereo(audio_recordings_stereo);

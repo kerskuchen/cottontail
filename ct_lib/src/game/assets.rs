@@ -19,7 +19,7 @@ impl Default for AssetLoadingStage {
 
 #[derive(Default)]
 pub struct GameAssets {
-    pub assets_folder: String,
+    assets_folder: String,
     animations: HashMap<String, Animation<Sprite>>,
     animations_3d: HashMap<String, Animation<Sprite3D>>,
     sprites_3d: HashMap<String, Sprite3D>,
@@ -128,6 +128,49 @@ impl GameAssets {
         }
 
         return true;
+    }
+
+    pub fn load_audiorecordings_mono(&self) -> HashMap<String, AudioBufferMono> {
+        assert!(self.files_loading_stage == AssetLoadingStage::Finished);
+
+        let mut audiorecordings = HashMap::new();
+
+        for wav_filepath in self
+            .files_list
+            .iter()
+            .filter(|&path| path.ends_with(".wav"))
+        {
+            let wav_data = &self.files_bindata[wav_filepath];
+            let mut wav_file =
+                audrey::Reader::new(std::io::Cursor::new(wav_data)).expect(&format!(
+                    "Could not decode audio file for reading: '{}'",
+                    wav_filepath
+                ));
+
+            let TODO = "make a more correct 'without extension' function that works for wasm";
+            let name = wav_filepath
+                .replace(&format!("{}/", self.assets_folder), "")
+                .replace(".wav", "");
+            let sample_rate_hz = wav_file.description().sample_rate() as usize;
+            let samples: Vec<AudioSample> = wav_file.samples().map(Result::unwrap).collect();
+            let samplecount = samples.len();
+            let recording = AudioBufferMono {
+                name: name.clone(),
+                sample_rate_hz,
+                samples,
+                loopsection_start_sampleindex: 0,
+                loopsection_samplecount: samplecount,
+            };
+            audiorecordings.insert(name, recording);
+        }
+
+        audiorecordings
+    }
+
+    pub fn load_audiorecordings_stereo(&self) -> HashMap<String, AudioBufferStereo> {
+        assert!(self.files_loading_stage == AssetLoadingStage::Finished);
+        let TODO = true;
+        HashMap::new()
     }
 
     pub fn get_atlas_textures(&self) -> &[Bitmap] {
@@ -254,40 +297,3 @@ impl GameAssets {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Asset loading
-
-#[cfg(target_arch = "wasm32")]
-pub fn load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, AudioBufferMono> {
-    todo!()
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, AudioBufferMono> {
-    let mut audiorecordings = HashMap::new();
-
-    let wav_filepaths = platform::collect_files_by_extension_recursive(assets_folder, ".wav");
-    for wav_filepath in &wav_filepaths {
-        let mut wav_file = audrey::open(&wav_filepath).expect(&format!(
-            "Could not open audio file for reading: '{}'",
-            wav_filepath
-        ));
-        let name = platform::path_to_filename_without_extension(wav_filepath);
-        let sample_rate_hz = wav_file.description().sample_rate() as usize;
-        let samples: Vec<AudioSample> = wav_file.samples().map(Result::unwrap).collect();
-        let samplecount = samples.len();
-        let recording = AudioBufferMono {
-            name: name.clone(),
-            sample_rate_hz,
-            samples,
-            loopsection_start_sampleindex: 0,
-            loopsection_samplecount: samplecount,
-        };
-        audiorecordings.insert(name, recording);
-    }
-
-    audiorecordings
-}
-
-pub fn load_audiorecordings_stereo(_assets_folder: &str) -> HashMap<String, AudioBufferStereo> {
-    let TODO = true;
-    HashMap::new()
-}
