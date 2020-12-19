@@ -13,6 +13,9 @@ pub use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{WebGlProgram, WebGlRenderingContext, WebGlShader};
 
+const ENABLE_PANIC_MESSAGES: bool = false;
+const ENABLE_FRAMETIME_LOGGING: bool = true;
+
 fn html_get_window() -> web_sys::Window {
     web_sys::window().expect("no global `window` exists")
 }
@@ -78,29 +81,44 @@ fn fullscreen_toggle(orientation_type: Option<web_sys::OrientationLockType>) {
     }
 }
 
-struct Input {
-    pressed: bool,
-    pos: (i32, i32),
+fn performance_now() -> f64 {
+    html_get_window()
+        .performance()
+        .expect("should have a Performance")
+        .now()
 }
-impl Input {
-    fn new() -> Input {
-        Input {
-            pressed: false,
-            pos: (0, 0),
-        }
+
+fn log_frametimes(
+    _duration_frame: f64,
+    _duration_input: f64,
+    _duration_update: f64,
+    _duration_sound: f64,
+    _duration_render: f64,
+) {
+    if ENABLE_FRAMETIME_LOGGING {
+        log::trace!(
+            "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  sound: {:.3}ms  render: {:.3}ms",
+            _duration_frame * 1000.0,
+            _duration_input * 1000.0,
+            _duration_update * 1000.0,
+            _duration_sound * 1000.0,
+            _duration_render * 1000.0,
+        );
     }
 }
 
-pub fn run_main<GameStateType: GameStateInterface + Clone>() -> Result<(), JsValue> {
+pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
 
     console_log::init_with_level(Level::Trace).expect("error initializing log");
     log::info!("Hello world!");
 
+    let launcher_start_time = performance_now();
+
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // AUDIO
 
-    const AUDIO_SAMPLE_RATE: u32 = 44100;
+    const AUDIO_SAMPLE_RATE: usize = 44100;
     const AUDIO_BUFFER_FRAME_COUNT: usize = 2048;
     const AUDIO_NUM_CHANNELS: usize = 2;
 
@@ -158,28 +176,83 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() -> Result<(), JsVal
         .expect("Could not connect AudioScriptProcessor node");
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
+    // WEBGL
+
+    let webgl = html_get_canvas()
+        .get_context("webgl")?
+        .unwrap()
+        .dyn_into::<WebGlRenderingContext>()?;
+    let glow_context = glow::Context::from_webgl1_context(webgl);
+    let mut renderer = Renderer::new(glow_context);
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // MAINLOOP
+
+    // ---------------------------------------------------------------------------------------------
+    // Game memory and input
+
+    let mut game_memory = GameMemory::<GameStateType>::default();
+
+    // ---------------------------------------------------------------------------------------------
+    // Mainloop setup
+
+    let mut systemcommands: Vec<SystemCommand> = Vec::new();
+
+    let game_start_time = performance_now();
+    let mut frame_start_time = game_start_time;
+    let duration_startup = game_start_time - launcher_start_time;
+    log::debug!("Startup took {:.3}ms", duration_startup * 1000.0,);
+
+    let mut current_tick = 0;
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
     // INPUT CALLBACKS
 
     const SCREEN_ORIENTATION: web_sys::OrientationLockType =
         web_sys::OrientationLockType::Landscape;
 
-    let input = Rc::new(RefCell::new(Input::new()));
+    let dpr = html_get_window().device_pixel_ratio();
+    let input = Rc::new(RefCell::new(GameInput::new()));
+    let mut mouse_pos_previous_x = 0;
+    let mut mouse_pos_previous_y = 0;
+
     // Mouse down
     {
         let input = input.clone();
         let audio_ctx = audio_ctx.clone();
         let mousedown_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
-            let mut input = input.borrow_mut();
-            let audio_ctx = audio_ctx.borrow();
-            input.pressed = true;
-            input.pos = (event.offset_x(), event.offset_y());
-
             // Need handle fullscreen change here because of browser UX limitations
-            fullscreen_toggle(Some(SCREEN_ORIENTATION));
+            // fullscreen_toggle(Some(SCREEN_ORIENTATION));
 
             // Need enable audio here because of browser UX limitations
+            let audio_ctx = audio_ctx.borrow();
             if audio_ctx.state() == web_sys::AudioContextState::Suspended {
                 audio_ctx.resume().ok();
+            }
+
+            if event.button() >= 3 {
+                // We only support three buttons
+                return;
+            }
+
+            let mut input = input.borrow_mut();
+            input.mouse.has_press_event = true;
+            input.mouse.pos_x = (event.offset_x() as f64 * dpr).floor() as i32;
+            input.mouse.pos_y = (event.offset_y() as f64 * dpr).floor() as i32;
+            match event.button() {
+                0 => input
+                    .mouse
+                    .button_left
+                    .process_event(true, false, current_tick),
+                1 => input
+                    .mouse
+                    .button_middle
+                    .process_event(true, false, current_tick),
+                2 => input
+                    .mouse
+                    .button_right
+                    .process_event(true, false, current_tick),
+                _ => {}
             }
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
@@ -188,12 +261,50 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() -> Result<(), JsVal
         )?;
         mousedown_callback.forget();
     }
+    // Mouse up
+    {
+        let input = input.clone();
+        let mouseup_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
+            if event.button() >= 3 {
+                // We only support three buttons
+                return;
+            }
+
+            let mut input = input.borrow_mut();
+            input.mouse.has_release_event = true;
+            input.mouse.pos_x = (event.offset_x() as f64 * dpr).floor() as i32;
+            input.mouse.pos_y = (event.offset_y() as f64 * dpr).floor() as i32;
+            match event.button() {
+                0 => input
+                    .mouse
+                    .button_left
+                    .process_event(false, false, current_tick),
+                1 => input
+                    .mouse
+                    .button_middle
+                    .process_event(false, false, current_tick),
+                2 => input
+                    .mouse
+                    .button_right
+                    .process_event(false, false, current_tick),
+                _ => {}
+            }
+        }) as Box<dyn FnMut(_)>);
+        html_get_canvas().add_event_listener_with_callback(
+            "mouseup",
+            mouseup_callback.as_ref().unchecked_ref(),
+        )?;
+        mouseup_callback.forget();
+    }
     // Mouse move
     {
         let input = input.clone();
         let mousemove_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
             let mut input = input.borrow_mut();
-            input.pos = (event.offset_x(), event.offset_y());
+
+            input.mouse.has_moved = true;
+            input.mouse.pos_x = (event.offset_x() as f64 * dpr).floor() as i32;
+            input.mouse.pos_y = (event.offset_y() as f64 * dpr).floor() as i32;
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
             "mousemove",
@@ -201,19 +312,18 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() -> Result<(), JsVal
         )?;
         mousemove_callback.forget();
     }
-    // Mouse up
+    // Mouse wheel
     {
         let input = input.clone();
-        let mouseup_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
+        let wheel_callback = Closure::wrap(Box::new(move |event: web_sys::WheelEvent| {
             let mut input = input.borrow_mut();
-            input.pressed = false;
-            input.pos = (event.offset_x(), event.offset_y());
+
+            input.mouse.has_wheel_event = true;
+            input.mouse.wheel_delta = event.delta_y() as i32;
         }) as Box<dyn FnMut(_)>);
-        html_get_canvas().add_event_listener_with_callback(
-            "mouseup",
-            mouseup_callback.as_ref().unchecked_ref(),
-        )?;
-        mouseup_callback.forget();
+        html_get_canvas()
+            .add_event_listener_with_callback("mouseup", wheel_callback.as_ref().unchecked_ref())?;
+        wheel_callback.forget();
     }
     // Touch start
     {
@@ -226,13 +336,25 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() -> Result<(), JsVal
 
             let mut input = input.borrow_mut();
             let audio_ctx = audio_ctx.borrow();
-            for touch_index in 0..event.touches().length() {
-                if let Some(touch) = event.touches().item(touch_index) {
-                    input.pressed = true;
-                    input.pos = (
-                        touch.client_x() - offset_x as i32,
-                        touch.client_y() - offset_y as i32,
-                    );
+            for finger_id in 0..event.target_touches().length() {
+                if let Some(touch) = event.target_touches().item(finger_id) {
+                    if finger_id < ct_lib::game::TOUCH_MAX_FINGER_COUNT as u32 {
+                        input.touch.has_press_event = true;
+
+                        let finger = &mut input.touch.fingers[finger_id as usize];
+
+                        // IMPORTANT: At this point we may have an out of date screen dimensions
+                        //            if the window size changed since last frame.
+                        finger.pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
+                        finger.pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
+
+                        // NOTE: We don't want fake deltas when pressing. This can happen when our
+                        //       last release was not the same as our press position.
+                        finger.delta_x = 0;
+                        finger.delta_y = 0;
+
+                        finger.state.process_event(true, false, current_tick);
+                    }
                 }
             }
 
@@ -247,30 +369,6 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() -> Result<(), JsVal
         )?;
         touchstart_callback.forget();
     }
-    // Touch move
-    {
-        let input = input.clone();
-        let canvas = html_get_canvas();
-        let touchmove_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
-            let offset_x = canvas.get_bounding_client_rect().left();
-            let offset_y = canvas.get_bounding_client_rect().top();
-
-            let mut input = input.borrow_mut();
-            for touch_index in 0..event.touches().length() {
-                if let Some(touch) = event.touches().item(touch_index) {
-                    input.pos = (
-                        touch.client_x() - offset_x as i32,
-                        touch.client_y() - offset_y as i32,
-                    );
-                }
-            }
-        }) as Box<dyn FnMut(_)>);
-        html_get_canvas().add_event_listener_with_callback(
-            "touchmove",
-            touchmove_callback.as_ref().unchecked_ref(),
-        )?;
-        touchmove_callback.forget();
-    }
     // Touch up
     {
         let input = input.clone();
@@ -280,13 +378,27 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() -> Result<(), JsVal
             let offset_y = canvas.get_bounding_client_rect().top();
 
             let mut input = input.borrow_mut();
-            for touch_index in 0..event.touches().length() {
-                if let Some(touch) = event.touches().item(touch_index) {
-                    input.pressed = false;
-                    input.pos = (
-                        touch.client_x() - offset_x as i32,
-                        touch.client_y() - offset_y as i32,
-                    );
+            for finger_id in 0..event.target_touches().length() {
+                if let Some(touch) = event.target_touches().item(finger_id) {
+                    if finger_id < ct_lib::game::TOUCH_MAX_FINGER_COUNT as u32 {
+                        input.touch.has_release_event = true;
+                        let finger_previous_pos_x =
+                            input.touch.fingers_previous[finger_id as usize].pos_x;
+                        let finger_previous_pos_y =
+                            input.touch.fingers_previous[finger_id as usize].pos_y;
+
+                        let finger = &mut input.touch.fingers[finger_id as usize];
+
+                        // IMPORTANT: At this point we may have an out of date screen dimensions
+                        //            if the window size changed since last frame.
+                        finger.pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
+                        finger.pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
+
+                        finger.delta_x = finger.pos_x - finger_previous_pos_x;
+                        finger.delta_y = finger.pos_y - finger_previous_pos_y;
+
+                        finger.state.process_event(false, false, current_tick);
+                    }
                 }
             }
         }) as Box<dyn FnMut(_)>);
@@ -296,12 +408,53 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() -> Result<(), JsVal
         )?;
         touchend_callback.forget();
     }
+    // Touch move
+    {
+        let input = input.clone();
+        let canvas = html_get_canvas();
+        let touchmove_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
+            let offset_x = canvas.get_bounding_client_rect().left();
+            let offset_y = canvas.get_bounding_client_rect().top();
+
+            let mut input = input.borrow_mut();
+            for finger_id in 0..event.target_touches().length() {
+                if let Some(touch) = event.target_touches().item(finger_id) {
+                    if finger_id < ct_lib::game::TOUCH_MAX_FINGER_COUNT as u32 {
+                        input.touch.has_move_event = true;
+                        let finger_previous_pos_x =
+                            input.touch.fingers_previous[finger_id as usize].pos_x;
+                        let finger_previous_pos_y =
+                            input.touch.fingers_previous[finger_id as usize].pos_y;
+
+                        let finger = &mut input.touch.fingers[finger_id as usize];
+
+                        // IMPORTANT: At this point we may have an out of date screen dimensions
+                        //            if the window size changed since last frame.
+                        finger.pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
+                        finger.pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
+
+                        finger.delta_x = finger.pos_x - finger_previous_pos_x;
+                        finger.delta_y = finger.pos_y - finger_previous_pos_y;
+                    }
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        html_get_canvas().add_event_listener_with_callback(
+            "touchmove",
+            touchmove_callback.as_ref().unchecked_ref(),
+        )?;
+        touchmove_callback.forget();
+    }
     // Touch cancel
     {
         let input = input.clone();
         let touchcancel_callback = Closure::wrap(Box::new(move |_event: web_sys::TouchEvent| {
             let mut input = input.borrow_mut();
-            input.pressed = false;
+            for finger_id in 0..ct_lib::game::TOUCH_MAX_FINGER_COUNT {
+                let finger = &mut input.touch.fingers[finger_id];
+                finger.state.process_event(false, false, current_tick);
+                input.touch.has_release_event = true;
+            }
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
             "touchcancel",
@@ -309,50 +462,6 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() -> Result<(), JsVal
         )?;
         touchcancel_callback.forget();
     }
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////
-    // WEBGL
-
-    let webgl = html_get_canvas()
-        .get_context("webgl")?
-        .unwrap()
-        .dyn_into::<WebGlRenderingContext>()?;
-    let glow_context = glow::Context::from_webgl1_context(webgl);
-    let mut renderer = Renderer::new(glow_context);
-
-    /*
-    let vert_shader = compile_shader(
-        &gl,
-        WebGlRenderingContext::VERTEX_SHADER,
-        r#"
-        attribute vec4 position;
-        void main() {
-            gl_Position = position;
-        }
-    "#,
-    )?;
-    let frag_shader = compile_shader(
-        &gl,
-        WebGlRenderingContext::FRAGMENT_SHADER,
-        r#"
-        void main() {
-            gl_FragColor = vec4(1.0, 0.0, 1.0, 1.0);
-        }
-    "#,
-    )?;
-    let program = link_program(&gl, &vert_shader, &frag_shader)?;
-    gl.use_program(Some(&program));
-
-    let buffer = gl.create_buffer().ok_or("failed to create buffer")?;
-    gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&buffer));
-
-    gl.vertex_attrib_pointer_with_i32(0, 3, WebGlRenderingContext::FLOAT, false, 0, 0);
-    gl.enable_vertex_attrib_array(0);
-
-    */
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////
-    // MAINLOOP
 
     // Here we want to call `requestAnimationFrame` in a loop, but only a fixed
     // number of times. After it's done we want all our resources cleaned up. To
@@ -370,15 +479,67 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() -> Result<(), JsVal
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
 
-    let mut frame_count = 0;
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-        let dpr = html_get_window().device_pixel_ratio();
-        //log::info!("dpr: {:?}", dpr);
+        let pre_input_time = performance_now();
+
+        current_tick += 1;
+
+        //--------------------------------------------------------------------------------------
+        // System commands
+
+        for command in &systemcommands {
+            match command {
+                SystemCommand::FullscreenToggle => {
+                    todo!();
+                }
+                SystemCommand::FullscreenEnable(enabled) => {
+                    todo!();
+                }
+                SystemCommand::TextinputStart {
+                    inputrect_x,
+                    inputrect_y,
+                    inputrect_width,
+                    inputrect_height,
+                } => {
+                    todo!();
+                }
+                SystemCommand::TextinputStop => {
+                    todo!();
+                }
+                SystemCommand::WindowedModeAllowResizing(allowed) => {
+                    log::trace!("`WindowedModeAllowResizing` Not available on this platform");
+                }
+                SystemCommand::WindowedModeAllow(allowed) => {
+                    log::trace!("`WindowedModeAllow` Not available on this platform");
+                }
+                SystemCommand::WindowedModeSetSize {
+                    width,
+                    height,
+                    minimum_width,
+                    minimum_height,
+                } => {
+                    log::trace!("`WindowedModeSetSize` Not available on this platform");
+                }
+                SystemCommand::ScreenSetGrabInput(grab_input) => {
+                    todo!();
+                }
+                SystemCommand::Shutdown => {
+                    log::trace!("`Shutdown` Not available on this platform");
+                }
+                SystemCommand::Restart => {
+                    log::trace!("`Restart` Not available on this platform");
+                }
+            }
+        }
+        systemcommands.clear();
+
+        //--------------------------------------------------------------------------------------
+        // Event loop
 
         // resize canvas
         {
-            let window_width = f64::round(html_get_canvas().client_width() as f64 * dpr);
-            let window_height = f64::round(html_get_canvas().client_height() as f64 * dpr);
+            let window_width = (html_get_canvas().client_width() as f64 * dpr).round();
+            let window_height = (html_get_canvas().client_height() as f64 * dpr).round();
             let canvas_width = html_get_canvas().width();
             let canvas_height = html_get_canvas().height();
             if canvas_width as i32 != window_width as i32
@@ -388,103 +549,115 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() -> Result<(), JsVal
                 assert!(window_height >= 0.0);
                 html_get_canvas().set_width(window_width as u32);
                 html_get_canvas().set_height(window_height as u32);
+
+                let mut input = input.borrow_mut();
+                input.screen_framebuffer_width = window_width as u32;
+                input.screen_framebuffer_height = window_height as u32;
+                input.screen_framebuffer_dimensions_changed = true;
+            }
+        }
+        // Mouse x in [0, screen_framebuffer_width - 1]  (left to right)
+        // Mouse y in [0, screen_framebuffer_height - 1] (top to bottom)
+        //
+        // NOTE: We get the mouse position and delta from querying SDL instead of accumulating
+        //       events, as it is faster, more accurate and less error-prone
+        {
+            let mut input = input.borrow_mut();
+            input.mouse.delta_x = input.mouse.pos_x - mouse_pos_previous_x;
+            input.mouse.delta_y = input.mouse.pos_y - mouse_pos_previous_y;
+        }
+
+        let post_input_time = performance_now();
+
+        //--------------------------------------------------------------------------------------
+        // Timings, update and drawing
+
+        let pre_update_time = post_input_time;
+
+        let duration_frame = pre_update_time - frame_start_time;
+        frame_start_time = pre_update_time;
+
+        {
+            let mut input = input.borrow_mut();
+            input.deltatime = duration_frame as f32;
+            input.target_deltatime = f32::min(duration_frame as f32, 1.0 / 30.0);
+            input.real_world_uptime = frame_start_time - launcher_start_time;
+            input.audio_playback_rate_hz = AUDIO_SAMPLE_RATE;
+
+            game_memory.update(&input, &mut systemcommands);
+
+            // Clear input state
+            input.screen_framebuffer_dimensions_changed = false;
+            input.has_foreground_event = false;
+            input.has_focus_event = false;
+
+            input.keyboard.clear_transitions();
+            input.mouse.clear_transitions();
+            input.touch.touchstate_clear_transitions();
+
+            mouse_pos_previous_x = input.mouse.pos_x;
+            mouse_pos_previous_y = input.mouse.pos_y;
+
+            if input.textinput.is_textinput_enabled {
+                // Reset textinput
+                input.textinput.has_new_textinput_event = false;
+                input.textinput.has_new_composition_event = false;
+                input.textinput.inputtext.clear();
+                input.textinput.composition_text.clear();
             }
         }
 
-        if frame_count > 256 {
-            //html_body().set_text_content(Some("All done!"));
-            //log::info!("All done!");
+        let post_update_time = performance_now();
 
-            // Drop our handle to this closure so that it will get cleaned
-            // up once we return.
-            // let _ = f.borrow_mut().take();
-            // return;
-        }
+        //--------------------------------------------------------------------------------------
+        // Sound output
 
-        // Set the body's text content to how many times this
-        // requestAnimationFrame callback has fired.
-        frame_count += 1;
-        // log::info!(
-        //     "requestAnimationFrame has been called {} times.",
-        //     frame_count
-        // );
+        let pre_sound_time = post_update_time;
 
-        let (pressed, pos_x, pos_y) = {
+        let audio = game_memory
+            .audio
+            .as_mut()
+            .expect("No audiostate initialized");
+        let TODO = true;
+        // audio_output.render_frames(audio, input.has_focus, 2.0 * target_seconds_per_frame);
+
+        let post_sound_time = performance_now();
+
+        //--------------------------------------------------------------------------------------
+        // Drawcommands
+
+        let pre_render_time = post_sound_time;
+
+        {
             let input = input.borrow();
-            let pos_x = f64::floor(input.pos.0 as f64 * dpr);
-            let pos_y = f64::floor(input.pos.1 as f64 * dpr);
-            (input.pressed, pos_x as i32, pos_y as i32)
-        };
-
-        let red = pos_x as f32 / html_get_canvas().width() as f32;
-        let green = pos_y as f32 / html_get_canvas().height() as f32;
-        let blue = if pressed { 1.0 } else { 0.0 };
-        //log::info!("pos: {:?}x{:?}", pos_x, pos_y);
-
-        /*
-
-        let canvas_width = html_get_canvas().width() as i32;
-        let canvas_height = html_get_canvas().height() as i32;
-        gl.viewport(0, 0, canvas_width, canvas_height);
-
-        // Note that `Float32Array::view` is somewhat dangerous (hence the
-        // `unsafe`!). This is creating a raw view into our module's
-        // `WebAssembly.Memory` buffer, but if we allocate more pages for ourself
-        // (aka do a memory allocation in Rust) it'll cause the buffer to change,
-        // causing the `Float32Array` to be invalid.
-        //
-        // As a result, after `Float32Array::view` we have to be very careful not to
-        // do any memory allocations before it's dropped.
-        let vertex_count = 3;
-        unsafe {
-            let vertices: [f32; 9] = [
-                -0.7 * f32::sin(frame_count as f32 / 60.0),
-                -0.7 * f32::sin(frame_count as f32 / 60.0),
-                0.0,
-                0.7,
-                -0.7,
-                0.0,
-                0.0,
-                0.7,
-                0.0,
-            ];
-            let vert_array = js_sys::Float32Array::view(&vertices);
-
-            gl.buffer_data_with_array_buffer_view(
-                WebGlRenderingContext::ARRAY_BUFFER,
-                &vert_array,
-                WebGlRenderingContext::STATIC_DRAW,
+            renderer.process_drawcommands(
+                input.screen_framebuffer_width,
+                input.screen_framebuffer_height,
+                &game_memory
+                    .draw
+                    .as_ref()
+                    .expect("No drawstate initialized")
+                    .drawcommands,
             );
         }
 
-        // Draw a 1 pixel border around the edge using
-        // the scissor test since it's easier than setting up
-        // a lot of stuff
-        gl.clear_color(1.0, 0.0, 0.0, 1.0); // red
-        gl.disable(WebGlRenderingContext::SCISSOR_TEST);
-        gl.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
+        let post_render_time = performance_now();
 
-        gl.enable(WebGlRenderingContext::SCISSOR_TEST);
-        gl.scissor(1, 1, canvas_width - 2, canvas_height - 2);
-        gl.clear_color(0.0, 0.0, 1.0, 1.0); // blue
-        gl.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
+        //--------------------------------------------------------------------------------------
+        // Debug timing output
 
-        gl.clear_color(red, green, blue, 1.0);
-        gl.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
+        let duration_input = post_input_time - pre_input_time;
+        let duration_update = post_update_time - pre_update_time;
+        let duration_sound = post_sound_time - pre_sound_time;
+        let duration_render = post_render_time - pre_render_time;
 
-        gl.draw_arrays(WebGlRenderingContext::TRIANGLES, 0, vertex_count);
-
-        gl.scissor(
-            pos_x,
-            html_get_canvas().height() as i32 - pos_y,
-            4 * dpr as i32,
-            4 * dpr as i32,
+        log_frametimes(
+            duration_frame,
+            duration_input,
+            duration_update,
+            duration_sound,
+            duration_render,
         );
-        gl.clear_color(1.0, 1.0, 1.0, 1.0);
-        gl.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
-
-        */
-
         // Schedule ourself for another requestAnimationFrame callback.
         html_request_animation_frame(f.borrow().as_ref().unwrap());
     }) as Box<dyn FnMut()>));

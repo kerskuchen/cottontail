@@ -118,20 +118,16 @@ fn log_frametimes(
     _duration_update: f32,
     _duration_sound: f32,
     _duration_render: f32,
-    _duration_swap: f32,
-    _duration_wait: f32,
 ) {
     if ENABLE_FRAMETIME_LOGGING {
         log::trace!(
-        "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  sound: {:.3}ms  render: {:.3}ms  swap: {:.3}ms  idle: {:.3}ms",
-        _duration_frame * 1000.0,
-        _duration_input * 1000.0,
-        _duration_update * 1000.0,
-        _duration_sound * 1000.0,
-        _duration_render * 1000.0,
-        _duration_swap * 1000.0,
-        _duration_wait * 1000.0
-    );
+            "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  sound: {:.3}ms  render: {:.3}ms",
+            _duration_frame * 1000.0,
+            _duration_input * 1000.0,
+            _duration_update * 1000.0,
+            _duration_sound * 1000.0,
+            _duration_render * 1000.0,
+        );
     }
 }
 
@@ -557,20 +553,20 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
                 Event::FingerMotion {
                     finger_id, x, y, ..
                 } => {
-                    let finger = &mut input.touch.fingers[finger_id as usize];
-                    let finger_previous = &mut input.touch.fingers_previous[finger_id as usize];
-
-                    // IMPORTANT: At this point we may have an out of date screen dimensions
-                    //            if the window size changed since last frame.
-                    //            Because we use touch input only on mobile (where we disable
-                    //            resizing the window) this is ok.
-                    finger.pos_x = f32::round(x * screen_width as f32) as i32;
-                    finger.pos_y = f32::round(y * screen_height as f32) as i32;
-
-                    finger.delta_x = finger.pos_x - finger_previous.pos_x;
-                    finger.delta_y = finger.pos_y - finger_previous.pos_y;
-
                     if finger_id < ct_lib::game::TOUCH_MAX_FINGER_COUNT as i64 {
+                        let finger = &mut input.touch.fingers[finger_id as usize];
+                        let finger_previous = &mut input.touch.fingers_previous[finger_id as usize];
+
+                        // IMPORTANT: At this point we may have an out of date screen dimensions
+                        //            if the window size changed since last frame.
+                        //            Because we use touch input only on mobile (where we disable
+                        //            resizing the window) this is ok.
+                        finger.pos_x = f32::round(x * screen_width as f32) as i32;
+                        finger.pos_y = f32::round(y * screen_height as f32) as i32;
+
+                        finger.delta_x = finger.pos_x - finger_previous.pos_x;
+                        finger.delta_y = finger.pos_y - finger_previous.pos_y;
+
                         input.touch.has_move_event = true;
                     }
                 }
@@ -583,46 +579,76 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
                 Event::MouseButtonDown { mouse_btn, .. } => match mouse_btn {
                     sdl2::mouse::MouseButton::Left => {
                         input.mouse.has_press_event = true;
-                        input.mouse.button_left.process_event(true, false, 0)
+                        input
+                            .mouse
+                            .button_left
+                            .process_event(true, false, current_tick)
                     }
                     sdl2::mouse::MouseButton::Middle => {
                         input.mouse.has_press_event = true;
-                        input.mouse.button_middle.process_event(true, false, 0)
+                        input
+                            .mouse
+                            .button_middle
+                            .process_event(true, false, current_tick)
                     }
                     sdl2::mouse::MouseButton::Right => {
                         input.mouse.has_press_event = true;
-                        input.mouse.button_right.process_event(true, false, 0)
+                        input
+                            .mouse
+                            .button_right
+                            .process_event(true, false, current_tick)
                     }
                     sdl2::mouse::MouseButton::X1 => {
                         input.mouse.has_press_event = true;
-                        input.mouse.button_x1.process_event(true, false, 0)
+                        input
+                            .mouse
+                            .button_x1
+                            .process_event(true, false, current_tick)
                     }
                     sdl2::mouse::MouseButton::X2 => {
                         input.mouse.has_press_event = true;
-                        input.mouse.button_x2.process_event(true, false, 0)
+                        input
+                            .mouse
+                            .button_x2
+                            .process_event(true, false, current_tick)
                     }
                     _ => {}
                 },
                 Event::MouseButtonUp { mouse_btn, .. } => match mouse_btn {
                     sdl2::mouse::MouseButton::Left => {
                         input.mouse.has_release_event = true;
-                        input.mouse.button_left.process_event(false, false, 0)
+                        input
+                            .mouse
+                            .button_left
+                            .process_event(false, false, current_tick)
                     }
                     sdl2::mouse::MouseButton::Middle => {
                         input.mouse.has_release_event = true;
-                        input.mouse.button_middle.process_event(false, false, 0)
+                        input
+                            .mouse
+                            .button_middle
+                            .process_event(false, false, current_tick)
                     }
                     sdl2::mouse::MouseButton::Right => {
                         input.mouse.has_release_event = true;
-                        input.mouse.button_right.process_event(false, false, 0)
+                        input
+                            .mouse
+                            .button_right
+                            .process_event(false, false, current_tick)
                     }
                     sdl2::mouse::MouseButton::X1 => {
                         input.mouse.has_release_event = true;
-                        input.mouse.button_x1.process_event(false, false, 0)
+                        input
+                            .mouse
+                            .button_x1
+                            .process_event(false, false, current_tick)
                     }
                     sdl2::mouse::MouseButton::X2 => {
                         input.mouse.has_release_event = true;
-                        input.mouse.button_x2.process_event(false, false, 0)
+                        input
+                            .mouse
+                            .button_x2
+                            .process_event(false, false, current_tick)
                     }
                     _ => {}
                 },
