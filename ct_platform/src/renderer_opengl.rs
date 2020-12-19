@@ -13,6 +13,8 @@ type GLTextureId = <glow::Context as glow::HasContext>::Texture;
 type GLFramebufferId = <glow::Context as glow::HasContext>::Framebuffer;
 type GLRenderbufferId = <glow::Context as glow::HasContext>::Renderbuffer;
 type GLUniformLocation = <glow::Context as glow::HasContext>::UniformLocation;
+type GLVertexArray = <glow::Context as glow::HasContext>::VertexArray;
+type GLBuffer = <glow::Context as glow::HasContext>::Buffer;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Error checking
@@ -115,7 +117,7 @@ fn gl_program_create(
     };
 
     assert!(gl_state_ok(gl), "Could not compile shader program");
-    log::info!("Shaderprogram {} successfully compiled", program);
+    log::info!("Shaderprogram {:?} successfully compiled", program);
 
     GLProgram { id: program }
 }
@@ -368,9 +370,9 @@ fn gl_framebuffer_delete(gl: &glow::Context, framebuffer: GLFramebuffer) {
 // Drawobjects
 
 struct GLDrawobject {
-    vertex_array: u32,
-    vertex_buffer: u32,
-    index_buffer: u32,
+    vertex_array: GLVertexArray,
+    vertex_buffer: GLBuffer,
+    index_buffer: GLBuffer,
 }
 
 fn gl_drawobject_create(

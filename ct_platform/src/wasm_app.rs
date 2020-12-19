@@ -1,9 +1,15 @@
+mod renderer_opengl;
+
+use ct_lib::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand};
+
 use std::{cell::RefCell, rc::Rc};
+
+use renderer_opengl::Renderer;
 
 use console_error_panic_hook;
 use log::Level;
 
-use wasm_bindgen::prelude::*;
+pub use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{WebGlProgram, WebGlRenderingContext, WebGlShader};
 
@@ -85,8 +91,7 @@ impl Input {
     }
 }
 
-#[wasm_bindgen(start)]
-pub fn run_main() -> Result<(), JsValue> {
+pub fn run_main<GameStateType: GameStateInterface + Clone>() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
 
     console_log::init_with_level(Level::Trace).expect("error initializing log");
