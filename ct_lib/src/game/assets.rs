@@ -78,6 +78,7 @@ impl GameAssets {
                         .map(|filepath| filepath.to_owned())
                         .collect();
 
+                    self.files_loaders.clear();
                     for filepath in &self.files_list {
                         self.files_loaders
                             .insert(filepath.clone(), Fileloader::new(&filepath).unwrap());
@@ -118,11 +119,13 @@ impl GameAssets {
             return false;
         }
 
-        self.atlas = self.load_atlas();
-        self.animations = self.load_animations();
-        self.fonts = self.load_fonts();
-        self.animations_3d = self.load_animations_3d();
-        self.sprites_3d = self.load_sprites_3d();
+        if self.atlas.textures.is_empty() {
+            self.atlas = self.load_atlas();
+            self.animations = self.load_animations();
+            self.fonts = self.load_fonts();
+            self.animations_3d = self.load_animations_3d();
+            self.sprites_3d = self.load_sprites_3d();
+        }
 
         return true;
     }

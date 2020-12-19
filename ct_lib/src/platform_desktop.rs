@@ -46,7 +46,7 @@ impl TimerScoped {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Logger
 
-pub fn init_logging(logfile_path: &str, loglevel: log::LevelFilter) -> Result<(), String> {
+pub fn init_logging(logfile_path: &str, loglevel: log::Level) -> Result<(), String> {
     let logfile = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
@@ -63,7 +63,7 @@ pub fn init_logging(logfile_path: &str, loglevel: log::LevelFilter) -> Result<()
                 message
             ))
         })
-        .level(loglevel)
+        .level(loglevel.to_level_filter())
         .level_for("gfx_backend_dx11", log::LevelFilter::Warn)
         .level_for("gfx_backend_vulkan", log::LevelFilter::Warn)
         .level_for("wgpu_native", log::LevelFilter::Warn)

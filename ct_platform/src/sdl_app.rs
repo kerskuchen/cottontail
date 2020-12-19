@@ -155,7 +155,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     // Logging and error handling
 
     let logfile_path = platform::path_join(&savedata_dir, "logging.txt");
-    if let Err(error) = platform::init_logging(&logfile_path, log::LevelFilter::Trace) {
+    if let Err(error) = platform::init_logging(&logfile_path, log::Level::Trace) {
         sdl_window::Window::show_error_messagebox(&format!(
             "Could not initialize logger at '{}' : {}",
             &logfile_path, error,
@@ -844,11 +844,14 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
 
         let pre_sound_time = post_update_time;
 
-        let audio = game_memory
-            .audio
-            .as_mut()
-            .expect("No audiostate initialized");
-        audio_output.render_frames(audio, input.has_focus, 2.0 * target_seconds_per_frame);
+        let TODO = "make it so that audio is always there and can handle loading its sounds later";
+        if game_memory.audio.is_some() {
+            let audio = game_memory
+                .audio
+                .as_mut()
+                .expect("No audiostate initialized");
+            audio_output.render_frames(audio, input.has_focus, 2.0 * target_seconds_per_frame);
+        }
 
         let post_sound_time = std::time::Instant::now();
 
@@ -857,15 +860,18 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
 
         let pre_render_time = post_sound_time;
 
-        renderer.process_drawcommands(
-            input.screen_framebuffer_width,
-            input.screen_framebuffer_height,
-            &game_memory
-                .draw
-                .as_ref()
-                .expect("No drawstate initialized")
-                .drawcommands,
-        );
+        let TODO = "make it so that draw is always there and can handle loading its sounds later";
+        if game_memory.draw.is_some() {
+            renderer.process_drawcommands(
+                input.screen_framebuffer_width,
+                input.screen_framebuffer_height,
+                &game_memory
+                    .draw
+                    .as_ref()
+                    .expect("No drawstate initialized")
+                    .drawcommands,
+            );
+        }
 
         let post_render_time = std::time::Instant::now();
 

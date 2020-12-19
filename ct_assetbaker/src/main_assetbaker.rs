@@ -6,8 +6,8 @@ use ct_lib::draw::*;
 use ct_lib::font;
 use ct_lib::game::*;
 use ct_lib::math::*;
-use ct_lib::sprite::*;
 use ct_lib::platform;
+use ct_lib::sprite::*;
 
 use ct_lib::bincode;
 use ct_lib::indexmap::indexmap;
@@ -897,15 +897,7 @@ fn recreate_directory(path: &str) {
 fn main() {
     let start_time = std::time::Instant::now();
 
-    fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!("{}: {}\r", record.level(), message))
-        })
-        .level(log::LevelFilter::Trace)
-        .chain(std::io::stdout())
-        .apply()
-        .expect("Failed to start logger");
-
+    ct_lib::platform::init_logging("target/assetbaker_log.txt", log::Level::Trace);
     std::panic::set_hook(Box::new(|panic_info| {
         let (message, location) = ct_lib::panic_message_split_to_message_and_location(panic_info);
         let final_message = format!("{}\n\nError occured at: {}", message, location);
@@ -938,7 +930,8 @@ fn main() {
         platform::path_copy_directory_contents_recursive("assets_copy", "resources");
         // Delete license files that got accidentally copied over to output path.
         // NOTE: We don't need those because we will create a credits file containing all licenses
-        for license_path in platform::collect_files_by_extension_recursive("resources", ".license") {
+        for license_path in platform::collect_files_by_extension_recursive("resources", ".license")
+        {
             std::fs::remove_file(&license_path)
                 .expect(&format!("Cannot delete '{}'", &license_path));
         }
@@ -970,6 +963,14 @@ fn main() {
             create_windows_launcher_icon(&windows_icon_images, "resources_executable/launcher.ico");
         }
     }
+
+    // Write indexfile
+    let mut filelist_content = String::new();
+    let mut filelist = platform::collect_files_recursive("resources");
+    for filepath in &filelist {
+        filelist_content += &format!("{}\n", filepath);
+    }
+    std::fs::write("resources/index.txt", filelist_content.as_bytes());
 
     log::info!(
         "ASSETS SUCCESSFULLY BAKED: Elapsed time: {:.3}s",
