@@ -92,25 +92,23 @@ impl Bitmap {
         result
     }
 
-    pub fn from_png_file(png_filepath: &str) -> Result<Bitmap, String> {
+    pub fn from_png_data(png_data: &[u8]) -> Result<Bitmap, String> {
         use crate::transmute_to_byte_slice_mut;
-        let file_content = system::read_file_whole(png_filepath)
-            .map_err(|error| format!("Could not open png file '{}': {}", png_filepath, error))?;
 
-        let mut decoder = png::Decoder::new(std::io::Cursor::new(file_content));
+        let mut decoder = png::Decoder::new(std::io::Cursor::new(png_data));
         decoder.set_transformations(png::Transformations::EXPAND);
-        let (png_info, mut png_reader) = decoder.read_info().map_err(|error| {
-            format!("Could not read png file info '{}': {}", png_filepath, error)
-        })?;
+        let (png_info, mut png_reader) = decoder
+            .read_info()
+            .map_err(|error| format!("Could not read png data info: {}", error))?;
 
         let size_bytes = png_info.buffer_size();
         let mut buffer =
             vec![PixelRGBA::transparent(); size_bytes / std::mem::size_of::<PixelRGBA>()];
         {
             let buffer_raw = unsafe { transmute_to_byte_slice_mut(&mut buffer) };
-            png_reader.next_frame(buffer_raw).map_err(|error| {
-                format!("Could not decode png file '{}': {}", png_filepath, error)
-            })?;
+            png_reader
+                .next_frame(buffer_raw)
+                .map_err(|error| format!("Could not decode png data: {}", error))?;
         }
 
         Ok(Bitmap::new_from_buffer(
@@ -120,6 +118,14 @@ impl Bitmap {
         ))
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn from_png_file(png_filepath: &str) -> Result<Bitmap, String> {
+        let file_content = system::read_file_whole(png_filepath)
+            .map_err(|error| format!("Could not open png file '{}': {}", png_filepath, error))?;
+        Bitmap::from_png_data(&file_content)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn from_png_file_or_panic(png_filepath: &str) -> Bitmap {
         Bitmap::from_png_file(png_filepath).unwrap()
     }

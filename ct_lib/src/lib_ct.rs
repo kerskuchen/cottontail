@@ -8,14 +8,6 @@ pub mod grid;
 pub mod random;
 pub mod sprite;
 
-#[cfg(not(target_arch = "wasm32"))]
-#[path = "system_windows.rs"]
-pub mod system;
-
-#[cfg(target_arch = "wasm32")]
-#[path = "system_wasm.rs"]
-pub mod system;
-
 #[path = "game/mod_game.rs"]
 pub mod game;
 #[path = "math/mod_math.rs"]
@@ -30,6 +22,17 @@ pub use serde_derive;
 pub use serde_json;
 
 use std::collections::HashSet;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Filesystem
+
+#[cfg(not(target_arch = "wasm32"))]
+#[path = "system_windows.rs"]
+pub mod system;
+
+#[cfg(target_arch = "wasm32")]
+#[path = "system_wasm.rs"]
+pub mod system;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Debugging and performance
@@ -125,7 +128,36 @@ pub fn init_logging(logfile_path: &str, loglevel: log::LevelFilter) -> Result<()
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Convenience Serialization / Deserialization
 
-pub fn serialize_to_file_binary<T>(data: &T, filepath: &str)
+pub fn serialize_to_binary<T>(data: &T) -> Vec<u8>
+where
+    T: serde::Serialize,
+{
+    bincode::serialize(data).unwrap()
+}
+
+pub fn serialize_to_json<T>(data: &T) -> String
+where
+    T: serde::Serialize,
+{
+    serde_json::to_string_pretty(data).unwrap()
+}
+
+pub fn deserialize_from_binary<T>(data: &[u8]) -> T
+where
+    for<'de> T: serde::Deserialize<'de>,
+{
+    bincode::deserialize(data).unwrap()
+}
+
+pub fn deserialize_from_json<T>(json: &str) -> T
+where
+    for<'de> T: serde::Deserialize<'de>,
+{
+    serde_json::from_str(json).unwrap()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn serialize_to_binary_file<T>(data: &T, filepath: &str)
 where
     T: serde::Serialize,
 {
@@ -139,7 +171,8 @@ where
     ));
 }
 
-pub fn serialize_to_file_json<T>(data: &T, filepath: &str)
+#[cfg(not(target_arch = "wasm32"))]
+pub fn serialize_to_json_file<T>(data: &T, filepath: &str)
 where
     T: serde::Serialize,
 {
@@ -153,7 +186,8 @@ where
     ));
 }
 
-pub fn deserialize_from_file_binary<T>(filepath: &str) -> T
+#[cfg(not(target_arch = "wasm32"))]
+pub fn deserialize_from_binary_file<T>(filepath: &str) -> T
 where
     for<'de> T: serde::Deserialize<'de>,
 {
@@ -161,13 +195,14 @@ where
         "Could not open binary file '{}' for deserialization",
         filepath
     ));
-    bincode::deserialize_from(std::io::Cursor::new(file_content)).expect(&format!(
+    bincode::deserialize(&file_content).expect(&format!(
         "Could not deserialize from binary file '{}'",
         filepath
     ))
 }
 
-pub fn deserialize_from_file_json<T>(filepath: &str) -> T
+#[cfg(not(target_arch = "wasm32"))]
+pub fn deserialize_from_json_file<T>(filepath: &str) -> T
 where
     for<'de> T: serde::Deserialize<'de>,
 {

@@ -118,16 +118,20 @@ fn log_frametimes(
     _duration_update: f32,
     _duration_sound: f32,
     _duration_render: f32,
+    _duration_swap: f32,
+    _duration_wait: f32,
 ) {
     if ENABLE_FRAMETIME_LOGGING {
         log::trace!(
-            "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  sound: {:.3}ms  render: {:.3}ms",
-            _duration_frame * 1000.0,
-            _duration_input * 1000.0,
-            _duration_update * 1000.0,
-            _duration_sound * 1000.0,
-            _duration_render * 1000.0,
-        );
+        "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  sound: {:.3}ms  render: {:.3}ms  swap: {:.3}ms  idle: {:.3}ms",
+        _duration_frame * 1000.0,
+        _duration_input * 1000.0,
+        _duration_update * 1000.0,
+        _duration_sound * 1000.0,
+        _duration_render * 1000.0,
+        _duration_swap * 1000.0,
+        _duration_wait * 1000.0
+    );
     }
 }
 
@@ -179,14 +183,14 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     let launcher_config: LauncherConfig = {
         let config_filepath = system::path_join(&savedata_dir, "launcher_config.json");
         if system::path_exists(&config_filepath) {
-            ct_lib::deserialize_from_file_json(&config_filepath)
+            ct_lib::deserialize_from_json_file(&config_filepath)
         } else {
             let config = LauncherConfig {
                 display_index_to_use: 0,
                 controller_deadzone_threshold_x: 0.1,
                 controller_deadzone_threshold_y: 0.1,
             };
-            ct_lib::serialize_to_file_json(&config, &config_filepath);
+            ct_lib::serialize_to_json_file(&config, &config_filepath);
             config
         }
     };

@@ -5,7 +5,29 @@ pub use easy_process;
 
 pub fn read_file_whole(filepath: &str) -> Result<Vec<u8>, String> {
     std::fs::read(filepath)
-        .map_err(|error| format!("Could not fetch file '{}' : {}", filepath, error))
+        .map_err(|error| format!("Could not read file '{}' : {}", filepath, error))
+}
+pub struct FileReadRequest {
+    content: Option<Vec<u8>>,
+    finished: bool,
+}
+
+impl FileReadRequest {
+    pub fn new(filepath: &str) -> Result<FileReadRequest, String> {
+        let content = std::fs::read(filepath)
+            .map_err(|error| format!("Could not fetch file '{}' : {}", filepath, error))?;
+        Ok(FileReadRequest {
+            content: Some(content),
+            finished: false,
+        })
+    }
+
+    pub fn poll(&mut self) -> Result<Option<Vec<u8>>, String> {
+        assert!(!self.finished);
+
+        self.finished = true;
+        Ok(self.content.take())
+    }
 }
 
 pub trait PathHelper {

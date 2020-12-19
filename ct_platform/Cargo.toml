@@ -25,9 +25,6 @@ console_error_panic_hook = "0.1.6"
 console_log = "0.2.0"
 log = "0.4"
 web-sys = { version = "0.3.4", features = [
-  "XmlHttpRequest",
-  "XmlHttpRequestEventTarget",
-  "XmlHttpRequestResponseType",
   'Performance',
   'Document',
   'Element',

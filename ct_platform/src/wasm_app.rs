@@ -109,58 +109,6 @@ fn log_frametimes(
     }
 }
 
-enum FileReadRequestResult {
-    Pending,
-    Success(Vec<u8>),
-    Failed(String),
-}
-struct FileReadRequest {
-    request: web_sys::XmlHttpRequest,
-}
-
-impl FileReadRequest {
-    pub fn new(filepath: &str) -> FileReadRequest {
-        let request = web_sys::XmlHttpRequest::new().expect("Failed to make XmlHttpRequest");
-        request
-            .open("GET", filepath)
-            .expect(&format!("Failed to create GET request for '{}'", filepath));
-        request.set_response_type(XmlHttpRequestResponseType::Arraybuffer);
-        request
-            .send()
-            .expect(&format!("Failed to send GET request for '{}'", filepath));
-
-        FileReadRequest { request }
-    }
-
-    pub fn check(&mut self) -> FileReadRequestResult {
-        match self.request.ready_state() {
-            XmlHttpRequest::DONE => {
-                let status = self.request.status().expect(&format!(
-                    "Failed to get request status for '{}'",
-                    &self.request.response_url()
-                ));
-                if status / 100 == 2 {
-                    // Success (statuscode 2xx)
-                    let response = self.request.response().expect(&format!(
-                        "Failed to read response for '{}'",
-                        &self.request.response_url()
-                    ));
-                    let array = js_sys::Uint8Array::new(&response);
-                    let mut result = vec![0u8; array.length() as usize];
-                    array.copy_to(&mut result);
-
-                    FileReadRequestResult::Success(result)
-                } else {
-                    // Failed (statuscode != 2xx)
-                    let status_text = self.request.status_text().unwrap_or("Unknown".to_owned());
-                    FileReadRequestResult::Failed(format!("Status: {} - {}", status, status_text))
-                }
-            }
-            _ => FileReadRequestResult::Pending,
-        }
-    }
-}
-
 pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
 

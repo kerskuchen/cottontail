@@ -1,8 +1,23 @@
+use system::FileReadRequest;
+
 use super::*;
 
 use std::collections::HashMap;
 
-#[derive(Default, Clone)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AssetLoadingStage {
+    Start,
+    LoadingFiles,
+    Finished,
+}
+
+impl Default for AssetLoadingStage {
+    fn default() -> Self {
+        AssetLoadingStage::Start
+    }
+}
+
+#[derive(Default)]
 pub struct GameAssets {
     pub assets_folder: String,
     animations: HashMap<String, Animation<Sprite>>,
@@ -10,6 +25,31 @@ pub struct GameAssets {
     sprites_3d: HashMap<String, Sprite3D>,
     fonts: HashMap<String, SpriteFont>,
     atlas: SpriteAtlas,
+
+    files_loading_stage: AssetLoadingStage,
+    files_list: Vec<String>,
+    files_bindata: HashMap<String, Vec<u8>>,
+    files_loaders: HashMap<String, FileReadRequest>,
+}
+
+impl Clone for GameAssets {
+    fn clone(&self) -> Self {
+        assert!(self.files_loading_stage != AssetLoadingStage::LoadingFiles);
+        assert!(self.files_loaders.is_empty());
+
+        let mut result = GameAssets::default();
+        result.assets_folder = self.assets_folder.clone();
+        result.animations = self.animations.clone();
+        result.animations_3d = self.animations_3d.clone();
+        result.sprites_3d = self.sprites_3d.clone();
+        result.fonts = self.fonts.clone();
+        result.atlas = self.atlas.clone();
+        result.files_loading_stage = self.files_loading_stage.clone();
+        result.files_list = self.files_list.clone();
+        result.files_bindata = self.files_bindata.clone();
+
+        result
+    }
 }
 
 impl GameAssets {
@@ -19,12 +59,71 @@ impl GameAssets {
         result
     }
 
-    pub fn load_graphics(&mut self) {
-        self.atlas = load_atlas(&self.assets_folder);
-        self.animations = load_animations(&self.assets_folder);
-        self.fonts = load_fonts(&self.assets_folder);
-        self.animations_3d = load_animations_3d(&self.assets_folder);
-        self.sprites_3d = load_sprites_3d(&self.assets_folder);
+    pub fn load_files(&mut self) -> bool {
+        match self.files_loading_stage {
+            AssetLoadingStage::Start => {
+                let index_filepath = system::path_join(&self.assets_folder, "index.txt");
+                let index_loader = self
+                    .files_loaders
+                    .entry(index_filepath.clone())
+                    .or_insert(FileReadRequest::new(&index_filepath).unwrap());
+
+                if let Some(index_content) = index_loader
+                    .poll()
+                    .expect("Could not load resource index file")
+                {
+                    self.files_list = String::from_utf8_lossy(&index_content)
+                        .lines()
+                        .filter(|&filepath| !filepath.is_empty())
+                        .map(|filepath| filepath.to_owned())
+                        .collect();
+
+                    for filepath in &self.files_list {
+                        self.files_loaders
+                            .insert(filepath.clone(), FileReadRequest::new(&filepath).unwrap());
+                    }
+                    self.files_loading_stage = AssetLoadingStage::LoadingFiles;
+                }
+
+                false
+            }
+            AssetLoadingStage::LoadingFiles => {
+                // Remove loaders for which we already saved the bindata
+                for filepath in self.files_bindata.keys() {
+                    self.files_loaders.remove(filepath);
+                }
+
+                // Poll loaders
+                for (filepath, loader) in self.files_loaders.iter_mut() {
+                    if let Some(content) = loader.poll().unwrap() {
+                        self.files_bindata.insert(filepath.clone(), content);
+                    }
+                }
+
+                if self.files_loaders.is_empty() {
+                    assert!(self.files_bindata.len() == self.files_list.len());
+                    self.files_loading_stage = AssetLoadingStage::Finished;
+                    true
+                } else {
+                    false
+                }
+            }
+            AssetLoadingStage::Finished => true,
+        }
+    }
+
+    pub fn load_graphics(&mut self) -> bool {
+        if !self.load_files() {
+            return false;
+        }
+
+        self.atlas = self.load_atlas();
+        self.animations = self.load_animations();
+        self.fonts = self.load_fonts();
+        self.animations_3d = self.load_animations_3d();
+        self.sprites_3d = self.load_sprites_3d();
+
+        return true;
     }
 
     pub fn get_atlas_textures(&self) -> &[Bitmap] {
@@ -80,6 +179,64 @@ impl GameAssets {
         }
     }
 
+    fn load_sprites(&self) -> HashMap<String, Sprite> {
+        let filepath = system::path_join(&self.assets_folder, "sprites.data");
+        super::deserialize_from_binary(&self.files_bindata[&filepath])
+    }
+
+    fn load_sprites_3d(&self) -> HashMap<String, Sprite3D> {
+        let filepath = system::path_join(&self.assets_folder, "sprites_3d.data");
+        super::deserialize_from_binary(&self.files_bindata[&filepath])
+    }
+
+    fn load_animations(&self) -> HashMap<String, Animation<Sprite>> {
+        let filepath = system::path_join(&self.assets_folder, "animations.data");
+        super::deserialize_from_binary(&self.files_bindata[&filepath])
+    }
+
+    fn load_animations_3d(&self) -> HashMap<String, Animation<Sprite3D>> {
+        let filepath = system::path_join(&self.assets_folder, "animations_3d.data");
+        super::deserialize_from_binary(&self.files_bindata[&filepath])
+    }
+
+    fn load_fonts(&self) -> HashMap<String, SpriteFont> {
+        let filepath = system::path_join(&self.assets_folder, "fonts.data");
+        super::deserialize_from_binary(&self.files_bindata[&filepath])
+    }
+
+    fn load_atlas(&self) -> SpriteAtlas {
+        let textures_list_filepath = system::path_join(&self.assets_folder, "atlas.data");
+        let textures_list: Vec<String> =
+            super::deserialize_from_binary(&self.files_bindata[&textures_list_filepath]);
+
+        let mut textures = Vec::new();
+        for texture_filepath_relative in &textures_list {
+            let texture_filepath =
+                system::path_join(&self.assets_folder, texture_filepath_relative);
+            textures.push(
+                Bitmap::from_png_data(&self.files_bindata[&texture_filepath])
+                    .expect(&format!("Could load texture '{}'", texture_filepath)),
+            );
+        }
+
+        let sprites = self.load_sprites();
+        let mut atlas = SpriteAtlas::new(textures, sprites);
+
+        // Make sprites out of the atlas pages themselves for debug purposes
+        for page_index in 0..atlas.textures.len() {
+            let sprite_name = format!("debug_sprite_whole_page_{}", page_index);
+            atlas.add_sprite_for_region(
+                sprite_name,
+                page_index as TextureIndex,
+                Recti::from_width_height(atlas.textures_size as i32, atlas.textures_size as i32),
+                Vec2i::zero(),
+                true,
+            );
+        }
+
+        atlas
+    }
+
     pub fn debug_get_sprite_as_bitmap(&self, sprite_name: &str) -> Bitmap {
         self.atlas.debug_get_bitmap_for_sprite(sprite_name)
     }
@@ -93,60 +250,6 @@ impl GameAssets {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Asset loading
-
-fn load_sprites(assets_folder: &str) -> HashMap<String, Sprite> {
-    let sprites_filepath = system::path_join(assets_folder, "sprites.data");
-    super::deserialize_from_file_binary(&sprites_filepath)
-}
-
-fn load_sprites_3d(assets_folder: &str) -> HashMap<String, Sprite3D> {
-    let sprites_filepath = system::path_join(assets_folder, "sprites_3d.data");
-    super::deserialize_from_file_binary(&sprites_filepath)
-}
-
-fn load_animations(assets_folder: &str) -> HashMap<String, Animation<Sprite>> {
-    let animations_filepath = system::path_join(assets_folder, "animations.data");
-    super::deserialize_from_file_binary(&animations_filepath)
-}
-
-fn load_animations_3d(assets_folder: &str) -> HashMap<String, Animation<Sprite3D>> {
-    let animations_filepath = system::path_join(assets_folder, "animations_3d.data");
-    super::deserialize_from_file_binary(&animations_filepath)
-}
-
-fn load_atlas(assets_folder: &str) -> SpriteAtlas {
-    let textures_list_filepath = system::path_join(assets_folder, "atlas.data");
-    let textures_list: Vec<String> = super::deserialize_from_file_binary(&textures_list_filepath);
-
-    let mut textures = Vec::new();
-    for texture_filepath_relative in &textures_list {
-        let texture_filepath = system::path_join(assets_folder, texture_filepath_relative);
-        textures.push(Bitmap::from_png_file_or_panic(&texture_filepath));
-    }
-
-    let sprites = load_sprites(assets_folder);
-
-    let mut atlas = SpriteAtlas::new(textures, sprites);
-
-    // Make sprites out of the atlas pages themselves for debug purposes
-    for page_index in 0..atlas.textures.len() {
-        let sprite_name = format!("debug_sprite_whole_page_{}", page_index);
-        atlas.add_sprite_for_region(
-            sprite_name,
-            page_index as TextureIndex,
-            Recti::from_width_height(atlas.textures_size as i32, atlas.textures_size as i32),
-            Vec2i::zero(),
-            true,
-        );
-    }
-
-    atlas
-}
-
-fn load_fonts(assets_folder: &str) -> HashMap<String, SpriteFont> {
-    let fonts_filepath = system::path_join(assets_folder, "fonts.data");
-    super::deserialize_from_file_binary(&fonts_filepath)
-}
 
 #[cfg(target_arch = "wasm32")]
 pub fn load_audiorecordings_mono(assets_folder: &str) -> HashMap<String, AudioBufferMono> {
