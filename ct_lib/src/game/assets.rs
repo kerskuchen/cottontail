@@ -112,6 +112,7 @@ impl GameAssets {
         }
     }
 
+    #[must_use]
     pub fn load_graphics(&mut self) -> bool {
         if !self.load_files() {
             return false;

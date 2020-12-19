@@ -3,10 +3,91 @@ use std::path::Path;
 
 pub use easy_process;
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Debugging and performance
+
+pub struct TimerScoped {
+    use_logger: bool,
+    log_message: String,
+    creation_time: std::time::Instant,
+}
+
+impl Drop for TimerScoped {
+    fn drop(&mut self) {
+        let duration_since_creation = std::time::Instant::now()
+            .duration_since(self.creation_time)
+            .as_secs_f32();
+        if self.use_logger {
+            log::debug!(
+                "{}: {:.3}ms",
+                self.log_message,
+                duration_since_creation * 1000.0
+            );
+        } else {
+            println!(
+                "{}: {:.3}ms",
+                self.log_message,
+                duration_since_creation * 1000.0
+            );
+        }
+    }
+}
+
+impl TimerScoped {
+    pub fn new_scoped(output_text: &str, use_logger: bool) -> TimerScoped {
+        TimerScoped {
+            use_logger,
+            log_message: output_text.to_owned(),
+            creation_time: std::time::Instant::now(),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Logger
+
+pub fn init_logging(logfile_path: &str, loglevel: log::LevelFilter) -> Result<(), String> {
+    let logfile = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(logfile_path)
+        .map_err(|error| format!("Could not create logfile at '{}' : {}", logfile_path, error))?;
+
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}::{}: {}",
+                record.target(),
+                record.level(),
+                message
+            ))
+        })
+        .level(loglevel)
+        .level_for("gfx_backend_dx11", log::LevelFilter::Warn)
+        .level_for("gfx_backend_vulkan", log::LevelFilter::Warn)
+        .level_for("wgpu_native", log::LevelFilter::Warn)
+        .level_for("rusty_xinput", log::LevelFilter::Info)
+        .level_for("gilrs::gamepad", log::LevelFilter::Info)
+        .level_for("gilrs::ff::server", log::LevelFilter::Info)
+        .chain(std::io::stdout())
+        .chain(logfile)
+        .apply()
+        .map_err(|error| format!("Could initialize logger: {}", error))?;
+
+    log::info!("Logger initialized");
+
+    Ok(())
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Fileloading
+
 pub fn read_file_whole(filepath: &str) -> Result<Vec<u8>, String> {
     std::fs::read(filepath)
         .map_err(|error| format!("Could not read file '{}' : {}", filepath, error))
 }
+
 pub struct Fileloader {
     content: Option<Vec<u8>>,
     finished: bool,
@@ -33,6 +114,9 @@ impl Fileloader {
         Ok(self.content.take())
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Paths
 
 pub trait PathHelper {
     fn to_string_borrowed(&self) -> Result<&str, String>;

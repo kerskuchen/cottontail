@@ -155,7 +155,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     // Logging and error handling
 
     let logfile_path = ct_lib::system::path_join(&savedata_dir, "logging.txt");
-    if let Err(error) = ct_lib::init_logging(&logfile_path, log::LevelFilter::Trace) {
+    if let Err(error) = ct_lib::system::init_logging(&logfile_path, log::LevelFilter::Trace) {
         sdl_window::Window::show_error_messagebox(&format!(
             "Could not initialize logger at '{}' : {}",
             &logfile_path, error,

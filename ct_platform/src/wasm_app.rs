@@ -2,21 +2,16 @@ mod renderer_opengl;
 
 use ct_lib::{
     game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand},
-    system::Fileloader,
+    system::{current_time_seconds, init_logging},
 };
 
-use std::{cell::RefCell, fs::File, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use renderer_opengl::Renderer;
 
-use console_error_panic_hook;
-use log::Level;
-
 pub use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{
-    WebGlProgram, WebGlRenderingContext, WebGlShader, XmlHttpRequest, XmlHttpRequestResponseType,
-};
+use web_sys::{WebGlProgram, WebGlRenderingContext, WebGlShader};
 
 const ENABLE_PANIC_MESSAGES: bool = false;
 const ENABLE_FRAMETIME_LOGGING: bool = true;
@@ -86,13 +81,6 @@ fn fullscreen_toggle(orientation_type: Option<web_sys::OrientationLockType>) {
     }
 }
 
-fn performance_now() -> f64 {
-    html_get_window()
-        .performance()
-        .expect("should have a Performance")
-        .now()
-}
-
 fn log_frametimes(
     _duration_frame: f64,
     _duration_input: f64,
@@ -113,30 +101,10 @@ fn log_frametimes(
 }
 
 pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result<(), JsValue> {
-    console_error_panic_hook::set_once();
+    init_logging("", log::Level::Trace);
+    log::info!("Starting up...");
 
-    console_log::init_with_level(Level::Trace).expect("error initializing log");
-    log::info!("Hello world!");
-
-    let launcher_start_time = performance_now();
-
-    let mut loader = Fileloader::new("http://google.resources/creditsa.txt").unwrap();
-    let f = Rc::new(RefCell::new(None));
-    let g = f.clone();
-
-    *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-        if let Some(content) = loader.poll().unwrap() {
-            let result_string = String::from_utf8_lossy(&content).to_owned();
-            log::info!("SUCCESS: {}", result_string);
-        } else {
-            log::info!("PENDING");
-            html_request_animation_frame(f.borrow().as_ref().unwrap());
-        }
-    }) as Box<dyn FnMut()>));
-
-    html_request_animation_frame(g.borrow().as_ref().unwrap());
-
-    return Ok(());
+    let launcher_start_time = current_time_seconds();
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // AUDIO
@@ -221,7 +189,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
 
     let mut systemcommands: Vec<SystemCommand> = Vec::new();
 
-    let game_start_time = performance_now();
+    let game_start_time = current_time_seconds();
     let mut frame_start_time = game_start_time;
     let duration_startup = game_start_time - launcher_start_time;
     log::debug!("Startup took {:.3}ms", duration_startup * 1000.0,);
@@ -503,7 +471,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     let g = f.clone();
 
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-        let pre_input_time = performance_now();
+        let pre_input_time = current_time_seconds();
 
         current_tick += 1;
 
@@ -590,7 +558,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             input.mouse.delta_y = input.mouse.pos_y - mouse_pos_previous_y;
         }
 
-        let post_input_time = performance_now();
+        let post_input_time = current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Timings, update and drawing
@@ -630,7 +598,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             }
         }
 
-        let post_update_time = performance_now();
+        let post_update_time = current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Sound output
@@ -644,7 +612,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
         let TODO = true;
         // audio_output.render_frames(audio, input.has_focus, 2.0 * target_seconds_per_frame);
 
-        let post_sound_time = performance_now();
+        let post_sound_time = current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Drawcommands
@@ -664,7 +632,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             );
         }
 
-        let post_render_time = performance_now();
+        let post_render_time = current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Debug timing output

@@ -1,3 +1,52 @@
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Debugging and performance
+
+pub fn current_time_seconds() -> f64 {
+    web_sys::window()
+        .expect("Cannot find global object `window`")
+        .performance()
+        .expect("Cannot find global object `performance`")
+        .now()
+        / 1000.0
+}
+
+pub struct TimerScoped {
+    log_message: String,
+    creation_time: f64,
+}
+
+impl Drop for TimerScoped {
+    fn drop(&mut self) {
+        let duration_since_creation = current_time_seconds() - self.creation_time;
+        log::debug!(
+            "{}: {:.3}ms",
+            self.log_message,
+            duration_since_creation * 1000.0
+        );
+    }
+}
+
+impl TimerScoped {
+    pub fn new_scoped(output_text: &str, _use_logger: bool) -> TimerScoped {
+        TimerScoped {
+            log_message: output_text.to_owned(),
+            creation_time: current_time_seconds(),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Logger
+
+pub fn init_logging(_logfile_path: &str, loglevel: log::Level) -> Result<(), String> {
+    console_error_panic_hook::set_once();
+    console_log::init_with_level(loglevel)
+        .map_err(|error| format!("Error initializing log: {}", error))
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Fileloader
+
 pub struct Fileloader {
     // NOTE: We save filepath here because sometimes `request.response_url()` gives us an empty
     //       string (i.e. when crashing while doing a Cross-Origin Requests (COR))
@@ -74,6 +123,9 @@ impl Fileloader {
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Paths
 
 pub fn path_join(first: &str, second: &str) -> String {
     if first.ends_with('/') || first.ends_with('\\') {

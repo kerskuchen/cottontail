@@ -4,6 +4,8 @@ mod input;
 pub use assets::*;
 pub use input::*;
 
+use crate::system::TimerScoped;
+
 use super::audio::*;
 use super::bitmap::*;
 use super::draw::*;
@@ -101,9 +103,10 @@ impl<GameStateType: GameStateInterface> Default for GameMemory<GameStateType> {
 impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
     pub fn update(&mut self, input: &GameInput, out_systemcommands: &mut Vec<SystemCommand>) {
         if self.assets.is_none() {
-            let mut assets = GameAssets::new("resources");
-            assets.load_graphics();
-            self.assets = Some(assets);
+            self.assets = Some(GameAssets::new("resources"));
+        }
+        if !self.assets.as_mut().unwrap().load_graphics() {
+            return;
         }
 
         if self.draw.is_none() {
