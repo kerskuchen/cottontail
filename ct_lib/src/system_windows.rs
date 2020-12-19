@@ -4,7 +4,7 @@ use std::path::Path;
 pub use easy_process;
 
 pub fn read_file_whole(filepath: &str) -> Result<Vec<u8>, String> {
-    file_fetcher::open_bytes_str(filepath)
+    std::fs::read(filepath)
         .map_err(|error| format!("Could not fetch file '{}' : {}", filepath, error))
 }
 
