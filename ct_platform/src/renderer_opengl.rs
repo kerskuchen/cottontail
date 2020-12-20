@@ -1011,12 +1011,14 @@ impl Renderer {
                     );
                 }
             }
-            assert!(
+            debug_assert!(
                 gl_state_ok(&self.gl),
                 "Error after drawcommand {:?}",
                 drawcommand
             );
         }
+
+        debug_assert!(gl_state_ok(&self.gl), "Error after processing drawcommands");
     }
 
     fn framebuffer_blit(

@@ -30,7 +30,7 @@ impl AudioFrame {
     }
 }
 
-pub const AUDIO_CHUNKSIZE_IN_FRAMES: usize = 1024;
+pub const AUDIO_CHUNKSIZE_IN_FRAMES: usize = 512;
 pub type AudioChunkMono = [AudioSample; AUDIO_CHUNKSIZE_IN_FRAMES];
 pub type AudioChunkStereo = [AudioFrame; AUDIO_CHUNKSIZE_IN_FRAMES];
 
@@ -124,9 +124,11 @@ impl MonoToStereoAdapter {
         self.fader.target = pan;
     }
     fn process(&mut self, input_samples: &[AudioSample], output_frames: &mut [AudioFrame]) {
+        let TODO = "PERFORMANCE: crossfade is ultra-expensive. if we could know that the 
+        panner is constant for the duration of the chunk we could save a ton of cycles";
         for (in_sample, out_frame) in input_samples.iter().zip(output_frames.iter_mut()) {
             let pan = 0.5 * (self.fader.next_value() + 1.0); // Transform [-1,1] -> [0,1]
-            let (volume_left, volume_right) = crossfade_sinuoidal(*in_sample, pan);
+            let (volume_left, volume_right) = crossfade_squareroot(*in_sample, pan);
             *out_frame = AudioFrame::new(volume_left, volume_right);
         }
     }

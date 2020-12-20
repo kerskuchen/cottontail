@@ -31,9 +31,7 @@ use num_traits::Num;
 // NOTE: For f32 We can use -16383.999 to 16383.999 and still have a precision of at least 0.001!
 
 pub const PI: f32 = std::f32::consts::PI;
-pub const PI_2: f32 = std::f32::consts::PI / 2.0;
 pub const PI64: f64 = std::f64::consts::PI;
-pub const PI64_2: f64 = std::f64::consts::PI / 2.0;
 
 pub const RADIANS_TO_DEGREE: f32 = 57.2957795;
 pub const DEGREE_TO_RADIANS: f32 = 1.0 / 57.2957795;
@@ -80,17 +78,27 @@ pub const fn make_even_upwards(x: i32) -> i32 {
 /// Based on linear panning (http://gdsp.hf.ntnu.no/lessons/1/5/)
 #[inline]
 pub fn crossfade_linear(factor: f32, percent: f32) -> (f32, f32) {
-    let left = factor * lerp(1.0, 0.0, percent);
+    let left = factor * lerp(0.0, 1.0, percent);
     let right = factor * lerp(1.0, 0.0, percent);
+    (left, right)
+}
+
+/// Based on squareroot panning (http://gdsp.hf.ntnu.no/lessons/1/5/)
+#[inline]
+pub fn crossfade_squareroot(factor: f32, percent: f32) -> (f32, f32) {
+    let left = factor * f32::sqrt(percent);
+    let right = factor * f32::sqrt(1.0 - percent);
     (left, right)
 }
 
 /// Based on sinuoidal panning (http://gdsp.hf.ntnu.no/lessons/1/5/)
 #[inline]
 pub fn crossfade_sinuoidal(factor: f32, percent: f32) -> (f32, f32) {
-    // NOTE: We clamp here because we get `right = -0.00000004371139` for `percent = 1`
-    let left = factor * clampf(f32::cos((PI / 2.0) * percent), 0.0, 1.0);
-    let right = factor * clampf(f32::sin((PI / 2.0) * percent), 0.0, 1.0);
+    // NOTE: We need to either clamp here or make the factor in the cos term sligthly smaller
+    // because we we get `cos((PI/2.0) * percent) = -0.00000004371139` for `percent = 1`
+    // Because clamp is expensive we use the numeric hack
+    let left = factor * f32::cos(((PI / 2.0) - f32::EPSILON) * percent);
+    let right = factor * f32::sin((PI / 2.0) * percent);
     (left, right)
 }
 

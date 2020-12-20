@@ -696,6 +696,8 @@ impl Drawstate {
         let mut batches_canvas = Vec::new();
         let mut batches_screen = Vec::new();
         if !self.simple_drawables.is_empty() {
+            let TODO = "PERFORMANCE: later we want to the batches just referencing slices of 
+             one static buffer per shader ";
             let mut current_batch = DrawBatch {
                 drawspace: self.simple_drawables[0].drawspace,
                 buffer: VertexbufferSimple::new(self.simple_drawables[0].texture_index),
