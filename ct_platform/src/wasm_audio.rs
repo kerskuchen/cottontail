@@ -17,19 +17,19 @@ enum AudioFadeState {
 }
 
 struct WASMAudioCallback {
-    input_ringbuffer: ringbuf::Consumer<(f32, f32)>,
+    input_ringbuffer: ringbuf::Consumer<AudioFrame>,
 
     // This is used fade in / out the volume when we drop frames to reduce clicking
     fadestate: AudioFadeState,
     fader_current: f32,
-    last_frame_written: (f32, f32),
+    last_frame_written: AudioFrame,
 }
 impl WASMAudioCallback {
-    fn new(audio_buffer_consumer: ringbuf::Consumer<(f32, f32)>) -> WASMAudioCallback {
+    fn new(audio_buffer_consumer: ringbuf::Consumer<AudioFrame>) -> WASMAudioCallback {
         WASMAudioCallback {
             input_ringbuffer: audio_buffer_consumer,
             fader_current: 0.0,
-            last_frame_written: (0.0, 0.0),
+            last_frame_written: AudioFrame::silence(),
             fadestate: AudioFadeState::FadedOut,
         }
     }
@@ -37,9 +37,9 @@ impl WASMAudioCallback {
 
 pub struct AudioOutput {
     pub audio_playback_rate_hz: usize,
-    samples_queue: ringbuf::Producer<(f32, f32)>,
-    audio_context: Rc<RefCell<web_sys::AudioContext>>,
-    audio_processor: web_sys::ScriptProcessorNode,
+    samples_queue: ringbuf::Producer<AudioFrame>,
+    _audio_context: Rc<RefCell<web_sys::AudioContext>>,
+    _audio_processor: web_sys::ScriptProcessorNode,
 }
 
 impl AudioOutput {
@@ -61,19 +61,19 @@ impl AudioOutput {
             let mut channel_output_left = vec![0f32; AUDIO_BUFFER_FRAME_COUNT];
             let mut channel_output_right = vec![0f32; AUDIO_BUFFER_FRAME_COUNT];
 
-            let TODO = " remove need for interleaved_output temporary";
-            let mut interleaved_output = vec![0f32; AUDIO_NUM_CHANNELS * AUDIO_BUFFER_FRAME_COUNT];
-
             let audio_callback =
                 Closure::wrap(Box::new(move |event: web_sys::AudioProcessingEvent| {
                     let output_buffer = event.output_buffer().unwrap();
                     let num_frames = output_buffer.length() as usize;
                     let num_channels = output_buffer.number_of_channels() as usize;
+                    assert!(num_frames == AUDIO_BUFFER_FRAME_COUNT);
+                    assert!(num_channels == AUDIO_NUM_CHANNELS);
 
-                    debug_assert!(num_frames == AUDIO_BUFFER_FRAME_COUNT);
-                    debug_assert!(num_channels == AUDIO_NUM_CHANNELS);
-
-                    for frame_out in interleaved_output.chunks_exact_mut(2) {
+                    // Deinterleave and write output frames
+                    for (frame_out_left, frame_out_right) in channel_output_left
+                        .iter_mut()
+                        .zip(channel_output_right.iter_mut())
+                    {
                         match audio_callback_context.fadestate {
                             AudioFadeState::FadingOut => {
                                 audio_callback_context.fader_current -= 1.0 / 2048.0;
@@ -96,31 +96,25 @@ impl AudioOutput {
                                 audio_callback_context.fadestate = AudioFadeState::FadingIn;
                             }
                             if audio_callback_context.fadestate == AudioFadeState::FadingOut {
-                                frame_out[0] = audio_callback_context.fader_current
-                                    * audio_callback_context.last_frame_written.0;
-                                frame_out[1] = audio_callback_context.fader_current
-                                    * audio_callback_context.last_frame_written.1;
+                                *frame_out_left = audio_callback_context.fader_current
+                                    * audio_callback_context.last_frame_written.left;
+                                *frame_out_right = audio_callback_context.fader_current
+                                    * audio_callback_context.last_frame_written.right;
                             } else {
                                 audio_callback_context.last_frame_written = frame;
-                                frame_out[0] = audio_callback_context.fader_current * frame.0;
-                                frame_out[1] = audio_callback_context.fader_current * frame.1;
+                                *frame_out_left = audio_callback_context.fader_current * frame.left;
+                                *frame_out_right =
+                                    audio_callback_context.fader_current * frame.right;
                             }
                         } else {
                             audio_callback_context.fadestate = AudioFadeState::FadingOut;
-                            frame_out[0] = audio_callback_context.fader_current
-                                * audio_callback_context.last_frame_written.0;
-                            frame_out[1] = audio_callback_context.fader_current
-                                * audio_callback_context.last_frame_written.1;
+                            *frame_out_left = audio_callback_context.fader_current
+                                * audio_callback_context.last_frame_written.left;
+                            *frame_out_right = audio_callback_context.fader_current
+                                * audio_callback_context.last_frame_written.right;
                         }
                     }
 
-                    // Deinterleave and write output frames
-                    for frame in 0..num_frames {
-                        channel_output_left[frame] =
-                            interleaved_output[AUDIO_NUM_CHANNELS * frame + AUDIO_CHANNEL_LEFT];
-                        channel_output_left[frame] =
-                            interleaved_output[AUDIO_NUM_CHANNELS * frame + AUDIO_CHANNEL_RIGHT];
-                    }
                     output_buffer
                         .copy_to_channel(&mut channel_output_left, AUDIO_CHANNEL_LEFT as i32)
                         .expect("Unable to write sample data into the audio context buffer");
@@ -145,7 +139,7 @@ impl AudioOutput {
         callback_options.once(true);
         {
             let audio_context = audio_context.clone();
-            let click_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
+            let click_callback = Closure::wrap(Box::new(move |_event: web_sys::MouseEvent| {
                 let audio_context = audio_context.borrow();
                 if audio_context.state() == web_sys::AudioContextState::Suspended {
                     audio_context.resume().ok();
@@ -163,7 +157,7 @@ impl AudioOutput {
         }
         {
             let audio_context = audio_context.clone();
-            let touchstart_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
+            let touchstart_callback = Closure::wrap(Box::new(move |_event: web_sys::TouchEvent| {
                 let audio_context = audio_context.borrow();
                 if audio_context.state() == web_sys::AudioContextState::Suspended {
                     audio_context.resume().ok();
@@ -181,7 +175,7 @@ impl AudioOutput {
         }
         {
             let audio_context = audio_context.clone();
-            let keydown_callback = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
+            let keydown_callback = Closure::wrap(Box::new(move |_event: web_sys::KeyboardEvent| {
                 let audio_context = audio_context.borrow();
                 if audio_context.state() == web_sys::AudioContextState::Suspended {
                     audio_context.resume().ok();
@@ -207,14 +201,14 @@ impl AudioOutput {
         AudioOutput {
             audio_playback_rate_hz: AUDIO_SAMPLE_RATE,
             samples_queue: audio_ringbuffer_producer,
-            audio_context,
-            audio_processor,
+            _audio_context: audio_context,
+            _audio_processor: audio_processor,
         }
     }
 
     fn submit_rendered_chunk(&mut self, chunk: &AudioChunkStereo) {
         for frame in chunk.iter() {
-            if let Err(_) = self.samples_queue.push((frame.left, frame.right)) {
+            if let Err(_) = self.samples_queue.push(*frame) {
                 log::warn!("Audiobuffer: Could not push frame to queue - queue full?");
             }
         }
