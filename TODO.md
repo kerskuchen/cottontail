@@ -37,6 +37,7 @@
 * get rid of sdl in favor of something more simple?
 * gamepad support for wasm
 * simplify keyboard input
+* add unified gamecursor to gamecursors struct (uses mouse or first touchfinger)
 * we need a sane way to determine refresh rate and calculate target_update_rate
 * make draw/audio/other things global for easier use (we run everything on the same thread anyway)
 * Easy debug-printing text API that draws in screenspace (not canvas-space)

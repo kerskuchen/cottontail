@@ -252,7 +252,6 @@ pub struct Drawable {
 }
 
 use std::cmp::Ordering;
-
 impl Drawable {
     #[inline]
     pub fn compare(a: &Drawable, b: &Drawable) -> Ordering {
@@ -528,7 +527,7 @@ impl Drawstate {
             drawcommands,
             debug_use_flat_color_mode: false,
             debug_log_font,
-            debug_log_font_scale: 3.0,
+            debug_log_font_scale: 2.0,
             debug_log_origin: Vec2::new(5.0, 5.0),
             debug_log_offset: Vec2::zero(),
             debug_log_depth: DEPTH_MAX,

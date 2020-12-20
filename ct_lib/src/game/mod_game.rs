@@ -2323,6 +2323,34 @@ impl Scene for SceneDebug {
             }
         })();
 
+        draw.debug_log(format!(
+            "mworld: {}x{}",
+            globals.cursors.mouse_coords.pos_world.x, globals.cursors.mouse_coords.pos_world.y,
+        ));
+        draw.debug_log(format!(
+            "mscreen: {}x{}",
+            globals.cursors.mouse_coords.pos_screen.x, globals.cursors.mouse_coords.pos_screen.y,
+        ));
+        draw.debug_log(format!(
+            "mcanvas: {}x{}",
+            globals.cursors.mouse_coords.pos_canvas.x, globals.cursors.mouse_coords.pos_canvas.y,
+        ));
+        draw.debug_log(format!(
+            "fworld: {}x{}",
+            globals.cursors.finger_coords[0].pos_world.x,
+            globals.cursors.finger_coords[0].pos_world.y,
+        ));
+        draw.debug_log(format!(
+            "fscreen: {}x{}",
+            globals.cursors.finger_coords[0].pos_screen.x,
+            globals.cursors.finger_coords[0].pos_screen.y,
+        ));
+        draw.debug_log(format!(
+            "fcanvas: {}x{}",
+            globals.cursors.finger_coords[0].pos_canvas.x,
+            globals.cursors.finger_coords[0].pos_canvas.y,
+        ));
+
         // CIRCLES
         self.choreographer_tween.update(input.deltatime);
         (|| {
