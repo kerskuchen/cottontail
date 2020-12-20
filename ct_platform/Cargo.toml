@@ -7,6 +7,9 @@ edition = "2018"
 [lib]
 path = "src/lib_platform.rs"
 
+[dependencies]
+ringbuf = "0.2"
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 serde = "1.0"
 # glow = { version="0.6.1", default-features=false, features=["web-sys"]}
@@ -16,7 +19,6 @@ sdl2 = "0.32"
 fern = "0.5"
 backtrace = "0.3"
 gilrs = "0.7"
-ringbuf = "0.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 serde = "1.0"
@@ -32,9 +34,12 @@ web-sys = { version = "0.3.4", features = [
   'Element',
   'DomRect',
   'EventTarget',
+  'AddEventListenerOptions',
   'HtmlElement',
   'MouseEvent',
   'WheelEvent',
+  'FocusEvent',
+  'KeyboardEvent',
   'Touch',
   'TouchList',
   'TouchEvent',

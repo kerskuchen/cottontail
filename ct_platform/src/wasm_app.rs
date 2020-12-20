@@ -1,4 +1,5 @@
 mod renderer_opengl;
+mod wasm_audio;
 
 use ct_lib::{
     game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand},
@@ -9,7 +10,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use renderer_opengl::Renderer;
 
-pub use wasm_bindgen::prelude::*;
+use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{WebGlProgram, WebGlRenderingContext, WebGlShader};
 
@@ -109,62 +110,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // AUDIO
 
-    const AUDIO_SAMPLE_RATE: usize = 44100;
-    const AUDIO_BUFFER_FRAME_COUNT: usize = 2048;
-    const AUDIO_NUM_CHANNELS: usize = 2;
-
-    let mut audio_options = web_sys::AudioContextOptions::new();
-    audio_options.sample_rate(AUDIO_SAMPLE_RATE as f32);
-
-    let audio_ctx = Rc::new(RefCell::new(
-        web_sys::AudioContext::new_with_context_options(&audio_options)
-            .expect("WebAudio not available"),
-    ));
-    let audio_processor = audio_ctx.borrow().create_script_processor_with_buffer_size_and_number_of_input_channels_and_number_of_output_channels(AUDIO_BUFFER_FRAME_COUNT as u32, 0, AUDIO_NUM_CHANNELS as u32)
-        .expect("Could not create AudioProcessor node");
-    {
-        let mut interleaved_output = vec![0f32; AUDIO_NUM_CHANNELS * AUDIO_BUFFER_FRAME_COUNT];
-        let mut channel_output = vec![0f32; AUDIO_BUFFER_FRAME_COUNT];
-        let mut frame_index = 0;
-        let closure = Closure::wrap(Box::new(move |event: web_sys::AudioProcessingEvent| {
-            let output_buffer = event.output_buffer().unwrap();
-            let num_frames = output_buffer.length() as usize;
-            let num_channels = output_buffer.number_of_channels() as usize;
-
-            assert!(num_frames == AUDIO_BUFFER_FRAME_COUNT);
-            assert!(num_channels == AUDIO_NUM_CHANNELS);
-
-            for frame in interleaved_output.chunks_exact_mut(2) {
-                frame[0] = 0.1
-                    * f64::sin(
-                        2.0 * std::f64::consts::PI
-                            * 440.0
-                            * (frame_index as f64 / AUDIO_SAMPLE_RATE as f64),
-                    ) as f32;
-                frame[1] = 0.1
-                    * f64::sin(
-                        2.0 * std::f64::consts::PI
-                            * 440.0
-                            * (frame_index as f64 / AUDIO_SAMPLE_RATE as f64),
-                    ) as f32;
-                frame_index += 1;
-            }
-
-            for channel in 0..num_channels {
-                for frame in 0..num_frames {
-                    channel_output[frame] = interleaved_output[num_channels * frame + channel];
-                }
-                output_buffer
-                    .copy_to_channel(&mut channel_output, channel as i32)
-                    .expect("Unable to write sample data into the audio context buffer");
-            }
-        }) as Box<dyn FnMut(_)>);
-        audio_processor.set_onaudioprocess(Some(closure.as_ref().unchecked_ref()));
-        closure.forget();
-    }
-    audio_processor
-        .connect_with_audio_node(&audio_ctx.borrow().destination())
-        .expect("Could not connect AudioScriptProcessor node");
+    let mut audio_output = wasm_audio::AudioOutput::new();
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // WEBGL
@@ -211,16 +157,9 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     // Mouse down
     {
         let input = input.clone();
-        let audio_ctx = audio_ctx.clone();
         let mousedown_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
             // Need handle fullscreen change here because of browser UX limitations
             fullscreen_toggle(Some(SCREEN_ORIENTATION));
-
-            // Need enable audio here because of browser UX limitations
-            let audio_ctx = audio_ctx.borrow();
-            if audio_ctx.state() == web_sys::AudioContextState::Suspended {
-                audio_ctx.resume().ok();
-            }
 
             if event.button() >= 3 {
                 // We only support three buttons
@@ -320,14 +259,12 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     // Touch start
     {
         let input = input.clone();
-        let audio_ctx = audio_ctx.clone();
         let canvas = html_get_canvas();
         let touchstart_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
             let offset_x = canvas.get_bounding_client_rect().left();
             let offset_y = canvas.get_bounding_client_rect().top();
 
             let mut input = input.borrow_mut();
-            let audio_ctx = audio_ctx.borrow();
             for finger_id in 0..event.target_touches().length() {
                 if let Some(touch) = event.target_touches().item(finger_id) {
                     if finger_id < ct_lib::game::TOUCH_MAX_FINGER_COUNT as u32 {
@@ -348,11 +285,6 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
                         finger.state.process_event(true, false, current_tick);
                     }
                 }
-            }
-
-            // Need enable audio here because of browser UX limitations
-            if audio_ctx.state() == web_sys::AudioContextState::Suspended {
-                audio_ctx.resume().ok();
             }
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
@@ -453,6 +385,32 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             touchcancel_callback.as_ref().unchecked_ref(),
         )?;
         touchcancel_callback.forget();
+    }
+    // Focus
+    {
+        let input = input.clone();
+        let focus_callback = Closure::wrap(Box::new(move |_event: web_sys::FocusEvent| {
+            let mut input = input.borrow_mut();
+            input.has_focus = true;
+            input.has_focus_event = true;
+            log::debug!("Gained input focus");
+        }) as Box<dyn FnMut(_)>);
+        html_get_canvas()
+            .add_event_listener_with_callback("focus", focus_callback.as_ref().unchecked_ref())?;
+        focus_callback.forget();
+    }
+    // Unfocus
+    {
+        let input = input.clone();
+        let blur_callback = Closure::wrap(Box::new(move |_event: web_sys::FocusEvent| {
+            let mut input = input.borrow_mut();
+            input.has_focus = false;
+            input.has_focus_event = true;
+            log::debug!("Lost input focus");
+        }) as Box<dyn FnMut(_)>);
+        html_get_canvas()
+            .add_event_listener_with_callback("blur", blur_callback.as_ref().unchecked_ref())?;
+        blur_callback.forget();
     }
 
     // Here we want to call `requestAnimationFrame` in a loop, but only a fixed
@@ -574,7 +532,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             input.deltatime = duration_frame as f32;
             input.target_deltatime = f32::min(duration_frame as f32, 1.0 / 30.0);
             input.real_world_uptime = frame_start_time - launcher_start_time;
-            input.audio_playback_rate_hz = AUDIO_SAMPLE_RATE;
+            input.audio_playback_rate_hz = audio_output.audio_playback_rate_hz;
 
             game_memory.update(&input, &mut systemcommands);
 
@@ -607,11 +565,12 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
         let pre_sound_time = post_update_time;
 
         if game_memory.audio.is_some() {
+            let input = input.borrow();
             let audio = game_memory
                 .audio
                 .as_mut()
                 .expect("No audiostate initialized");
-            // audio_output.render_frames(audio, input.has_focus, 2.0 * target_seconds_per_frame);
+            audio_output.render_frames(audio, input.has_focus);
         }
 
         let post_sound_time = current_time_seconds();
