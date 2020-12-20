@@ -339,7 +339,7 @@ struct AudioStreamScheduledMono {
     pub playback_speed: f32,
     pub has_finished: bool,
 
-    output_buffer: [AudioSample; AUDIO_CHUNKSIZE_IN_FRAMES],
+    output_buffer: AudioChunkMono,
 }
 impl AudioStreamScheduledMono {
     fn new(
@@ -360,33 +360,35 @@ impl AudioStreamScheduledMono {
 }
 impl AudioStream for AudioStreamScheduledMono {
     fn process_output_mono(&mut self, output_params: AudioRenderParams) {
-        let output_samples = &mut self.output_buffer;
-
-        // Fill up with silence if our stream has not started yet
-        let output_samples = if self.frames_left_till_start != 0 {
-            let silence_framecount = self.frames_left_till_start.min(output_samples.len());
-            if self.frames_left_till_start >= output_samples.len() {
-                self.frames_left_till_start -= output_samples.len();
-            } else {
-                self.frames_left_till_start = 0;
-            }
-            for sample in &mut output_samples[0..silence_framecount] {
-                *sample = 0.0;
-            }
-            if silence_framecount == output_samples.len() {
-                return;
-            }
-            &mut output_samples[silence_framecount..]
-        } else {
-            output_samples
+        let silence_framecount = {
+            let silence_framecount =
+                usize::min(self.frames_left_till_start, AUDIO_CHUNKSIZE_IN_FRAMES);
+            self.frames_left_till_start =
+                if self.frames_left_till_start >= AUDIO_CHUNKSIZE_IN_FRAMES {
+                    self.frames_left_till_start - AUDIO_CHUNKSIZE_IN_FRAMES
+                } else {
+                    0
+                };
+            silence_framecount
         };
 
-        let source_sample_rate_hz = self.source.sample_rate_hz() as f32;
-        let sample_rate_conversion_factor =
-            source_sample_rate_hz / output_params.audio_sample_rate_hz as f32;
-        let playback_speed = self.playback_speed * sample_rate_conversion_factor;
+        // Fast path - our stream won't start this chunk
+        if silence_framecount == AUDIO_CHUNKSIZE_IN_FRAMES {
+            for sample in &mut self.output_buffer {
+                *sample = 0.0;
+            }
+            return;
+        }
 
-        for out_sample in output_samples {
+        let playback_speed = {
+            let sample_rate_conversion_factor =
+                self.source.sample_rate_hz() as f32 / output_params.audio_sample_rate_hz as f32;
+            self.playback_speed * sample_rate_conversion_factor
+        };
+        for sample in &mut self.output_buffer[0..silence_framecount] {
+            *sample = 0.0;
+        }
+        for out_sample in &mut self.output_buffer[silence_framecount..] {
             if let Some(resampled_value) = self
                 .interpolator
                 .next_sample(&mut self.source, playback_speed)

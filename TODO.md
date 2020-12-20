@@ -4,24 +4,31 @@
 * Pixie Stitch: 
   - Add custom launcher icon
 * Add wasm audio
+* Fix wasm performance
 
 
 # CURRENT
 
-* Fix wasm performance
-  - Get rid of needles allocations
-  - Find out what causes garbage collector to trigger
-  - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)
 
 # NEXT:
 
+* Refactor draw/renderer 
+  - to have one vertex-/index-batch-buffer per shader with offsets into buffer
+    (see sokol_gfx appendbuffer mechanism)
+  - move shaders out of renderer and into draw, 
+  - make shader parser that knows all attributes and uniforms
+* Find more ways to make wasm perform better
+  - Get rid of needles allocations
+  - Find out what causes garbage collector to trigger
+  - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)
 * make app pause on onfocus/lost events 
 * Get rid of crates that are not necessary or replace them with smaller ones
   (nanoserde, nanorand, minimp3)
 * check canvas resolution in fullscreen
-* fix DOM error on fullscreen toggle
 * refactor gamememory/audio/draw/asset initialization
+* fix DOM error on fullscreen toggle (unhandled exeption because screen orientation is not supported?)
 * make crate controlflow more streamlined (maybe build everything as one crate?)
+  - make drawstate call renderer functions directly?
 * rename game -> app
 * get rid of savegame folder
 * add new batchfiles and everything we added recently to the templates
@@ -32,12 +39,8 @@
 * simplify keyboard input
 * we need a sane way to determine refresh rate and calculate target_update_rate
 * make draw/audio/other things global for easier use (we run everything on the same thread anyway)
-* Maybe we can make drawstate globally available for debug drawing so that we don't need it to 
-  pass everywhere. this is of course highly unsafe but ok for debug
 * Easy debug-printing text API that draws in screenspace (not canvas-space)
   - We need to add a debug layer to the drawstate with its own drawqueue
-* Refactor draw/renderer to have one vertex-/index-batch-buffer per shader with offsets into buffer
-  (see sokol_gfx appendbuffer mechanism)
 * Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 
   sized rectangle drawing and the `skip_last_vertex` 
 * Fix Vec2 to work with flipped_y only and remove special suffixes?
