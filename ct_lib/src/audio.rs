@@ -55,81 +55,80 @@ pub fn audio_seconds_to_frames(time: f64, audio_samplerate_hz: usize) -> f64 {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Adapters
 
-/// NOTE: This assumes (and works best with) values in the range [-1.0, 1.0]
-#[derive(Debug, Clone)]
-struct AudioIterativeFader {
+#[derive(Clone)]
+struct VolumeAdapter {
     pub current: f32,
     pub target: f32,
-}
-impl AudioIterativeFader {
-    fn new(initial_value: f32) -> AudioIterativeFader {
-        AudioIterativeFader {
-            current: initial_value,
-            target: initial_value,
-        }
-    }
-
-    fn next_value(&mut self) -> f32 {
-        // NOTE: The value for `step_size` was chosen experimentally based on what sounded ok
-        let distance = (self.target - self.current).abs();
-        let step_size = f32::max(1.0 / i16::MAX as f32, distance / 1024.0);
-
-        self.current = if self.target >= self.current {
-            f32::min(self.current + step_size, self.target)
-        } else {
-            f32::max(self.current - step_size, self.target)
-        };
-        self.current
-    }
-}
-impl Iterator for AudioIterativeFader {
-    type Item = f32;
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(self.next_value())
-    }
-}
-
-#[derive(Debug, Clone)]
-struct VolumeAdapter {
-    pub fader: AudioIterativeFader,
 }
 impl VolumeAdapter {
     fn new(volume: f32) -> VolumeAdapter {
         VolumeAdapter {
-            fader: AudioIterativeFader::new(volume),
+            current: volume,
+            target: volume,
         }
     }
     fn set_volume(&mut self, volume: f32) {
-        self.fader.target = volume;
+        self.target = volume;
     }
-    fn process(&mut self, input_samples: &[AudioSample], output_samples: &mut [AudioSample]) {
-        for (in_sample, out_sample) in input_samples.iter().zip(output_samples.iter_mut()) {
-            let volume = self.fader.next_value();
-            *out_sample = volume * in_sample;
+    fn process(&mut self, input_samples: &AudioChunkMono, output_samples: &mut AudioChunkMono) {
+        if self.target == self.current {
+            // Fast path - all values are the same for the chunk
+            let volume = self.target;
+            for (in_sample, out_sample) in input_samples.iter().zip(output_samples.iter_mut()) {
+                *out_sample = volume * in_sample;
+            }
+        } else {
+            // Slow path - need to ramp up/down volume
+            let volume_increase = (self.target - self.current) / AUDIO_CHUNKSIZE_IN_FRAMES as f32;
+            let mut volume = self.current;
+            for (in_sample, out_sample) in input_samples.iter().zip(output_samples.iter_mut()) {
+                *out_sample = volume * in_sample;
+                volume += volume_increase;
+            }
+            // We assign here to prevent rounding errors and assuring the fastpath next time
+            self.current = self.target;
         }
     }
 }
 
 #[derive(Clone)]
 struct MonoToStereoAdapter {
-    fader: AudioIterativeFader,
+    pub current: f32,
+    pub target: f32,
 }
 impl MonoToStereoAdapter {
     fn new(pan: f32) -> MonoToStereoAdapter {
         MonoToStereoAdapter {
-            fader: AudioIterativeFader::new(pan),
+            current: pan,
+            target: pan,
         }
     }
     fn set_pan(&mut self, pan: f32) {
-        self.fader.target = pan;
+        self.target = pan;
     }
-    fn process(&mut self, input_samples: &[AudioSample], output_frames: &mut [AudioFrame]) {
-        let TODO = "PERFORMANCE: crossfade is ultra-expensive. if we could know that the 
-        panner is constant for the duration of the chunk we could save a ton of cycles";
-        for (in_sample, out_frame) in input_samples.iter().zip(output_frames.iter_mut()) {
-            let pan = 0.5 * (self.fader.next_value() + 1.0); // Transform [-1,1] -> [0,1]
-            let (volume_left, volume_right) = crossfade_squareroot(*in_sample, pan);
-            *out_frame = AudioFrame::new(volume_left, volume_right);
+    fn process(&mut self, input_samples: &AudioChunkMono, output_frames: &mut AudioChunkStereo) {
+        if self.target == self.current {
+            // Fast path - all values are the same for the chunk
+            let percent = 0.5 * (self.target + 1.0); // Transform [-1,1] -> [0,1]
+            let (volume_left, volume_right) = crossfade_squareroot(1.0, percent);
+            for (in_sample, out_frame) in input_samples.iter().zip(output_frames.iter_mut()) {
+                out_frame.left = volume_left * in_sample;
+                out_frame.right = volume_right * in_sample;
+            }
+        } else {
+            // Slow path - need to ramp up/down pan
+            let percent_target = 0.5 * (self.target + 1.0); // Transform [-1,1] -> [0,1]
+            let percent_start = 0.5 * (self.current + 1.0); // Transform [-1,1] -> [0,1]
+            let percent_increase =
+                (percent_target - percent_start) / AUDIO_CHUNKSIZE_IN_FRAMES as f32;
+            let mut percent = percent_start;
+            for (in_sample, out_frame) in input_samples.iter().zip(output_frames.iter_mut()) {
+                let (volume_left, volume_right) = crossfade_squareroot(*in_sample, percent);
+                *out_frame = AudioFrame::new(volume_left, volume_right);
+                percent += percent_increase;
+            }
+            // We assign here to prevent rounding errors and assuring the fastpath next time
+            self.current = self.target;
         }
     }
 }
