@@ -40,6 +40,8 @@ pub struct AudioOutput {
     samples_queue: ringbuf::Producer<AudioFrame>,
     _audio_context: Rc<RefCell<web_sys::AudioContext>>,
     _audio_processor: web_sys::ScriptProcessorNode,
+
+    out_chunk: AudioChunkStereo,
 }
 
 impl AudioOutput {
@@ -203,11 +205,12 @@ impl AudioOutput {
             samples_queue: audio_ringbuffer_producer,
             _audio_context: audio_context,
             _audio_processor: audio_processor,
+            out_chunk: [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES],
         }
     }
 
-    fn submit_rendered_chunk(&mut self, chunk: &AudioChunkStereo) {
-        for frame in chunk.iter() {
+    fn submit_rendered_chunk(&mut self) {
+        for frame in self.out_chunk.iter() {
             if let Err(_) = self.samples_queue.push(*frame) {
                 log::warn!("Audiobuffer: Could not push frame to queue - queue full?");
             }
@@ -228,15 +231,17 @@ impl AudioOutput {
         };
 
         for _ in 0..chunkcount_to_render {
-            let mut out_chunk = [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES];
-            audio.render_audio_chunk(&mut out_chunk);
+            for frame in &mut self.out_chunk {
+                *frame = AudioFrame::silence();
+            }
+            audio.render_audio_chunk(&mut self.out_chunk);
             if window_has_focus {
                 // NOTE: We want to avoid submitting frames because we cannot guarentee that it will
                 //       sound ok when our window is not in focus. We still want to let the
                 //       Audiostate render chunks though so that it can keep track of time.
                 //       When not submitting new frames the callback will automatically fade out
                 //       to avoid cracking
-                self.submit_rendered_chunk(&out_chunk);
+                self.submit_rendered_chunk();
             }
         }
     }

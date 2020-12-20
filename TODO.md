@@ -3,19 +3,22 @@
 * Input, Fullscreen, Asset loading and GFX in WASM
 * Pixie Stitch: 
   - Add custom launcher icon
+* Add wasm audio
 
 
 # CURRENT
 
+* Fix wasm performance
+  - Get rid of needles allocations
+  - Find out what causes garbage collector to trigger
+  - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)
 
 # NEXT:
 
-* Add wasm audio
+* make app pause on onfocus/lost events 
 * Get rid of crates that are not necessary or replace them with smaller ones
   (nanoserde, nanorand, minimp3)
-* add onfocus/lost events to make the app use less/no cpu when not in focus
 * check canvas resolution in fullscreen
-* add sound support back in
 * fix DOM error on fullscreen toggle
 * refactor gamememory/audio/draw/asset initialization
 * make crate controlflow more streamlined (maybe build everything as one crate?)

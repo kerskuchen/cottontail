@@ -30,7 +30,7 @@ impl AudioFrame {
     }
 }
 
-pub const AUDIO_CHUNKSIZE_IN_FRAMES: usize = 256;
+pub const AUDIO_CHUNKSIZE_IN_FRAMES: usize = 1024;
 pub type AudioChunkMono = [AudioSample; AUDIO_CHUNKSIZE_IN_FRAMES];
 pub type AudioChunkStereo = [AudioFrame; AUDIO_CHUNKSIZE_IN_FRAMES];
 
