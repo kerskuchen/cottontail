@@ -534,7 +534,12 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             input.real_world_uptime = frame_start_time - launcher_start_time;
             input.audio_playback_rate_hz = audio_output.audio_playback_rate_hz;
 
-            game_memory.update(&input, &mut systemcommands);
+            if input.has_focus {
+                game_memory.update(&input, &mut systemcommands);
+            } else {
+                let TODO = "just repeat the drawcommands from last time - but without the 
+                update/create texture commands or other expensive/complex commands";
+            }
 
             // Clear input state
             input.screen_framebuffer_dimensions_changed = false;
@@ -566,11 +571,13 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
 
         if game_memory.audio.is_some() {
             let input = input.borrow();
-            let audio = game_memory
-                .audio
-                .as_mut()
-                .expect("No audiostate initialized");
-            audio_output.render_frames(audio, input.has_focus);
+            if input.has_focus {
+                let audio = game_memory
+                    .audio
+                    .as_mut()
+                    .expect("No audiostate initialized");
+                audio_output.render_frames(audio);
+            }
         }
 
         let post_sound_time = current_time_seconds();

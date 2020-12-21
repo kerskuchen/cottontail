@@ -4,7 +4,7 @@ use ct_lib::audio::{AudioChunkStereo, AudioFrame, Audiostate, AUDIO_CHUNKSIZE_IN
 use wasm_bindgen::{prelude::*, JsCast};
 
 const AUDIO_SAMPLE_RATE: usize = 44100;
-const AUDIO_BUFFER_FRAME_COUNT: usize = 2048;
+const AUDIO_BUFFER_FRAME_COUNT: usize = 4096;
 const AUDIO_NUM_CHANNELS: usize = 2;
 const AUDIO_CHANNEL_LEFT: usize = 0;
 const AUDIO_CHANNEL_RIGHT: usize = 1;
@@ -56,7 +56,7 @@ impl AudioOutput {
         let audio_processor = audio_context.borrow().create_script_processor_with_buffer_size_and_number_of_input_channels_and_number_of_output_channels(AUDIO_BUFFER_FRAME_COUNT as u32, 0, AUDIO_NUM_CHANNELS as u32)
         .expect("Could not create AudioProcessor node");
 
-        let audio_ringbuffer = ringbuf::RingBuffer::new(1 * AUDIO_SAMPLE_RATE);
+        let audio_ringbuffer = ringbuf::RingBuffer::new(AUDIO_SAMPLE_RATE);
         let (audio_ringbuffer_producer, audio_ringbuffer_consumer) = audio_ringbuffer.split();
         {
             let mut audio_callback_context = WASMAudioCallback::new(audio_ringbuffer_consumer);
@@ -217,7 +217,7 @@ impl AudioOutput {
         }
     }
 
-    pub fn render_frames(&mut self, audio: &mut Audiostate, window_has_focus: bool) {
+    pub fn render_frames(&mut self, audio: &mut Audiostate) {
         let chunkcount_to_render = {
             let framecount_to_render = {
                 let framecount_queued = self.samples_queue.len() / 2;
@@ -235,14 +235,12 @@ impl AudioOutput {
                 *frame = AudioFrame::silence();
             }
             audio.render_audio_chunk(&mut self.out_chunk);
-            if window_has_focus {
-                // NOTE: We want to avoid submitting frames because we cannot guarentee that it will
-                //       sound ok when our window is not in focus. We still want to let the
-                //       Audiostate render chunks though so that it can keep track of time.
-                //       When not submitting new frames the callback will automatically fade out
-                //       to avoid cracking
-                self.submit_rendered_chunk();
-            }
+            // NOTE: We want to avoid submitting frames because we cannot guarentee that it will
+            //       sound ok when our window is not in focus. We still want to let the
+            //       Audiostate render chunks though so that it can keep track of time.
+            //       When not submitting new frames the callback will automatically fade out
+            //       to avoid cracking
+            self.submit_rendered_chunk();
         }
     }
 }

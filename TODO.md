@@ -5,12 +5,18 @@
   - Add custom launcher icon
 * Add wasm audio
 * Fix wasm performance
+* bugfixing wasm audiobuffer
+* pause game on focus lost
 
 
 # CURRENT
 
+* keyboard input by just using a hashmap
+* fullscreen toggle by buttonpress
 
 # NEXT:
+
+
 
 * Refactor draw/renderer 
   - to have one vertex-/index-batch-buffer per shader with offsets into buffer
@@ -24,8 +30,9 @@
 * make app pause on onfocus/lost events 
 * Get rid of crates that are not necessary or replace them with smaller ones
   (nanoserde, nanorand, minimp3)
-* check canvas resolution in fullscreen
+* check if canvas/screen resolution is correct in fullscreen
 * refactor gamememory/audio/draw/asset initialization
+* Allow hotreloading of game assets
 * fix DOM error on fullscreen toggle (unhandled exeption because screen orientation is not supported?)
 * make crate controlflow more streamlined (maybe build everything as one crate?)
   - make drawstate call renderer functions directly?
@@ -36,7 +43,6 @@
 * add icon, title and tags to html (look at other projects we did)
 * get rid of sdl in favor of something more simple?
 * gamepad support for wasm
-* simplify keyboard input
 * add unified gamecursor to gamecursors struct (uses mouse or first touchfinger)
 * we need a sane way to determine refresh rate and calculate target_update_rate
 * make draw/audio/other things global for easier use (we run everything on the same thread anyway)
@@ -50,7 +56,6 @@
   with `Gamepad::axis_or_btn_name()` or iterating axis does not let us find any state. We know that 
   it should work because it does so in the control panel
 * Usable wasm/html buttons for fullscreen switching
-* Allow hotreloading of game assets
 * Support ogg audio and differentiate between mono/stereo recordings
 * streaming long audio (music)
 * Clean up old stuff code at the end of draw.rs and sdl_window.rs. 
