@@ -191,7 +191,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
                 .process_key_event(scancode, keycode, false, false, current_tick);
         }) as Box<dyn FnMut(_)>);
         html_get_canvas()
-            .add_event_listener_with_callback("keydown", keyup_callback.as_ref().unchecked_ref())?;
+            .add_event_listener_with_callback("keyup", keyup_callback.as_ref().unchecked_ref())?;
         keyup_callback.forget();
     }
     // Mouse down
@@ -576,7 +576,6 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
         }
         {
             let input = input.borrow();
-
             if input.has_focus {
                 game_memory.update(&input, &mut systemcommands);
             } else {
