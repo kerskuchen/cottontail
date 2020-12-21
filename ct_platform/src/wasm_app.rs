@@ -1,5 +1,6 @@
 mod renderer_opengl;
 mod wasm_audio;
+mod wasm_input;
 
 use ct_lib::{
     game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand},
@@ -153,7 +154,46 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     let mut mouse_pos_previous_x = 0;
     let mut mouse_pos_previous_y = 0;
 
-    let TODO = "we need some onfocus/lost callbacks to pause the game and save cpu";
+    // Key down
+    {
+        let input = input.clone();
+        let keydown_callback = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
+            let mut input = input.borrow_mut();
+
+            let repeat = event.repeat();
+            input.keyboard.has_press_event = true;
+            if repeat {
+                input.keyboard.has_system_repeat_event = true;
+            }
+            let scancode = wasm_input::scancode_to_our_scancode(&event.code());
+            let keycode = wasm_input::keycode_to_our_keycode(&event.key(), scancode);
+            input
+                .keyboard
+                .process_key_event(scancode, keycode, true, repeat, current_tick);
+        }) as Box<dyn FnMut(_)>);
+        html_get_canvas().add_event_listener_with_callback(
+            "keydown",
+            keydown_callback.as_ref().unchecked_ref(),
+        )?;
+        keydown_callback.forget();
+    }
+    // Key up
+    {
+        let input = input.clone();
+        let keyup_callback = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
+            let mut input = input.borrow_mut();
+
+            input.keyboard.has_release_event = true;
+            let scancode = wasm_input::scancode_to_our_scancode(&event.code());
+            let keycode = wasm_input::keycode_to_our_keycode(&event.key(), scancode);
+            input
+                .keyboard
+                .process_key_event(scancode, keycode, false, false, current_tick);
+        }) as Box<dyn FnMut(_)>);
+        html_get_canvas()
+            .add_event_listener_with_callback("keydown", keyup_callback.as_ref().unchecked_ref())?;
+        keyup_callback.forget();
+    }
     // Mouse down
     {
         let input = input.clone();
@@ -533,6 +573,9 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             input.target_deltatime = f32::min(duration_frame as f32, 1.0 / 30.0);
             input.real_world_uptime = frame_start_time - launcher_start_time;
             input.audio_playback_rate_hz = audio_output.audio_playback_rate_hz;
+        }
+        {
+            let input = input.borrow();
 
             if input.has_focus {
                 game_memory.update(&input, &mut systemcommands);
@@ -540,7 +583,9 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
                 let TODO = "just repeat the drawcommands from last time - but without the 
                 update/create texture commands or other expensive/complex commands";
             }
-
+        }
+        {
+            let mut input = input.borrow_mut();
             // Clear input state
             input.screen_framebuffer_dimensions_changed = false;
             input.has_foreground_event = false;

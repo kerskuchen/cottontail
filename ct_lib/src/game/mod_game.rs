@@ -926,8 +926,8 @@ pub fn game_handle_system_keys(
     if keyboard.recently_pressed(Scancode::Escape) {
         out_systemcommands.push(SystemCommand::Shutdown);
     }
-    if keyboard.recently_pressed(Scancode::Return)
-        && (keyboard.is_down(Scancode::LAlt) || keyboard.is_down(Scancode::RAlt))
+    if keyboard.recently_pressed(Scancode::Enter)
+        && (keyboard.is_down(Scancode::AltLeft) || keyboard.is_down(Scancode::AltRight))
     {
         out_systemcommands.push(SystemCommand::FullscreenToggle);
     }
