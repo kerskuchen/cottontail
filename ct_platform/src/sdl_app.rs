@@ -313,8 +313,6 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     input.screen_framebuffer_width = screen_width;
     input.screen_framebuffer_height = screen_height;
     input.screen_framebuffer_dimensions_changed = true;
-    input.keyboard = sdl_input::keyboardstate_create();
-    input.textinput.is_textinput_enabled = false;
 
     let mut game_memory = GameMemory::<GameStateType>::default();
 
@@ -510,69 +508,27 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
                 Event::FingerDown {
                     finger_id, x, y, ..
                 } => {
-                    if finger_id < ct_lib::game::TOUCH_MAX_FINGER_COUNT as i64 {
-                        let finger = &mut input.touch.fingers[finger_id as usize];
-
-                        // IMPORTANT: At this point we may have an out of date screen dimensions
-                        //            if the window size changed since last frame.
-                        //            Because we use touch input only on mobile (where we disable
-                        //            resizing the window) this is ok.
-                        finger.pos_x = f32::round(x * screen_width as f32) as i32;
-                        finger.pos_y = f32::round(y * screen_height as f32) as i32;
-
-                        // NOTE: We don't want fake deltas when pressing. This can happen when our
-                        //       last release was not the same as our press position.
-                        finger.delta_x = 0;
-                        finger.delta_y = 0;
-
-                        input.touch.has_press_event = true;
-                        finger.state.process_event(true, false, current_tick);
-                    }
+                    let pos_x = f32::round(x * screen_width as f32) as i32;
+                    let pos_y = f32::round(y * screen_height as f32) as i32;
+                    input
+                        .touch
+                        .process_finger_down(finger_id, pos_x, pos_y, current_tick);
                 }
                 Event::FingerUp {
                     finger_id, x, y, ..
                 } => {
-                    if finger_id < ct_lib::game::TOUCH_MAX_FINGER_COUNT as i64 {
-                        let finger = &mut input.touch.fingers[finger_id as usize];
-                        let finger_previous = &mut input.touch.fingers_previous[finger_id as usize];
-
-                        // IMPORTANT: At this point we may have an out of date screen dimensions
-                        //            if the window size changed since last frame.
-                        //            Because we use touch input only on mobile (where we disable
-                        //            resizing the window) this is ok.
-                        finger.pos_x = f32::round(x * screen_width as f32) as i32;
-                        finger.pos_y = f32::round(y * screen_height as f32) as i32;
-
-                        finger.delta_x = finger.pos_x - finger_previous.pos_x;
-                        finger.delta_y = finger.pos_y - finger_previous.pos_y;
-
-                        input.touch.has_release_event = true;
-                        input.touch.fingers[finger_id as usize].state.process_event(
-                            false,
-                            false,
-                            current_tick,
-                        );
-                    }
+                    let pos_x = f32::round(x * screen_width as f32) as i32;
+                    let pos_y = f32::round(y * screen_height as f32) as i32;
+                    input
+                        .touch
+                        .process_finger_up(finger_id, pos_x, pos_y, current_tick);
                 }
                 Event::FingerMotion {
                     finger_id, x, y, ..
                 } => {
-                    if finger_id < ct_lib::game::TOUCH_MAX_FINGER_COUNT as i64 {
-                        let finger = &mut input.touch.fingers[finger_id as usize];
-                        let finger_previous = &mut input.touch.fingers_previous[finger_id as usize];
-
-                        // IMPORTANT: At this point we may have an out of date screen dimensions
-                        //            if the window size changed since last frame.
-                        //            Because we use touch input only on mobile (where we disable
-                        //            resizing the window) this is ok.
-                        finger.pos_x = f32::round(x * screen_width as f32) as i32;
-                        finger.pos_y = f32::round(y * screen_height as f32) as i32;
-
-                        finger.delta_x = finger.pos_x - finger_previous.pos_x;
-                        finger.delta_y = finger.pos_y - finger_previous.pos_y;
-
-                        input.touch.has_move_event = true;
-                    }
+                    let pos_x = f32::round(x * screen_width as f32) as i32;
+                    let pos_y = f32::round(y * screen_height as f32) as i32;
+                    input.touch.process_finger_move(finger_id, pos_x, pos_y);
                 }
                 //----------------------------------------------------------------------------------
                 // Mouse
@@ -747,6 +703,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         input.mouse.pos_y = event_pump.mouse_state().y();
         input.mouse.delta_x = input.mouse.pos_x - mouse_pos_previous_x;
         input.mouse.delta_y = input.mouse.pos_y - mouse_pos_previous_y;
+        input.touch.calculate_move_deltas();
 
         //--------------------------------------------------------------------------------------
         // Start/stop input-recording/-playback
@@ -824,7 +781,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
 
         input.keyboard.clear_transitions();
         input.mouse.clear_transitions();
-        input.touch.touchstate_clear_transitions();
+        input.touch.clear_transitions();
 
         mouse_pos_previous_x = input.mouse.pos_x;
         mouse_pos_previous_y = input.mouse.pos_y;

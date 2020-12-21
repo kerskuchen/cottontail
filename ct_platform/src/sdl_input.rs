@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Platform specific input
 
-use ct_lib::game::{KeyState, KeyboardState, Keycode, Scancode};
+use ct_lib::game::{Keycode, Scancode};
 
 /// Given a deadzone_threshold in [0.0, 1.0[
 /// Outputs [-1.0, 1.0] if axisValue in [-1.0, -deadzone_threshold] u [deadzone_threshold, 1.0]
@@ -35,31 +35,6 @@ pub fn _process_gamepad_axis(
     }
 
     axis_value
-}
-
-pub fn keyboardstate_create() -> KeyboardState {
-    let mut keyboard = KeyboardState::new();
-    for scancode_index in 0..512 {
-        if let Some(sdl2_scancode) = sdl2::keyboard::Scancode::from_i32(scancode_index) {
-            let scancode = scancode_to_our_scancode(sdl2_scancode);
-            let keycode =
-                if let Some(sdl2_keycode) = sdl2::keyboard::Keycode::from_scancode(sdl2_scancode) {
-                    keycode_to_our_keycode(sdl2_keycode)
-                } else {
-                    Keycode::Unidentified
-                };
-
-            keyboard.keys.insert(
-                scancode,
-                KeyState {
-                    keycode,
-                    scancode,
-                    button: ct_lib::game::ButtonState::default(),
-                },
-            );
-        }
-    }
-    keyboard
 }
 
 pub fn scancode_to_our_scancode(scancode: sdl2::keyboard::Scancode) -> Scancode {

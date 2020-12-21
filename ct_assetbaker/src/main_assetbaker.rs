@@ -16,7 +16,6 @@ use ct_lib::log;
 use ct_lib::serde_derive::{Deserialize, Serialize};
 use ct_lib::serde_json;
 
-use fern;
 use ico;
 use rayon::prelude::*;
 
@@ -897,7 +896,8 @@ fn recreate_directory(path: &str) {
 fn main() {
     let start_time = std::time::Instant::now();
 
-    ct_lib::platform::init_logging("target/assetbaker_log.txt", log::Level::Trace);
+    ct_lib::platform::init_logging("target/assetbaker_log.txt", log::Level::Trace)
+        .expect("Unable to init logging");
     std::panic::set_hook(Box::new(|panic_info| {
         let (message, location) = ct_lib::panic_message_split_to_message_and_location(panic_info);
         let final_message = format!("{}\n\nError occured at: {}", message, location);
@@ -966,7 +966,7 @@ fn main() {
 
     // Write indexfile
     let mut filelist_content = String::new();
-    let mut filelist = platform::collect_files_recursive("resources");
+    let filelist = platform::collect_files_recursive("resources");
     for filepath in &filelist {
         filelist_content += &format!("{}\n", filepath);
     }

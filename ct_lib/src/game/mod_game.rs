@@ -780,10 +780,11 @@ impl CursorCoords {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone)]
 pub struct Cursors {
-    pub mouse_coords: CursorCoords,
-    pub finger_coords: [CursorCoords; TOUCH_MAX_FINGER_COUNT],
+    pub mouse: CursorCoords,
+    pub finger_primary: Option<CursorCoords>,
+    pub finger_secondary: Option<CursorCoords>,
 }
 
 impl Cursors {
@@ -796,7 +797,7 @@ impl Cursors {
         canvas_width: u32,
         canvas_height: u32,
     ) -> Cursors {
-        let mouse_coords = CursorCoords::new(
+        let mouse = CursorCoords::new(
             camera,
             screen_width,
             screen_height,
@@ -807,25 +808,37 @@ impl Cursors {
             mouse.delta_x,
             mouse.delta_y,
         );
-
-        let mut finger_coords = [CursorCoords::default(); TOUCH_MAX_FINGER_COUNT];
-        for (finger, coord) in finger_coords.iter_mut().enumerate() {
-            *coord = CursorCoords::new(
+        let finger_primary = touch.fingers.get(&0).map(|finger| {
+            CursorCoords::new(
                 camera,
                 screen_width,
                 screen_height,
                 canvas_width,
                 canvas_height,
-                touch.fingers[finger].pos_x,
-                touch.fingers[finger].pos_y,
-                touch.fingers[finger].delta_x,
-                touch.fingers[finger].delta_y,
+                finger.pos_x,
+                finger.pos_y,
+                finger.delta_x,
+                finger.delta_y,
             )
-        }
+        });
+        let finger_secondary = touch.fingers.get(&1).map(|finger| {
+            CursorCoords::new(
+                camera,
+                screen_width,
+                screen_height,
+                canvas_width,
+                canvas_height,
+                finger.pos_x,
+                finger.pos_y,
+                finger.delta_x,
+                finger.delta_y,
+            )
+        });
 
         Cursors {
-            mouse_coords,
-            finger_coords,
+            mouse,
+            finger_primary,
+            finger_secondary,
         }
     }
 }
@@ -2324,32 +2337,95 @@ impl Scene for SceneDebug {
         })();
 
         draw.debug_log(format!(
+            "screen: {}x{}",
+            input.screen_framebuffer_width, input.screen_framebuffer_height,
+        ));
+        draw.debug_log(format!(
+            "canvas: {}x{}",
+            globals.canvas_width, globals.canvas_height
+        ));
+        draw.debug_log(format!(
             "mworld: {}x{}",
-            globals.cursors.mouse_coords.pos_world.x, globals.cursors.mouse_coords.pos_world.y,
+            globals.cursors.mouse.pos_world.x, globals.cursors.mouse.pos_world.y,
         ));
         draw.debug_log(format!(
             "mscreen: {}x{}",
-            globals.cursors.mouse_coords.pos_screen.x, globals.cursors.mouse_coords.pos_screen.y,
+            globals.cursors.mouse.pos_screen.x, globals.cursors.mouse.pos_screen.y,
         ));
         draw.debug_log(format!(
             "mcanvas: {}x{}",
-            globals.cursors.mouse_coords.pos_canvas.x, globals.cursors.mouse_coords.pos_canvas.y,
+            globals.cursors.mouse.pos_canvas.x, globals.cursors.mouse.pos_canvas.y,
         ));
         draw.debug_log(format!(
-            "fworld: {}x{}",
-            globals.cursors.finger_coords[0].pos_world.x,
-            globals.cursors.finger_coords[0].pos_world.y,
+            "fpworld: {:?}",
+            globals
+                .cursors
+                .finger_primary
+                .map(|coords| coords.pos_world)
         ));
         draw.debug_log(format!(
-            "fscreen: {}x{}",
-            globals.cursors.finger_coords[0].pos_screen.x,
-            globals.cursors.finger_coords[0].pos_screen.y,
+            "fpscreen: {:?}",
+            globals
+                .cursors
+                .finger_primary
+                .map(|coords| coords.pos_screen)
         ));
         draw.debug_log(format!(
-            "fcanvas: {}x{}",
-            globals.cursors.finger_coords[0].pos_canvas.x,
-            globals.cursors.finger_coords[0].pos_canvas.y,
+            "fpcanvas: {:?}",
+            globals
+                .cursors
+                .finger_primary
+                .map(|coords| coords.pos_canvas)
         ));
+        draw.debug_log(format!(
+            "fsworld: {:?}",
+            globals
+                .cursors
+                .finger_secondary
+                .map(|coords| coords.pos_world)
+        ));
+        draw.debug_log(format!(
+            "fsscreen: {:?}",
+            globals
+                .cursors
+                .finger_secondary
+                .map(|coords| coords.pos_screen)
+        ));
+        draw.debug_log(format!(
+            "fscanvas: {:?}",
+            globals
+                .cursors
+                .finger_secondary
+                .map(|coords| coords.pos_canvas)
+        ));
+        if let Some(pos) = globals
+            .cursors
+            .finger_primary
+            .map(|coords| coords.pos_canvas)
+        {
+            draw.draw_circle_filled(
+                pos,
+                20.0,
+                DEPTH_DEBUG,
+                Color::red(),
+                ADDITIVITY_NONE,
+                DrawSpace::Canvas,
+            )
+        }
+        if let Some(pos) = globals
+            .cursors
+            .finger_secondary
+            .map(|coords| coords.pos_canvas)
+        {
+            draw.draw_circle_filled(
+                pos,
+                20.0,
+                DEPTH_DEBUG,
+                Color::yellow(),
+                ADDITIVITY_NONE,
+                DrawSpace::Canvas,
+            )
+        }
 
         // CIRCLES
         self.choreographer_tween.update(input.deltatime);
@@ -2613,14 +2689,14 @@ impl Scene for SceneDebug {
         let beat_completion_ratio = (4.0 * measure_completion_ratio) % 1.0;
 
         draw.draw_pixel(
-            globals.cursors.mouse_coords.pos_world,
+            globals.cursors.mouse.pos_world,
             DEPTH_DEBUG,
             Color::magenta(),
             ADDITIVITY_NONE,
             DrawSpace::World,
         );
 
-        self.glitter.move_to(globals.cursors.mouse_coords.pos_world);
+        self.glitter.move_to(globals.cursors.mouse.pos_world);
         self.glitter.update_and_draw(
             draw,
             &mut globals.random,

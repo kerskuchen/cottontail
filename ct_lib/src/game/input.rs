@@ -151,19 +151,10 @@ impl MouseState {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Touch
 
-pub const TOUCH_MAX_FINGER_COUNT: usize = 4;
+pub type FingerId = usize;
+pub type FingerPlatformId = i64;
 
-#[derive(Default, Clone)]
-pub struct TouchState {
-    pub has_move_event: bool,
-    pub has_press_event: bool,
-    pub has_release_event: bool,
-
-    pub fingers: [TouchFinger; TOUCH_MAX_FINGER_COUNT],
-    pub fingers_previous: [TouchFinger; TOUCH_MAX_FINGER_COUNT],
-}
-
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct TouchFinger {
     pub state: ButtonState,
 
@@ -173,26 +164,154 @@ pub struct TouchFinger {
 
     pub delta_x: i32,
     pub delta_y: i32,
+
+    pub id: FingerId,              // Given by us
+    platform_id: FingerPlatformId, // Given by the Implementation
+}
+
+impl TouchFinger {
+    fn new(id: FingerId, platform_id: FingerPlatformId, pos_x: i32, pos_y: i32) -> TouchFinger {
+        TouchFinger {
+            state: ButtonState::default(),
+            pos_x,
+            pos_y,
+            delta_x: 0,
+            delta_y: 0,
+            id,
+            platform_id,
+        }
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct TouchState {
+    pub has_move_event: bool,
+    pub has_press_event: bool,
+    pub has_release_event: bool,
+
+    pub fingers: HashMap<FingerId, TouchFinger>,
+    fingers_previous: HashMap<FingerId, TouchFinger>,
 }
 
 impl TouchState {
-    pub fn touchstate_clear_transitions(&mut self) {
+    pub fn process_finger_down(
+        &mut self,
+        platform_id: FingerPlatformId,
+        pos_x: i32,
+        pos_y: i32,
+        current_tick: u64,
+    ) {
+        // NOTE: If the implementation re-used a finger ID faster than we could delete our old one
+        //       we just remove it here
+        self.fingers
+            .retain(|_id, finger| finger.platform_id != platform_id);
+        let id = self.get_next_free_finger_id();
+
+        self.has_press_event = true;
+        let mut finger = TouchFinger::new(id, platform_id, pos_x, pos_y);
+        finger.state.process_event(true, false, current_tick);
+        self.fingers.insert(id, finger);
+    }
+
+    pub fn process_finger_up(
+        &mut self,
+        platform_id: FingerPlatformId,
+        pos_x: i32,
+        pos_y: i32,
+        current_tick: u64,
+    ) {
+        self.has_release_event |= {
+            if let Some(finger) = self.get_finger_by_platform_id_mut(platform_id) {
+                finger.pos_x = pos_x;
+                finger.pos_y = pos_y;
+                finger.state.process_event(false, false, current_tick);
+                true
+            } else {
+                debug_assert!(
+                    false,
+                    "Got touch up event for non-existing finger {}",
+                    platform_id
+                );
+                false
+            }
+        };
+    }
+
+    pub fn process_finger_move(&mut self, platform_id: FingerPlatformId, pos_x: i32, pos_y: i32) {
+        self.has_move_event |= {
+            if let Some(finger) = self.get_finger_by_platform_id_mut(platform_id) {
+                finger.pos_x = pos_x;
+                finger.pos_y = pos_y;
+                true
+            } else {
+                debug_assert!(
+                    false,
+                    "Got touch up event for non-existing finger {}",
+                    platform_id
+                );
+                false
+            }
+        };
+    }
+
+    pub fn calculate_move_deltas(&mut self) {
+        for id in self.fingers_previous.keys().cloned() {
+            let (previous_pos_x, previous_pos_y) = {
+                let finger = &self.fingers[&id];
+                (finger.pos_x, finger.pos_y)
+            };
+
+            let finger = &mut self
+                .fingers
+                .get_mut(&id)
+                .expect("Previous and current fingers must match at all times");
+            finger.delta_x = finger.pos_x - previous_pos_x;
+            finger.delta_y = finger.pos_y - previous_pos_y;
+        }
+    }
+
+    pub fn clear_transitions(&mut self) {
         self.has_move_event = false;
         self.has_press_event = false;
         self.has_release_event = false;
 
-        self.fingers.iter_mut().for_each(|finger| {
+        for finger in self.fingers.values_mut() {
             finger.state.transition_count = 0;
             finger.delta_x = 0;
             finger.delta_y = 0;
+        }
 
-            // Remove inactive fingers from screen
-            if !finger.state.is_pressed && !finger.state.recently_released() {
-                finger.pos_x = -1;
-                finger.pos_y = -1;
-            }
-        });
+        // Remove inactive fingers
+        self.fingers
+            .retain(|_id, finger| finger.state.is_pressed || finger.state.recently_released());
+
         self.fingers_previous = self.fingers.clone();
+    }
+
+    fn get_next_free_finger_id(&self) -> FingerId {
+        if self.fingers.is_empty() {
+            0
+        } else {
+            let max_index = self
+                .fingers
+                .values()
+                .max_by(|a, b| FingerId::cmp(&a.id, &b.id))
+                .unwrap()
+                .id;
+            max_index + 1
+        }
+    }
+
+    fn get_finger_by_platform_id_mut(
+        &mut self,
+        platform_id: FingerPlatformId,
+    ) -> Option<&mut TouchFinger> {
+        for finger in self.fingers.values_mut() {
+            if finger.platform_id == platform_id {
+                return Some(finger);
+            }
+        }
+        None
     }
 }
 

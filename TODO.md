@@ -7,17 +7,19 @@
 * Fix wasm performance
 * bugfixing wasm audiobuffer
 * pause game on focus lost
+* keyboard input by just using a hashmap
+* simplify touch api via hashmap. fix wasm touch api
 
 
 # CURRENT
 
-* keyboard input by just using a hashmap
-* fullscreen toggle by buttonpress
 
 # NEXT:
 
 
-
+* fullscreen toggle with dedicated screen button
+* add startup screen on first run (canvas background image?)
+* make screen orientation configurable
 * Refactor draw/renderer 
   - to have one vertex-/index-batch-buffer per shader with offsets into buffer
     (see sokol_gfx appendbuffer mechanism)

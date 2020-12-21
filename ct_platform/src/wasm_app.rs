@@ -3,7 +3,7 @@ mod wasm_audio;
 mod wasm_input;
 
 use ct_lib::{
-    game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand},
+    game::{FingerPlatformId, GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand},
     platform::{current_time_seconds, init_logging},
 };
 
@@ -303,27 +303,17 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
         let touchstart_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
             let offset_x = canvas.get_bounding_client_rect().left();
             let offset_y = canvas.get_bounding_client_rect().top();
-
             let mut input = input.borrow_mut();
-            for finger_id in 0..event.target_touches().length() {
-                if let Some(touch) = event.target_touches().item(finger_id) {
-                    if finger_id < ct_lib::game::TOUCH_MAX_FINGER_COUNT as u32 {
-                        input.touch.has_press_event = true;
-
-                        let finger = &mut input.touch.fingers[finger_id as usize];
-
-                        // IMPORTANT: At this point we may have an out of date screen dimensions
-                        //            if the window size changed since last frame.
-                        finger.pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
-                        finger.pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
-
-                        // NOTE: We don't want fake deltas when pressing. This can happen when our
-                        //       last release was not the same as our press position.
-                        finger.delta_x = 0;
-                        finger.delta_y = 0;
-
-                        finger.state.process_event(true, false, current_tick);
-                    }
+            for index in 0..event.changed_touches().length() {
+                if let Some(touch) = event.changed_touches().item(index) {
+                    let pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
+                    let pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
+                    input.touch.process_finger_down(
+                        touch.identifier() as FingerPlatformId,
+                        pos_x,
+                        pos_y,
+                        current_tick,
+                    )
                 }
             }
         }) as Box<dyn FnMut(_)>);
@@ -340,29 +330,17 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
         let touchend_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
             let offset_x = canvas.get_bounding_client_rect().left();
             let offset_y = canvas.get_bounding_client_rect().top();
-
             let mut input = input.borrow_mut();
-            for finger_id in 0..event.target_touches().length() {
-                if let Some(touch) = event.target_touches().item(finger_id) {
-                    if finger_id < ct_lib::game::TOUCH_MAX_FINGER_COUNT as u32 {
-                        input.touch.has_release_event = true;
-                        let finger_previous_pos_x =
-                            input.touch.fingers_previous[finger_id as usize].pos_x;
-                        let finger_previous_pos_y =
-                            input.touch.fingers_previous[finger_id as usize].pos_y;
-
-                        let finger = &mut input.touch.fingers[finger_id as usize];
-
-                        // IMPORTANT: At this point we may have an out of date screen dimensions
-                        //            if the window size changed since last frame.
-                        finger.pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
-                        finger.pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
-
-                        finger.delta_x = finger.pos_x - finger_previous_pos_x;
-                        finger.delta_y = finger.pos_y - finger_previous_pos_y;
-
-                        finger.state.process_event(false, false, current_tick);
-                    }
+            for index in 0..event.changed_touches().length() {
+                if let Some(touch) = event.changed_touches().item(index) {
+                    let pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
+                    let pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
+                    input.touch.process_finger_up(
+                        touch.identifier() as FingerPlatformId,
+                        pos_x,
+                        pos_y,
+                        current_tick,
+                    )
                 }
             }
         }) as Box<dyn FnMut(_)>);
@@ -379,27 +357,16 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
         let touchmove_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
             let offset_x = canvas.get_bounding_client_rect().left();
             let offset_y = canvas.get_bounding_client_rect().top();
-
             let mut input = input.borrow_mut();
-            for finger_id in 0..event.target_touches().length() {
-                if let Some(touch) = event.target_touches().item(finger_id) {
-                    if finger_id < ct_lib::game::TOUCH_MAX_FINGER_COUNT as u32 {
-                        input.touch.has_move_event = true;
-                        let finger_previous_pos_x =
-                            input.touch.fingers_previous[finger_id as usize].pos_x;
-                        let finger_previous_pos_y =
-                            input.touch.fingers_previous[finger_id as usize].pos_y;
-
-                        let finger = &mut input.touch.fingers[finger_id as usize];
-
-                        // IMPORTANT: At this point we may have an out of date screen dimensions
-                        //            if the window size changed since last frame.
-                        finger.pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
-                        finger.pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
-
-                        finger.delta_x = finger.pos_x - finger_previous_pos_x;
-                        finger.delta_y = finger.pos_y - finger_previous_pos_y;
-                    }
+            for index in 0..event.changed_touches().length() {
+                if let Some(touch) = event.changed_touches().item(index) {
+                    let pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
+                    let pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
+                    input.touch.process_finger_move(
+                        touch.identifier() as FingerPlatformId,
+                        pos_x,
+                        pos_y,
+                    )
                 }
             }
         }) as Box<dyn FnMut(_)>);
@@ -412,12 +379,22 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     // Touch cancel
     {
         let input = input.clone();
-        let touchcancel_callback = Closure::wrap(Box::new(move |_event: web_sys::TouchEvent| {
+        let canvas = html_get_canvas();
+        let touchcancel_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
+            let offset_x = canvas.get_bounding_client_rect().left();
+            let offset_y = canvas.get_bounding_client_rect().top();
             let mut input = input.borrow_mut();
-            for finger_id in 0..ct_lib::game::TOUCH_MAX_FINGER_COUNT {
-                let finger = &mut input.touch.fingers[finger_id];
-                finger.state.process_event(false, false, current_tick);
-                input.touch.has_release_event = true;
+            for index in 0..event.changed_touches().length() {
+                if let Some(touch) = event.changed_touches().item(index) {
+                    let pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
+                    let pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
+                    input.touch.process_finger_up(
+                        touch.identifier() as FingerPlatformId,
+                        pos_x,
+                        pos_y,
+                        current_tick,
+                    )
+                }
             }
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
@@ -553,6 +530,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
         //       events, as it is faster, more accurate and less error-prone
         {
             let mut input = input.borrow_mut();
+            input.touch.calculate_move_deltas();
             input.mouse.delta_x = input.mouse.pos_x - mouse_pos_previous_x;
             input.mouse.delta_y = input.mouse.pos_y - mouse_pos_previous_y;
         }
@@ -592,7 +570,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
 
             input.keyboard.clear_transitions();
             input.mouse.clear_transitions();
-            input.touch.touchstate_clear_transitions();
+            input.touch.clear_transitions();
 
             mouse_pos_previous_x = input.mouse.pos_x;
             mouse_pos_previous_y = input.mouse.pos_y;
