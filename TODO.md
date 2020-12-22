@@ -9,12 +9,12 @@
  
 # CURRENT
 
+- make shader parser that knows all attributes and uniforms
 
 # NEXT:
 
 ## renderer flexibility + speed + cleanup
 - move shaders out of renderer and into draw, 
-- make shader parser that knows all attributes and uniforms
 * Refactor draw/renderer to have one vertex-/index-batch-buffer per shader with offsets into buffer
   (see sokol_gfx appendbuffer mechanism)
 - Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and implement it. Throw out the rest 

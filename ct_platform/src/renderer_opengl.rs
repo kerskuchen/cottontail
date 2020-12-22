@@ -6,7 +6,7 @@ use ct_lib::log;
 
 use glow::*;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, unimplemented};
 
 type GLProgramId = <glow::Context as glow::HasContext>::Program;
 type GLTextureId = <glow::Context as glow::HasContext>::Texture;
@@ -133,6 +133,72 @@ fn gl_program_delete(gl: &glow::Context, program: GLProgram) {
         gl.use_program(None);
         gl.delete_program(program.id);
     }
+}
+
+fn gl_program_get_attributes(
+    gl: &glow::Context,
+    program: &GLProgram,
+    shader_source: &str,
+) -> Vec<ShaderAttribute> {
+    let mut attributes = Vec::new();
+    let mut attribute_current_byte_offset = 0;
+    let attribute_regex = regex::Regex::new(r"attribute\s(\w+)\s(\w+);").unwrap();
+    for capture in attribute_regex.captures_iter(shader_source) {
+        let name = &capture[2];
+        let type_name = &capture[1];
+        let primitive_type = ShaderPrimitiveType::from_string(type_name).expect(&format!(
+            "Shaderprimitive {} has unknown type {}",
+            name, type_name
+        ));
+        attributes.push(ShaderAttribute {
+            name: name.to_owned(),
+            location: gl_program_get_attribute_location(gl, &program, name),
+            byte_offset_in_vertex: attribute_current_byte_offset,
+            primitive_type,
+        });
+        attribute_current_byte_offset += primitive_type.size_in_byte();
+    }
+    attributes
+}
+
+fn gl_program_get_uniforms(
+    gl: &glow::Context,
+    program: &GLProgram,
+    shader_source: &str,
+) -> Vec<ShaderUniform> {
+    let mut uniforms = Vec::new();
+    let attribute_regex = regex::Regex::new(r"uniform\s(\w+)\s(\w+);").unwrap();
+    for capture in attribute_regex.captures_iter(shader_source) {
+        let name = &capture[2];
+        let type_name = &capture[1];
+        let primitive_type = ShaderPrimitiveType::from_string(type_name).expect(&format!(
+            "Shaderprimitive {} has unknown type {}",
+            name, type_name
+        ));
+        uniforms.push(ShaderUniform {
+            name: name.to_owned(),
+            primitive_type,
+            location: gl_program_get_uniform_location(gl, program, name),
+        });
+    }
+    uniforms
+}
+
+fn gl_program_get_attributes_and_uniforms(
+    gl: &glow::Context,
+    program: &GLProgram,
+    vertex_shader_source: &str,
+    fragment_shader_source: &str,
+) -> (Vec<ShaderAttribute>, Vec<ShaderUniform>) {
+    let attributes = gl_program_get_attributes(gl, program, vertex_shader_source);
+    let uniforms = {
+        let mut uniforms_vertexshader = gl_program_get_uniforms(gl, program, vertex_shader_source);
+        let mut uniforms_fragmentshader =
+            gl_program_get_uniforms(gl, program, fragment_shader_source);
+        uniforms_vertexshader.append(&mut uniforms_fragmentshader);
+        uniforms_vertexshader
+    };
+    (attributes, uniforms)
 }
 
 fn gl_program_get_attribute_location(
@@ -719,6 +785,129 @@ impl ShaderBlit {
                 &params.transform.into_column_array(),
             );
         }
+    }
+
+    fn delete(self, gl: &glow::Context) {
+        gl_program_delete(gl, self.program);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Shader
+
+#[derive(Clone, Copy)]
+enum ShaderPrimitiveType {
+    Float,
+    Vector2,
+    Vector3,
+    Vector4,
+    Matrix4,
+    Sampler2D,
+}
+
+impl ShaderPrimitiveType {
+    pub fn from_string(typestring: &str) -> Option<ShaderPrimitiveType> {
+        match typestring {
+            "float" => Some(ShaderPrimitiveType::Float),
+            "vec2" => Some(ShaderPrimitiveType::Vector2),
+            "vec3" => Some(ShaderPrimitiveType::Vector3),
+            "vec4" => Some(ShaderPrimitiveType::Vector4),
+            "mat4" => Some(ShaderPrimitiveType::Matrix4),
+            "sampler2D" => Some(ShaderPrimitiveType::Sampler2D),
+            _ => None,
+        }
+    }
+
+    pub fn float_component_count(&self) -> usize {
+        match self {
+            ShaderPrimitiveType::Float => 1,
+            ShaderPrimitiveType::Vector2 => 2,
+            ShaderPrimitiveType::Vector3 => 3,
+            ShaderPrimitiveType::Vector4 => 4,
+            ShaderPrimitiveType::Matrix4 => 16,
+            // NOTE: The sampler will not be part of any uniform blocks
+            ShaderPrimitiveType::Sampler2D => 0,
+        }
+    }
+
+    pub fn size_in_byte(&self) -> usize {
+        self.float_component_count() * std::mem::size_of::<f32>()
+    }
+}
+
+struct ShaderAttribute {
+    pub name: String,
+    pub location: u32,
+    pub primitive_type: ShaderPrimitiveType,
+    pub byte_offset_in_vertex: usize,
+}
+
+struct ShaderUniform {
+    pub name: String,
+    pub primitive_type: ShaderPrimitiveType,
+    pub location: GLUniformLocation,
+}
+
+struct ShaderProgram {
+    program: GLProgram,
+    attributes: Vec<ShaderAttribute>,
+    uniforms: Vec<ShaderUniform>,
+}
+
+impl ShaderProgram {
+    fn new(
+        gl: &glow::Context,
+        vertex_shader_source: &str,
+        fragment_shader_source: &str,
+    ) -> ShaderProgram {
+        let program = gl_program_create(gl, vertex_shader_source, fragment_shader_source);
+
+        let (attributes, uniforms) = gl_program_get_attributes_and_uniforms(
+            gl,
+            &program,
+            vertex_shader_source,
+            fragment_shader_source,
+        );
+
+        ShaderProgram {
+            program,
+            attributes,
+            uniforms,
+        }
+    }
+
+    fn activate(&self, gl: &glow::Context, uniform_block: &[f32]) {
+        gl_program_enable(gl, &self.program);
+        let mut uniform_block = uniform_block;
+        for uniform in &self.uniforms {
+            let float_component_count = uniform.primitive_type.float_component_count();
+            let (uniform_data, remainder) = uniform_block.split_at(float_component_count);
+            match uniform.primitive_type {
+                ShaderPrimitiveType::Float => unsafe {
+                    gl.uniform_1_f32_slice(Some(&uniform.location), uniform_data);
+                },
+                ShaderPrimitiveType::Vector2 => unsafe {
+                    gl.uniform_2_f32_slice(Some(&uniform.location), uniform_data);
+                },
+                ShaderPrimitiveType::Vector3 => unsafe {
+                    gl.uniform_3_f32_slice(Some(&uniform.location), uniform_data);
+                },
+                ShaderPrimitiveType::Vector4 => unsafe {
+                    gl.uniform_4_f32_slice(Some(&uniform.location), uniform_data);
+                },
+                ShaderPrimitiveType::Matrix4 => unsafe {
+                    gl.uniform_matrix_4_f32_slice(Some(&uniform.location), false, uniform_data)
+                },
+                ShaderPrimitiveType::Sampler2D => unsafe {
+                    gl.uniform_1_i32(Some(&uniform.location), 0)
+                },
+            }
+            uniform_block = remainder;
+        }
+        assert!(
+            uniform_block.len() == 0,
+            "Given uniform block contains more data than described in shader"
+        );
     }
 
     fn delete(self, gl: &glow::Context) {

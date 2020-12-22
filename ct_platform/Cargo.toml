@@ -9,6 +9,7 @@ path = "src/lib_platform.rs"
 
 [dependencies]
 ringbuf = "0.2"
+regex = "1.4.2"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 serde = "1.0"
