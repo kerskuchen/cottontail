@@ -113,6 +113,14 @@
 
 ## wasm performance
 - Find more ways to make wasm perform better
+- current hotspots are:
+  - sorting drawables ~5% (they are pretty big to sort, maybe we can use references as payload?)
+  - pushing drawbles ~10% (batches are allocated all over the place (allocation takes up ~7%))
+  - drawing rects by drawing bresenham lines ~8%
+  - copying glyphs when drawing debug logs ~7%
+  - render audiochunk ~40%
+    - process_output_stereo ~26%
+      - process_output_mono ~14%
 - Get rid of needles allocations and copies
 - Find out what causes garbage collector to trigger
 - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)
