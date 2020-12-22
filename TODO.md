@@ -17,6 +17,10 @@
   - fix DOM error on fullscreen toggle by making screen orientation configurable (i.e. orientation change on desktop)
   - check if canvas/screen resolution is correct in fullscreen
   - do we need resize callbacks at all? (also in sdl2)?
+  - find out why we need to double click our fullscreen button on wasm
+  - find out why exiting fullscreen on mobile sometimes glitches and/or jumps back to fullscreen
+  - do we need event.prevent_default()? if yes where? putting it on touch events just ruins the 
+    focus handling
 
 # NEXT:
 
@@ -54,6 +58,8 @@
   - rename game -> app
   - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
   - make drawstate call renderer functions directly? (NO THEN WE CAN'T EASILY REPLAY DRAWCOMMANDS ON FOCUS LOST)
+  - get rid of scenes system and game events
+  - move debug scene to examples folder with its own assets and build scripts
 
 * Allow app to save files locally
   - get rid of savegame folder on windows and just use appdata
@@ -68,9 +74,13 @@
 * we need a sane way to determine refresh rate and calculate target_update_rate
 
 * add unified/virtual gamecursor input to gamecursors struct (uses mouse or first touchfinger)
+  - simplify touch query for press events
 
+* Easier text drawing api
+  - one simple without much parameters
+  - one center in rect
 * Ability to draw debug graphs to i.e. try out attenuation for audio distance
-* Easy debug-printing text API that draws in screenspace (not canvas-space)
+  - Easy debug-printing text API that draws in screenspace (not canvas-space)
   - We need to add a debug layer to the drawstate with its own drawqueue
 
 * Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 

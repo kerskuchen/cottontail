@@ -38,8 +38,8 @@ const FIRST_VISIBLE_ASCII_CODE_POINT: Codepoint = 32;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TextAlignment {
-    pub x: AlignmentHorizontal,
-    pub y: AlignmentVertical,
+    pub alignment_horizontal: AlignmentHorizontal,
+    pub alignment_vertical: AlignmentVertical,
     pub origin_is_baseline: bool,
     pub ignore_whitespace: bool,
 }
@@ -283,13 +283,13 @@ pub trait Font<GlyphType: Glyph> {
             let rect = self.get_text_bounding_rect(text, font_scale, alignment.ignore_whitespace);
             let origin_aligned = if alignment.ignore_whitespace {
                 Vec2i::new(
-                    block_aligned_in_point(rect.dim.x, origin.x, alignment.x),
-                    block_aligned_in_point(rect.dim.y, origin.y, alignment.y),
+                    block_aligned_in_point(rect.dim.x, origin.x, alignment.alignment_horizontal),
+                    block_aligned_in_point(rect.dim.y, origin.y, alignment.alignment_vertical),
                 ) - rect.pos
             } else {
                 Vec2i::new(
-                    block_aligned_in_point(rect.dim.x, origin.x, alignment.x),
-                    block_aligned_in_point(rect.dim.y, origin.y, alignment.y),
+                    block_aligned_in_point(rect.dim.x, origin.x, alignment.alignment_horizontal),
+                    block_aligned_in_point(rect.dim.y, origin.y, alignment.alignment_vertical),
                 )
             };
 

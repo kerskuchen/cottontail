@@ -9,7 +9,7 @@ pub struct Window {
     pub sdl_window: sdl2::video::Window,
     sdl_video: sdl2::VideoSubsystem,
 
-    fullscreen_active: bool,
+    pub fullscreen_active: bool,
 
     windowed_mode_allowed: bool,
     windowed_mode_resizing_allowed: bool,

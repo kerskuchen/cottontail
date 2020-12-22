@@ -697,6 +697,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         input.mouse.delta_x = input.mouse.pos_x - mouse_pos_previous_x;
         input.mouse.delta_y = input.mouse.pos_y - mouse_pos_previous_y;
         input.touch.calculate_move_deltas();
+        input.screen_is_fullscreen = window.fullscreen_active;
 
         //--------------------------------------------------------------------------------------
         // Start/stop input-recording/-playback

@@ -71,6 +71,7 @@ pub trait GameStateInterface {
         audio: &mut Audiostate,
         assets: &mut GameAssets,
         input: &GameInput,
+        out_systemcommands: &mut Vec<SystemCommand>,
     );
 }
 
@@ -230,7 +231,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
         }
 
         if let Some(game) = self.game.as_mut() {
-            game.update(draw, audio, assets, input);
+            game.update(draw, audio, assets, input, out_systemcommands);
             game_handle_system_keys(&input.keyboard, out_systemcommands);
         }
 
@@ -2144,6 +2145,7 @@ pub fn music_get_next_point_in_time(
 
 pub enum GameEvent {
     SwitchToScene { scene_name: String },
+    ToggleFullscreen,
 }
 
 #[derive(Clone)]
@@ -2259,7 +2261,7 @@ impl Scene for SceneDebug {
         assets: &mut GameAssets,
         input: &GameInput,
         globals: &mut Globals,
-        _out_game_events: &mut Vec<GameEvent>,
+        out_game_events: &mut Vec<GameEvent>,
     ) {
         const DEPTH_DRAW: Depth = 20.0;
 
@@ -2334,6 +2336,72 @@ impl Scene for SceneDebug {
                 }
             }
         })();
+
+        let (button_fullscreen_text, button_fullscreen_color) = if input.screen_is_fullscreen {
+            ("exit fullscreen", Color::red())
+        } else {
+            ("enter fullscreen", Color::green())
+        };
+        let button_fullscreen_rect = Rect::from_bounds_left_top_right_bottom(
+            input.screen_framebuffer_width as f32 - 300.0,
+            0.0,
+            input.screen_framebuffer_width as f32,
+            60.0,
+        );
+        draw.draw_rect(
+            button_fullscreen_rect,
+            true,
+            DEPTH_MAX,
+            button_fullscreen_color,
+            ADDITIVITY_NONE,
+            DrawSpace::Screen,
+        );
+        let TODO = "simplify text api and text alignment";
+        let test_font = assets.get_font(&self.loaded_font_name);
+        draw.draw_text(
+            button_fullscreen_text,
+            &test_font,
+            3.0,
+            button_fullscreen_rect.center(),
+            Vec2::zero(),
+            Some(TextAlignment {
+                alignment_horizontal: AlignmentHorizontal::Center,
+                alignment_vertical: AlignmentVertical::Center,
+                origin_is_baseline: false,
+                ignore_whitespace: false,
+            }),
+            None,
+            DEPTH_MAX,
+            Color::white(),
+            ADDITIVITY_NONE,
+            DrawSpace::Screen,
+        );
+        let TODO = "simplify touch input query";
+        if globals
+            .cursors
+            .mouse
+            .pos_screen
+            .intersects_rect(button_fullscreen_rect)
+            && input.mouse.button_left.recently_pressed()
+        {
+            out_game_events.push(GameEvent::ToggleFullscreen);
+        } else if let Some(finger) = globals.cursors.finger_primary {
+            if finger.pos_screen.intersects_rect(button_fullscreen_rect) {
+                if let Some(finger) = input.touch.fingers.get(&0) {
+                    if finger.state.is_pressed {
+                        out_game_events.push(GameEvent::ToggleFullscreen);
+                    }
+                }
+            }
+        } else if let Some(finger) = globals.cursors.finger_secondary {
+            if finger.pos_screen.intersects_rect(button_fullscreen_rect) {
+                if let Some(finger) = input.touch.fingers.get(&1) {
+                    if finger.state.is_pressed {
+                        out_game_events.push(GameEvent::ToggleFullscreen);
+                    }
+                }
+            }
+        }
 
         draw.debug_log(format!(
             "screen: {}x{}",
@@ -2639,8 +2707,8 @@ impl Scene for SceneDebug {
             hp_rect_initial.pos,
             Vec2::filled_y(-5.0),
             Some(TextAlignment {
-                x: AlignmentHorizontal::Left,
-                y: AlignmentVertical::Top,
+                alignment_horizontal: AlignmentHorizontal::Left,
+                alignment_vertical: AlignmentVertical::Top,
                 origin_is_baseline: true,
                 ignore_whitespace: false,
             }),
@@ -2772,8 +2840,8 @@ impl Scene for SceneDebug {
             draw_pos,
             Vec2::zero(),
             Some(TextAlignment {
-                x: AlignmentHorizontal::Left,
-                y: AlignmentVertical::Top,
+                alignment_horizontal: AlignmentHorizontal::Left,
+                alignment_vertical: AlignmentVertical::Top,
                 origin_is_baseline: true,
                 ignore_whitespace: false,
             }),
