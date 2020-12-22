@@ -8,16 +8,32 @@
 
 # NEXT:
 
+* Refactor draw/renderer 
+  - to have one vertex-/index-batch-buffer per shader with offsets into buffer
+    (see sokol_gfx appendbuffer mechanism)
+  - move shaders out of renderer and into draw, 
+  - make shader parser that knows all attributes and uniforms
+  - Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and implement it. Throw out the rest 
 
+* refactor gamememory/audio/draw/asset initialization
+  - Allow hotreloading of game assets
+  - Support ogg audio and differentiate between mono/stereo recordings
+  - streaming long audio (music)
 
-- fix mouseup/touchup events that happen outside of browser window (i.e. affects leaving fullscreen)
-  we may need https://developer.mozilla.org/en-US/docs/Web/API/Element/setPointerCapture
+* Get rid of crates that are not necessary or replace them with smaller/faster ones 
+  - nanoserde, nanorand, minimp3, ...
+  - get rid of sdl in favor of something more simple?
 
-- if the user pressed f11 on desktop browser disable the "exit fullscreen" button because it does 
-  not work in this case
+* Unify platform layers a bit?
+  - keep same loop functions and objects, just call functions from different modules?
+  - do we need resize callbacks at all? (also in sdl2)?
 
-- sometimes when going fullscreen on mobile the canvas does not fully fill the part where the 
-  statusbar would be. if we pull down the status bar the canvas grows to full size.
+* make crate controlflow more streamlined (maybe build everything as one crate?)
+  - rename game -> app
+  - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
+  - make drawstate call renderer functions directly? (NO THEN WE CAN'T EASILY REPLAY DRAWCOMMANDS ON FOCUS LOST)
+  - get rid of scenes system and game events
+  - move debug scene to examples folder with its own assets and build scripts
 
 
 * make app pause on onfocus/lost events more robust
@@ -31,50 +47,12 @@
   - add splash screen on first run as html canvas background image + some "run game" icon
   - check out how to make a manifest view-source:https://www.funkykarts.rocks/demo.html
 
-* Refactor draw/renderer 
-  - to have one vertex-/index-batch-buffer per shader with offsets into buffer
-    (see sokol_gfx appendbuffer mechanism)
-  - move shaders out of renderer and into draw, 
-  - make shader parser that knows all attributes and uniforms
-  - Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and implement it. Throw out the rest 
-
-* Find more ways to make wasm perform better
-  - Get rid of needles allocations and copies
-  - Find out what causes garbage collector to trigger
-  - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)
-
-* Get rid of crates that are not necessary or replace them with smaller/faster ones 
-  - nanoserde, nanorand, minimp3, ...
-  - get rid of sdl in favor of something more simple?
-
-* Unify platform layers a bit?
-  - keep same loop functions and objects, just call functions from different modules?
-  - do we need resize callbacks at all? (also in sdl2)?
-
-* refactor gamememory/audio/draw/asset initialization
-  - Allow hotreloading of game assets
-
-* make crate controlflow more streamlined (maybe build everything as one crate?)
-  - rename game -> app
-  - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
-  - make drawstate call renderer functions directly? (NO THEN WE CAN'T EASILY REPLAY DRAWCOMMANDS ON FOCUS LOST)
-  - get rid of scenes system and game events
-  - move debug scene to examples folder with its own assets and build scripts
-
-* Allow app to save files locally
-  - get rid of savegame folder on windows and just use appdata
-
 * look for ways to simplify project creation and building
   - look how other projects like bevy handle project templates
   - add new html/batchfiles and everything we added recently to the templates
   - add more vscode tasks for wasm builds
   - Update version info resource with the crate version
   - Zip up final executable and add version from crate
-
-* we need a sane way to determine refresh rate and calculate target_update_rate
-
-* add unified/virtual gamecursor input to gamecursors struct (uses mouse or first touchfinger)
-  - simplify touch query for press events
 
 * Easier text drawing api
   - one simple without much parameters
@@ -84,13 +62,32 @@
   - Easy debug-printing text API that draws in screenspace (not canvas-space)
   - We need to add a debug layer to the drawstate with its own drawqueue
 
+* we need a sane way to determine refresh rate and calculate target_update_rate
+
+- fix mouseup/touchup events that happen outside of browser window (i.e. affects leaving fullscreen)
+  we may need https://developer.mozilla.org/en-US/docs/Web/API/Element/setPointerCapture
+
+- if the user pressed f11 on desktop browser disable the "exit fullscreen" button because it does 
+  not work in this case
+
+- sometimes when going fullscreen on mobile the canvas does not fully fill the part where the 
+  statusbar would be. if we pull down the status bar the canvas grows to full size.
+
+* Find more ways to make wasm perform better
+  - Get rid of needles allocations and copies
+  - Find out what causes garbage collector to trigger
+  - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)
+
+* Allow app to save files locally (browserdb?)
+  - get rid of savegame folder on windows and just use appdata
+
+* add unified/virtual gamecursor input to gamecursors struct (uses mouse or first touchfinger)
+  - simplify touch query for press events
+
 * Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 
   sized rectangle drawing and the `skip_last_vertex` 
 
 * Fix Vec2 to work with flipped_y only and remove special suffixes?
-
-* Support ogg audio and differentiate between mono/stereo recordings
-  - streaming long audio (music)
 
 * gamepad support for wasm
   - Find out why gamepad shoulder trigger axes does not work. Directly accessing the state 
