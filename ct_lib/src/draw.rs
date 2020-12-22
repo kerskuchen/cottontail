@@ -1,3 +1,5 @@
+use crate::transmute_to_byte_slice;
+
 pub use super::bitmap::*;
 pub use super::color::*;
 use super::draw_common::*;
@@ -294,10 +296,25 @@ impl Drawable {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Drawcommands
 
+pub trait UniformBlock {
+    fn as_vec(&self) -> Vec<f32>;
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ShaderParamsSimple {
     pub transform: Mat4,
     pub texture_color_modulate: Color,
+}
+
+impl UniformBlock for ShaderParamsSimple {
+    fn as_vec(&self) -> Vec<f32> {
+        let mat = self.transform.into_column_array();
+        let col = self.texture_color_modulate.to_slice();
+        let mut result = Vec::new();
+        result.extend_from_slice(&mat);
+        result.extend_from_slice(&col);
+        result
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -305,10 +322,19 @@ pub struct ShaderParamsBlit {
     pub transform: Mat4,
 }
 
-#[derive(Debug, Clone, Copy)]
+impl UniformBlock for ShaderParamsBlit {
+    fn as_vec(&self) -> Vec<f32> {
+        let mat = self.transform.into_column_array();
+        let mut result = Vec::new();
+        result.extend_from_slice(&mat);
+        result
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum ShaderParams {
-    Simple(ShaderParamsSimple),
-    Blit(ShaderParamsBlit),
+    Simple { uniform_block: Vec<f32> },
+    Blit { uniform_block: Vec<f32> },
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
@@ -736,7 +762,9 @@ impl Drawstate {
                     self.textures.len(),
                     world_batch.buffer.texture_index,
                 ),
-                shader_params: ShaderParams::Simple(self.simple_shaderparams_world),
+                shader_params: ShaderParams::Simple {
+                    uniform_block: self.simple_shaderparams_world.as_vec(),
+                },
                 vertexbuffer: world_batch.buffer,
             });
         }
@@ -748,7 +776,9 @@ impl Drawstate {
                     self.textures.len(),
                     canvas_batch.buffer.texture_index,
                 ),
-                shader_params: ShaderParams::Simple(self.simple_shaderparams_canvas),
+                shader_params: ShaderParams::Simple {
+                    uniform_block: self.simple_shaderparams_canvas.as_vec(),
+                },
                 vertexbuffer: canvas_batch.buffer,
             });
         }
@@ -792,7 +822,9 @@ impl Drawstate {
                     self.textures.len(),
                     screen_batch.buffer.texture_index,
                 ),
-                shader_params: ShaderParams::Simple(self.simple_shaderparams_screen),
+                shader_params: ShaderParams::Simple {
+                    uniform_block: self.simple_shaderparams_screen.as_vec(),
+                },
                 vertexbuffer: screen_batch.buffer,
             });
         }

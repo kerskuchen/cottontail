@@ -58,174 +58,272 @@ fn gl_error_string(error: u32) -> String {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Creating shaders from sourcecode
+// Shader
 
-struct GLProgram {
-    pub id: GLProgramId,
+#[derive(Clone, Copy)]
+enum ShaderPrimitiveType {
+    Float,
+    Vector2,
+    Vector3,
+    Vector4,
+    Matrix4,
+    Sampler2D,
 }
 
-fn gl_program_create(
-    gl: &glow::Context,
-    vertex_shader_source: &str,
-    fragment_shader_source: &str,
-) -> GLProgram {
-    let program = unsafe {
-        // Vertex shader
-        let vertex_shader = gl
-            .create_shader(glow::VERTEX_SHADER)
-            .expect("Cannot create vertex shader");
-        gl.shader_source(vertex_shader, vertex_shader_source);
-        gl.compile_shader(vertex_shader);
-        if !gl.get_shader_compile_status(vertex_shader) {
-            panic!(
-                "Failed to compile vertex shader:\n{}",
-                gl.get_shader_info_log(vertex_shader)
-            );
+impl ShaderPrimitiveType {
+    pub fn from_string(typestring: &str) -> Option<ShaderPrimitiveType> {
+        match typestring {
+            "float" => Some(ShaderPrimitiveType::Float),
+            "vec2" => Some(ShaderPrimitiveType::Vector2),
+            "vec3" => Some(ShaderPrimitiveType::Vector3),
+            "vec4" => Some(ShaderPrimitiveType::Vector4),
+            "mat4" => Some(ShaderPrimitiveType::Matrix4),
+            "sampler2D" => Some(ShaderPrimitiveType::Sampler2D),
+            _ => None,
+        }
+    }
+
+    pub fn float_component_count(&self) -> usize {
+        match self {
+            ShaderPrimitiveType::Float => 1,
+            ShaderPrimitiveType::Vector2 => 2,
+            ShaderPrimitiveType::Vector3 => 3,
+            ShaderPrimitiveType::Vector4 => 4,
+            ShaderPrimitiveType::Matrix4 => 16,
+            // NOTE: The sampler will not be part of any uniform blocks
+            ShaderPrimitiveType::Sampler2D => 0,
+        }
+    }
+
+    pub fn size_in_byte(&self) -> usize {
+        self.float_component_count() * std::mem::size_of::<f32>()
+    }
+}
+
+struct ShaderAttribute {
+    pub name: String,
+    pub location: u32,
+    pub primitive_type: ShaderPrimitiveType,
+    pub byte_offset_in_vertex: usize,
+}
+
+struct ShaderUniform {
+    pub name: String,
+    pub primitive_type: ShaderPrimitiveType,
+    pub location: GLUniformLocation,
+}
+
+struct ShaderProgram {
+    program_id: GLProgramId,
+    pub attributes: Vec<ShaderAttribute>,
+    pub uniforms: Vec<ShaderUniform>,
+}
+
+impl ShaderProgram {
+    pub fn new(
+        gl: &glow::Context,
+        vertex_shader_source: &str,
+        fragment_shader_source: &str,
+    ) -> ShaderProgram {
+        let program_id = ShaderProgram::create_program_from_source(
+            gl,
+            vertex_shader_source,
+            fragment_shader_source,
+        );
+
+        let (attributes, uniforms) = ShaderProgram::get_attributes_and_uniforms(
+            gl,
+            &program_id,
+            vertex_shader_source,
+            fragment_shader_source,
+        );
+
+        ShaderProgram {
+            program_id,
+            attributes,
+            uniforms,
+        }
+    }
+
+    fn activate(&self, gl: &glow::Context, uniform_block: &[f32]) {
+        unsafe {
+            gl.use_program(Some(self.program_id));
         }
 
-        // Fragment shader
-        let fragment_shader = gl
-            .create_shader(glow::FRAGMENT_SHADER)
-            .expect("Cannot create fragment shader");
-        gl.shader_source(fragment_shader, fragment_shader_source);
-        gl.compile_shader(fragment_shader);
-        if !gl.get_shader_compile_status(fragment_shader) {
-            panic!(
-                "Failed to compile fragment shader:\n{}",
-                gl.get_shader_info_log(fragment_shader)
-            );
+        let mut uniform_block = uniform_block;
+        for uniform in &self.uniforms {
+            let float_component_count = uniform.primitive_type.float_component_count();
+            let (uniform_data, remainder) = uniform_block.split_at(float_component_count);
+            match uniform.primitive_type {
+                ShaderPrimitiveType::Float => unsafe {
+                    gl.uniform_1_f32_slice(Some(&uniform.location), uniform_data);
+                },
+                ShaderPrimitiveType::Vector2 => unsafe {
+                    gl.uniform_2_f32_slice(Some(&uniform.location), uniform_data);
+                },
+                ShaderPrimitiveType::Vector3 => unsafe {
+                    gl.uniform_3_f32_slice(Some(&uniform.location), uniform_data);
+                },
+                ShaderPrimitiveType::Vector4 => unsafe {
+                    gl.uniform_4_f32_slice(Some(&uniform.location), uniform_data);
+                },
+                ShaderPrimitiveType::Matrix4 => unsafe {
+                    gl.uniform_matrix_4_f32_slice(Some(&uniform.location), false, uniform_data)
+                },
+                ShaderPrimitiveType::Sampler2D => unsafe {
+                    gl.uniform_1_i32(Some(&uniform.location), 0)
+                },
+            }
+            uniform_block = remainder;
         }
+        assert!(
+            uniform_block.len() == 0,
+            "Given uniform block contains more data than described in shader"
+        );
+    }
 
-        // Program
-        let program = gl.create_program().expect("Cannot create shader program");
-        gl.attach_shader(program, vertex_shader);
-        gl.attach_shader(program, fragment_shader);
-        gl.link_program(program);
-
-        if !gl.get_program_link_status(program) {
-            panic!(
-                "Failed to link shader program:\n{}",
-                gl.get_program_info_log(program)
-            );
+    pub fn delete(self, gl: &glow::Context) {
+        unsafe {
+            gl.use_program(None);
+            gl.delete_program(self.program_id);
         }
+    }
 
-        // Program is successfully compiled and linked - we don't need the shaders anymore
-        gl.delete_shader(vertex_shader);
-        gl.delete_shader(fragment_shader);
+    fn create_program_from_source(
+        gl: &glow::Context,
+        vertex_shader_source: &str,
+        fragment_shader_source: &str,
+    ) -> GLProgramId {
+        let program = unsafe {
+            // Vertex shader
+            let vertex_shader = gl
+                .create_shader(glow::VERTEX_SHADER)
+                .expect("Cannot create vertex shader");
+            gl.shader_source(vertex_shader, vertex_shader_source);
+            gl.compile_shader(vertex_shader);
+            if !gl.get_shader_compile_status(vertex_shader) {
+                panic!(
+                    "Failed to compile vertex shader:\n{}",
+                    gl.get_shader_info_log(vertex_shader)
+                );
+            }
+
+            // Fragment shader
+            let fragment_shader = gl
+                .create_shader(glow::FRAGMENT_SHADER)
+                .expect("Cannot create fragment shader");
+            gl.shader_source(fragment_shader, fragment_shader_source);
+            gl.compile_shader(fragment_shader);
+            if !gl.get_shader_compile_status(fragment_shader) {
+                panic!(
+                    "Failed to compile fragment shader:\n{}",
+                    gl.get_shader_info_log(fragment_shader)
+                );
+            }
+
+            // Program
+            let program = gl.create_program().expect("Cannot create shader program");
+            gl.attach_shader(program, vertex_shader);
+            gl.attach_shader(program, fragment_shader);
+            gl.link_program(program);
+
+            if !gl.get_program_link_status(program) {
+                panic!(
+                    "Failed to link shader program:\n{}",
+                    gl.get_program_info_log(program)
+                );
+            }
+
+            // Program is successfully compiled and linked - we don't need the shaders anymore
+            gl.delete_shader(vertex_shader);
+            gl.delete_shader(fragment_shader);
+
+            program
+        };
+
+        assert!(gl_state_ok(gl), "Could not compile shader program");
+        log::info!("Shaderprogram {:?} successfully compiled", program);
 
         program
-    };
-
-    assert!(gl_state_ok(gl), "Could not compile shader program");
-    log::info!("Shaderprogram {:?} successfully compiled", program);
-
-    GLProgram { id: program }
-}
-
-fn gl_program_enable(gl: &glow::Context, program: &GLProgram) {
-    unsafe {
-        gl.use_program(Some(program.id));
     }
-}
 
-fn gl_program_delete(gl: &glow::Context, program: GLProgram) {
-    unsafe {
-        gl.use_program(None);
-        gl.delete_program(program.id);
+    fn get_attributes_and_uniforms(
+        gl: &glow::Context,
+        program: &GLProgramId,
+        vertex_shader_source: &str,
+        fragment_shader_source: &str,
+    ) -> (Vec<ShaderAttribute>, Vec<ShaderUniform>) {
+        let attributes = ShaderProgram::get_attributes(gl, program, vertex_shader_source);
+        let uniforms = {
+            let mut uniforms_vertexshader =
+                ShaderProgram::get_uniforms(gl, program, vertex_shader_source);
+            let mut uniforms_fragmentshader =
+                ShaderProgram::get_uniforms(gl, program, fragment_shader_source);
+            uniforms_vertexshader.append(&mut uniforms_fragmentshader);
+            uniforms_vertexshader
+        };
+        (attributes, uniforms)
     }
-}
 
-fn gl_program_get_attributes(
-    gl: &glow::Context,
-    program: &GLProgram,
-    shader_source: &str,
-) -> Vec<ShaderAttribute> {
-    let mut attributes = Vec::new();
-    let mut attribute_current_byte_offset = 0;
-    let attribute_regex = regex::Regex::new(r"attribute\s(\w+)\s(\w+);").unwrap();
-    for capture in attribute_regex.captures_iter(shader_source) {
-        let name = &capture[2];
-        let type_name = &capture[1];
-        let primitive_type = ShaderPrimitiveType::from_string(type_name).expect(&format!(
-            "Shaderprimitive {} has unknown type {}",
-            name, type_name
-        ));
-        attributes.push(ShaderAttribute {
-            name: name.to_owned(),
-            location: gl_program_get_attribute_location(gl, &program, name),
-            byte_offset_in_vertex: attribute_current_byte_offset,
-            primitive_type,
-        });
-        attribute_current_byte_offset += primitive_type.size_in_byte();
+    fn get_attributes(
+        gl: &glow::Context,
+        program_id: &GLProgramId,
+        shader_source: &str,
+    ) -> Vec<ShaderAttribute> {
+        let mut attributes = Vec::new();
+        let mut byte_offset_in_vertex = 0;
+        let attribute_regex = regex::Regex::new(r"attribute\s(\w+)\s(\w+);").unwrap();
+        for capture in attribute_regex.captures_iter(shader_source) {
+            let name = &capture[2];
+            let type_name = &capture[1];
+            let primitive_type = ShaderPrimitiveType::from_string(type_name).expect(&format!(
+                "Shaderprimitive {} has unknown type {}",
+                name, type_name
+            ));
+            let location = unsafe {
+                gl.get_attrib_location(*program_id, name).expect(&format!(
+                    "Program {:?} has no attribute '{}'",
+                    program_id, name
+                ))
+            };
+            attributes.push(ShaderAttribute {
+                name: name.to_owned(),
+                location,
+                byte_offset_in_vertex,
+                primitive_type,
+            });
+            byte_offset_in_vertex += primitive_type.size_in_byte();
+        }
+        attributes
     }
-    attributes
-}
 
-fn gl_program_get_uniforms(
-    gl: &glow::Context,
-    program: &GLProgram,
-    shader_source: &str,
-) -> Vec<ShaderUniform> {
-    let mut uniforms = Vec::new();
-    let attribute_regex = regex::Regex::new(r"uniform\s(\w+)\s(\w+);").unwrap();
-    for capture in attribute_regex.captures_iter(shader_source) {
-        let name = &capture[2];
-        let type_name = &capture[1];
-        let primitive_type = ShaderPrimitiveType::from_string(type_name).expect(&format!(
-            "Shaderprimitive {} has unknown type {}",
-            name, type_name
-        ));
-        uniforms.push(ShaderUniform {
-            name: name.to_owned(),
-            primitive_type,
-            location: gl_program_get_uniform_location(gl, program, name),
-        });
-    }
-    uniforms
-}
-
-fn gl_program_get_attributes_and_uniforms(
-    gl: &glow::Context,
-    program: &GLProgram,
-    vertex_shader_source: &str,
-    fragment_shader_source: &str,
-) -> (Vec<ShaderAttribute>, Vec<ShaderUniform>) {
-    let attributes = gl_program_get_attributes(gl, program, vertex_shader_source);
-    let uniforms = {
-        let mut uniforms_vertexshader = gl_program_get_uniforms(gl, program, vertex_shader_source);
-        let mut uniforms_fragmentshader =
-            gl_program_get_uniforms(gl, program, fragment_shader_source);
-        uniforms_vertexshader.append(&mut uniforms_fragmentshader);
-        uniforms_vertexshader
-    };
-    (attributes, uniforms)
-}
-
-fn gl_program_get_attribute_location(
-    gl: &glow::Context,
-    program: &GLProgram,
-    attribute_name: &str,
-) -> u32 {
-    unsafe {
-        gl.get_attrib_location(program.id, attribute_name)
-            .expect(&format!(
-                "Program {:?} has no attribute '{}'",
-                program.id, attribute_name
-            ))
-    }
-}
-
-fn gl_program_get_uniform_location(
-    gl: &glow::Context,
-    program: &GLProgram,
-    uniform_name: &str,
-) -> GLUniformLocation {
-    unsafe {
-        gl.get_uniform_location(program.id, uniform_name)
-            .expect(&format!(
-                "Program {:?} has no uniform '{}'",
-                program.id, uniform_name
-            ))
+    fn get_uniforms(
+        gl: &glow::Context,
+        program_id: &GLProgramId,
+        shader_source: &str,
+    ) -> Vec<ShaderUniform> {
+        let mut uniforms = Vec::new();
+        let attribute_regex = regex::Regex::new(r"uniform\s(\w+)\s(\w+);").unwrap();
+        for capture in attribute_regex.captures_iter(shader_source) {
+            let name = &capture[2];
+            let type_name = &capture[1];
+            let primitive_type = ShaderPrimitiveType::from_string(type_name).expect(&format!(
+                "Shaderprimitive {} has unknown type {}",
+                name, type_name
+            ));
+            let location = unsafe {
+                gl.get_uniform_location(*program_id, name).expect(&format!(
+                    "Program {:?} has no uniform '{}'",
+                    program_id, name
+                ))
+            };
+            uniforms.push(ShaderUniform {
+                name: name.to_owned(),
+                primitive_type,
+                location,
+            });
+        }
+        uniforms
     }
 }
 
@@ -442,10 +540,7 @@ struct GLDrawobject {
     index_buffer: GLBuffer,
 }
 
-fn gl_drawobject_create(
-    gl: &glow::Context,
-    vertex_type: &VertexAttributeConfiguration,
-) -> GLDrawobject {
+fn gl_drawobject_create(gl: &glow::Context, attributes: &[ShaderAttribute]) -> GLDrawobject {
     let (vertex_array, vertex_buffer, index_buffer) = unsafe {
         let vertex_array = gl
             .create_vertex_array()
@@ -459,15 +554,24 @@ fn gl_drawobject_create(
         gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(index_buffer));
 
         // Assing attributes
-        let stride = vertex_type.size_in_bytes;
-        for attribute in &vertex_type.attributes {
+        let stride = attributes.iter().fold(0, |acc, attribute| {
+            acc + attribute.primitive_type.size_in_byte()
+        });
+        for attribute in attributes {
             let index = attribute.location;
-            let size = attribute.float_component_count;
+            let size = attribute.primitive_type.float_component_count();
             let offset = attribute.byte_offset_in_vertex;
             let normalized = false;
 
             gl.enable_vertex_attrib_array(index);
-            gl.vertex_attrib_pointer_f32(index, size, glow::FLOAT, normalized, stride, offset);
+            gl.vertex_attrib_pointer_f32(
+                index,
+                size as i32,
+                glow::FLOAT,
+                normalized,
+                stride as i32,
+                offset as i32,
+            );
         }
 
         // NOTE: The buffers must not be unbound before the vertex array, so the order here is important
@@ -542,21 +646,6 @@ fn gl_drawobject_free(gl: &glow::Context, object: GLDrawobject) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Vertex Attributes
-
-struct VertexAttribute {
-    pub name: String,
-    pub location: u32,
-    pub float_component_count: i32,
-    pub byte_offset_in_vertex: i32,
-}
-
-struct VertexAttributeConfiguration {
-    pub size_in_bytes: i32,
-    pub attributes: Vec<VertexAttribute>,
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
 // Shader Simple
 
 const VERTEX_SHADER_SOURCE_SIMPLE: &str = r#"
@@ -614,94 +703,6 @@ void main()
 }
 "#;
 
-struct ShaderSimple {
-    program: GLProgram,
-    vertex_config: VertexAttributeConfiguration,
-
-    u_texture: GLUniformLocation,
-    u_transform: GLUniformLocation,
-    u_texture_color_modulate: GLUniformLocation,
-}
-
-impl ShaderSimple {
-    fn new(gl: &glow::Context) -> ShaderSimple {
-        let program = gl_program_create(
-            gl,
-            VERTEX_SHADER_SOURCE_SIMPLE,
-            FRAGMENT_SHADER_SOURCE_SIMPLE,
-        );
-
-        // Attributes
-        let a_pos = VertexAttribute {
-            name: String::from("a_pos"),
-            location: gl_program_get_attribute_location(gl, &program, "a_pos"),
-            float_component_count: 3,
-            byte_offset_in_vertex: 0,
-        };
-        let a_uv = VertexAttribute {
-            name: String::from("a_uv"),
-            location: gl_program_get_attribute_location(gl, &program, "a_uv"),
-            float_component_count: 2,
-            byte_offset_in_vertex: a_pos.byte_offset_in_vertex
-                + a_pos.float_component_count * std::mem::size_of::<f32>() as i32,
-        };
-        let a_color = VertexAttribute {
-            name: String::from("a_color"),
-            location: gl_program_get_attribute_location(gl, &program, "a_color"),
-            float_component_count: 4,
-            byte_offset_in_vertex: a_uv.byte_offset_in_vertex
-                + a_uv.float_component_count * std::mem::size_of::<f32>() as i32,
-        };
-        let a_additivity = VertexAttribute {
-            name: String::from("a_additivity"),
-            location: gl_program_get_attribute_location(gl, &program, "a_additivity"),
-            float_component_count: 1,
-            byte_offset_in_vertex: a_color.byte_offset_in_vertex
-                + a_color.float_component_count * std::mem::size_of::<f32>() as i32,
-        };
-
-        // Uniforms
-        let u_texture = gl_program_get_uniform_location(gl, &program, "u_texture");
-        let u_transform = gl_program_get_uniform_location(gl, &program, "u_transform");
-        let u_texture_color_modulate =
-            gl_program_get_uniform_location(gl, &program, "u_texture_color_modulate");
-
-        ShaderSimple {
-            program,
-            vertex_config: VertexAttributeConfiguration {
-                size_in_bytes: std::mem::size_of::<Vertex>() as i32,
-                attributes: vec![a_pos, a_uv, a_color, a_additivity],
-            },
-            u_texture,
-            u_transform,
-            u_texture_color_modulate,
-        }
-    }
-
-    fn activate(&self, gl: &glow::Context, params: &ShaderParamsSimple) {
-        gl_program_enable(gl, &self.program);
-        unsafe {
-            gl.uniform_1_i32(Some(&self.u_texture), 0);
-            gl.uniform_matrix_4_f32_slice(
-                Some(&self.u_transform),
-                false,
-                &params.transform.into_column_array(),
-            );
-            gl.uniform_4_f32(
-                Some(&self.u_texture_color_modulate),
-                params.texture_color_modulate.r,
-                params.texture_color_modulate.g,
-                params.texture_color_modulate.b,
-                params.texture_color_modulate.a,
-            );
-        }
-    }
-
-    fn delete(self, gl: &glow::Context) {
-        gl_program_delete(gl, self.program);
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Shader for blitting
 
@@ -733,196 +734,14 @@ void main()
 }
 "#;
 
-struct ShaderBlit {
-    program: GLProgram,
-    vertex_config: VertexAttributeConfiguration,
-
-    u_texture: GLUniformLocation,
-    u_transform: GLUniformLocation,
-}
-
-impl ShaderBlit {
-    fn new(gl: &glow::Context) -> ShaderBlit {
-        let program = gl_program_create(gl, VERTEX_SHADER_SOURCE_BLIT, FRAGMENT_SHADER_SOURCE_BLIT);
-
-        // Attributes
-        let a_pos = VertexAttribute {
-            name: String::from("a_pos"),
-            location: gl_program_get_attribute_location(gl, &program, "a_pos"),
-            float_component_count: 2,
-            byte_offset_in_vertex: 0,
-        };
-        let a_uv = VertexAttribute {
-            name: String::from("a_uv"),
-            location: gl_program_get_attribute_location(gl, &program, "a_uv"),
-            float_component_count: 2,
-            byte_offset_in_vertex: a_pos.byte_offset_in_vertex
-                + a_pos.float_component_count * std::mem::size_of::<f32>() as i32,
-        };
-
-        // Uniforms
-        let u_texture = gl_program_get_uniform_location(gl, &program, "u_texture");
-        let u_transform = gl_program_get_uniform_location(gl, &program, "u_transform");
-
-        ShaderBlit {
-            program,
-            vertex_config: VertexAttributeConfiguration {
-                size_in_bytes: std::mem::size_of::<VertexBlit>() as i32,
-                attributes: vec![a_pos, a_uv],
-            },
-            u_texture,
-            u_transform,
-        }
-    }
-
-    fn activate(&self, gl: &glow::Context, params: &ShaderParamsBlit) {
-        gl_program_enable(gl, &self.program);
-        unsafe {
-            gl.uniform_1_i32(Some(&self.u_texture), 0);
-            gl.uniform_matrix_4_f32_slice(
-                Some(&self.u_transform),
-                false,
-                &params.transform.into_column_array(),
-            );
-        }
-    }
-
-    fn delete(self, gl: &glow::Context) {
-        gl_program_delete(gl, self.program);
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Shader
-
-#[derive(Clone, Copy)]
-enum ShaderPrimitiveType {
-    Float,
-    Vector2,
-    Vector3,
-    Vector4,
-    Matrix4,
-    Sampler2D,
-}
-
-impl ShaderPrimitiveType {
-    pub fn from_string(typestring: &str) -> Option<ShaderPrimitiveType> {
-        match typestring {
-            "float" => Some(ShaderPrimitiveType::Float),
-            "vec2" => Some(ShaderPrimitiveType::Vector2),
-            "vec3" => Some(ShaderPrimitiveType::Vector3),
-            "vec4" => Some(ShaderPrimitiveType::Vector4),
-            "mat4" => Some(ShaderPrimitiveType::Matrix4),
-            "sampler2D" => Some(ShaderPrimitiveType::Sampler2D),
-            _ => None,
-        }
-    }
-
-    pub fn float_component_count(&self) -> usize {
-        match self {
-            ShaderPrimitiveType::Float => 1,
-            ShaderPrimitiveType::Vector2 => 2,
-            ShaderPrimitiveType::Vector3 => 3,
-            ShaderPrimitiveType::Vector4 => 4,
-            ShaderPrimitiveType::Matrix4 => 16,
-            // NOTE: The sampler will not be part of any uniform blocks
-            ShaderPrimitiveType::Sampler2D => 0,
-        }
-    }
-
-    pub fn size_in_byte(&self) -> usize {
-        self.float_component_count() * std::mem::size_of::<f32>()
-    }
-}
-
-struct ShaderAttribute {
-    pub name: String,
-    pub location: u32,
-    pub primitive_type: ShaderPrimitiveType,
-    pub byte_offset_in_vertex: usize,
-}
-
-struct ShaderUniform {
-    pub name: String,
-    pub primitive_type: ShaderPrimitiveType,
-    pub location: GLUniformLocation,
-}
-
-struct ShaderProgram {
-    program: GLProgram,
-    attributes: Vec<ShaderAttribute>,
-    uniforms: Vec<ShaderUniform>,
-}
-
-impl ShaderProgram {
-    fn new(
-        gl: &glow::Context,
-        vertex_shader_source: &str,
-        fragment_shader_source: &str,
-    ) -> ShaderProgram {
-        let program = gl_program_create(gl, vertex_shader_source, fragment_shader_source);
-
-        let (attributes, uniforms) = gl_program_get_attributes_and_uniforms(
-            gl,
-            &program,
-            vertex_shader_source,
-            fragment_shader_source,
-        );
-
-        ShaderProgram {
-            program,
-            attributes,
-            uniforms,
-        }
-    }
-
-    fn activate(&self, gl: &glow::Context, uniform_block: &[f32]) {
-        gl_program_enable(gl, &self.program);
-        let mut uniform_block = uniform_block;
-        for uniform in &self.uniforms {
-            let float_component_count = uniform.primitive_type.float_component_count();
-            let (uniform_data, remainder) = uniform_block.split_at(float_component_count);
-            match uniform.primitive_type {
-                ShaderPrimitiveType::Float => unsafe {
-                    gl.uniform_1_f32_slice(Some(&uniform.location), uniform_data);
-                },
-                ShaderPrimitiveType::Vector2 => unsafe {
-                    gl.uniform_2_f32_slice(Some(&uniform.location), uniform_data);
-                },
-                ShaderPrimitiveType::Vector3 => unsafe {
-                    gl.uniform_3_f32_slice(Some(&uniform.location), uniform_data);
-                },
-                ShaderPrimitiveType::Vector4 => unsafe {
-                    gl.uniform_4_f32_slice(Some(&uniform.location), uniform_data);
-                },
-                ShaderPrimitiveType::Matrix4 => unsafe {
-                    gl.uniform_matrix_4_f32_slice(Some(&uniform.location), false, uniform_data)
-                },
-                ShaderPrimitiveType::Sampler2D => unsafe {
-                    gl.uniform_1_i32(Some(&uniform.location), 0)
-                },
-            }
-            uniform_block = remainder;
-        }
-        assert!(
-            uniform_block.len() == 0,
-            "Given uniform block contains more data than described in shader"
-        );
-    }
-
-    fn delete(self, gl: &glow::Context) {
-        gl_program_delete(gl, self.program);
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Renderstate
 
 pub struct Renderer {
     gl: glow::Context,
 
-    shader_simple: Option<ShaderSimple>,
-    shader_blit: Option<ShaderBlit>,
+    shader_simple: Option<ShaderProgram>,
+    shader_blit: Option<ShaderProgram>,
 
     drawobject_simple: Option<GLDrawobject>,
     drawobject_blit: Option<GLDrawobject>,
@@ -962,11 +781,16 @@ impl Renderer {
             gl.depth_func(glow::GEQUAL);
         }
 
-        let shader_simple = ShaderSimple::new(&gl);
-        let shader_blit = ShaderBlit::new(&gl);
+        let shader_simple = ShaderProgram::new(
+            &gl,
+            VERTEX_SHADER_SOURCE_SIMPLE,
+            FRAGMENT_SHADER_SOURCE_SIMPLE,
+        );
+        let shader_blit =
+            ShaderProgram::new(&gl, VERTEX_SHADER_SOURCE_BLIT, FRAGMENT_SHADER_SOURCE_BLIT);
 
-        let drawobject_simple = gl_drawobject_create(&gl, &shader_simple.vertex_config);
-        let drawobject_blit = gl_drawobject_create(&gl, &shader_blit.vertex_config);
+        let drawobject_simple = gl_drawobject_create(&gl, &shader_simple.attributes);
+        let drawobject_blit = gl_drawobject_create(&gl, &shader_blit.attributes);
 
         assert!(gl_state_ok(&gl), "Error while creating renderer");
 
@@ -1041,13 +865,13 @@ impl Renderer {
                     }
 
                     match shader_params {
-                        ShaderParams::Simple(shader_params_simple) => {
+                        ShaderParams::Simple { uniform_block } => {
                             assert!(vertexbuffer.indices.len() % 3 == 0);
 
                             self.shader_simple
                                 .as_ref()
                                 .unwrap()
-                                .activate(&self.gl, shader_params_simple);
+                                .activate(&self.gl, uniform_block);
 
                             // NOTE: We need to bind the texture here as the activation of the
                             //       shader might have invalidated our texture unit
@@ -1062,7 +886,7 @@ impl Renderer {
                                 &vertexbuffer,
                             );
                         }
-                        ShaderParams::Blit(_shader_params_blit) => {
+                        ShaderParams::Blit { .. } => {
                             panic!("The blit shader does not support drawing operations")
                         }
                     }
@@ -1250,7 +1074,7 @@ impl Renderer {
         self.shader_blit
             .as_ref()
             .unwrap()
-            .activate(&self.gl, &ShaderParamsBlit { transform });
+            .activate(&self.gl, &transform.into_column_array());
 
         let mut vertexbuffer_blit = VertexbufferBlit::new(0);
         vertexbuffer_blit.push_blit_quad(
