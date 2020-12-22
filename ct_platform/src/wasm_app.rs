@@ -148,7 +148,10 @@ impl FullscreenHandler {
         if FullscreenHandler::is_fullscreen_mode_active() {
             html_get_document().exit_fullscreen();
             if self.preferred_screen_orientation.is_some() {
-                html_get_screen()
+                // NOTE: This promise produces an exception on devices that don't support screen
+                //       orientation change. This is a little annoying but doesn't break anything
+                //       so we leave it be due to code complexity reasons
+                let _promis = html_get_screen()
                     .orientation()
                     .unlock()
                     .expect("Failed to unlock screen orientation");
@@ -175,6 +178,9 @@ impl FullscreenHandler {
                 .request_fullscreen()
                 .expect("Failed to enter fullscreen");
             if let Some(orientation_type) = orientation_type {
+                // NOTE: This promise produces an exception on devices that don't support screen
+                //       orientation change. This is a little annoying but doesn't break anything
+                //       so we leave it be due to code complexity reasons
                 let _promise = html_get_screen()
                     .orientation()
                     .lock(orientation_type)

@@ -2388,7 +2388,7 @@ impl Scene for SceneDebug {
         } else if let Some(finger) = globals.cursors.finger_primary {
             if finger.pos_screen.intersects_rect(button_fullscreen_rect) {
                 if let Some(finger) = input.touch.fingers.get(&0) {
-                    if finger.state.is_pressed {
+                    if finger.state.recently_pressed() {
                         out_game_events.push(GameEvent::ToggleFullscreen);
                     }
                 }
@@ -2396,12 +2396,22 @@ impl Scene for SceneDebug {
         } else if let Some(finger) = globals.cursors.finger_secondary {
             if finger.pos_screen.intersects_rect(button_fullscreen_rect) {
                 if let Some(finger) = input.touch.fingers.get(&1) {
-                    if finger.state.is_pressed {
+                    if finger.state.recently_pressed() {
                         out_game_events.push(GameEvent::ToggleFullscreen);
                     }
                 }
             }
         }
+
+        draw.debug_log(format!("mousedown: {}", input.mouse.button_left.is_pressed));
+        draw.debug_log(format!(
+            "intersects: {}",
+            globals
+                .cursors
+                .mouse
+                .pos_screen
+                .intersects_rect(button_fullscreen_rect)
+        ));
 
         draw.debug_log(format!(
             "screen: {}x{}",

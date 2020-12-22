@@ -9,20 +9,20 @@
 * pause game on focus lost
 * keyboard input by just using a hashmap
 * simplify touch api via hashmap. fix wasm touch api
-
+* fullscreen toggle with dedicated screen button
+* check if canvas/screen resolution is correct in fullscreen
+- fix DOM error on fullscreen toggle by making screen orientation configurable (i.e. orientation change on desktop) (WONTFIX because of bad code complexity / usefulness ratio)
+- find out why exiting fullscreen on mobile sometimes glitches and/or jumps back to fullscreen (using is_pressed instead of recently_pressed in code)
+- find out why we need to double click our fullscreen button on wasm desktop (because mouseup events outside of browser window are not registered)
 
 # CURRENT
 
-* fullscreen toggle with dedicated screen button
-  - fix DOM error on fullscreen toggle by making screen orientation configurable (i.e. orientation change on desktop)
-  - check if canvas/screen resolution is correct in fullscreen
-  - do we need resize callbacks at all? (also in sdl2)?
-  - find out why we need to double click our fullscreen button on wasm
-  - find out why exiting fullscreen on mobile sometimes glitches and/or jumps back to fullscreen
-  - do we need event.prevent_default()? if yes where? putting it on touch events just ruins the 
-    focus handling
-
 # NEXT:
+
+* fix wasm slowdown/crash when fast repeatetly touching canvas
+- fix mouseup/touchup events that happen outside of browser window (affects leaving fullscreen)
+- fix focus lost on leaving fullscreen on mobile
+- sometimes when going fullscreen on mobile the canvas does not fully fill the part where the statusbar would be. if we pull down the status bar the canvas grows to full size.
 
 
 * make app pause on onfocus/lost events more robust
@@ -50,6 +50,10 @@
 * Get rid of crates that are not necessary or replace them with smaller/faster ones 
   - nanoserde, nanorand, minimp3, ...
   - get rid of sdl in favor of something more simple?
+
+* Unify platform layers a bit?
+  - keep same loop functions and objects, just call functions from different modules?
+  - do we need resize callbacks at all? (also in sdl2)?
 
 * refactor gamememory/audio/draw/asset initialization
   - Allow hotreloading of game assets
@@ -80,6 +84,7 @@
   - one simple without much parameters
   - one center in rect
 * Ability to draw debug graphs to i.e. try out attenuation for audio distance
+  - allow drawing in platform app launcher layer for debug purposes (on mobile wasm its difficult to look at logs)
   - Easy debug-printing text API that draws in screenspace (not canvas-space)
   - We need to add a debug layer to the drawstate with its own drawqueue
 
