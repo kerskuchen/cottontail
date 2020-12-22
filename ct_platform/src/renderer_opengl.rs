@@ -6,7 +6,7 @@ use ct_lib::log;
 
 use glow::*;
 
-use std::{collections::HashMap, unimplemented};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, unimplemented};
 
 type GLProgramId = <glow::Context as glow::HasContext>::Program;
 type GLTextureId = <glow::Context as glow::HasContext>::Texture;
@@ -114,38 +114,50 @@ struct ShaderUniform {
 }
 
 struct ShaderProgram {
+    gl: Rc<glow::Context>,
     program_id: GLProgramId,
     pub attributes: Vec<ShaderAttribute>,
     pub uniforms: Vec<ShaderUniform>,
 }
 
+impl Drop for ShaderProgram {
+    fn drop(&mut self) {
+        unsafe {
+            self.gl.use_program(None);
+            self.gl.delete_program(self.program_id);
+        }
+    }
+}
+
 impl ShaderProgram {
     pub fn new(
-        gl: &glow::Context,
+        gl: Rc<glow::Context>,
         vertex_shader_source: &str,
         fragment_shader_source: &str,
     ) -> ShaderProgram {
         let program_id = ShaderProgram::create_program_from_source(
-            gl,
+            &gl,
             vertex_shader_source,
             fragment_shader_source,
         );
 
         let (attributes, uniforms) = ShaderProgram::get_attributes_and_uniforms(
-            gl,
+            &gl,
             &program_id,
             vertex_shader_source,
             fragment_shader_source,
         );
 
         ShaderProgram {
+            gl,
             program_id,
             attributes,
             uniforms,
         }
     }
 
-    fn activate(&self, gl: &glow::Context, uniform_block: &[f32]) {
+    fn activate(&self, uniform_block: &[f32]) {
+        let gl = &self.gl;
         unsafe {
             gl.use_program(Some(self.program_id));
         }
@@ -180,13 +192,6 @@ impl ShaderProgram {
             uniform_block.len() == 0,
             "Given uniform block contains more data than described in shader"
         );
-    }
-
-    pub fn delete(self, gl: &glow::Context) {
-        unsafe {
-            gl.use_program(None);
-            gl.delete_program(self.program_id);
-        }
     }
 
     fn create_program_from_source(
@@ -734,10 +739,10 @@ void main()
 // Renderstate
 
 pub struct Renderer {
-    gl: glow::Context,
+    gl: Rc<glow::Context>,
 
-    shader_simple: Option<ShaderProgram>,
-    shader_blit: Option<ShaderProgram>,
+    shader_simple: ShaderProgram,
+    shader_blit: ShaderProgram,
 
     drawobject_simple: Option<GLDrawobject>,
     drawobject_blit: Option<GLDrawobject>,
@@ -750,9 +755,6 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         self.reset();
 
-        self.shader_simple.take().unwrap().delete(&self.gl);
-        self.shader_blit.take().unwrap().delete(&self.gl);
-
         gl_drawobject_free(&self.gl, self.drawobject_simple.take().unwrap());
         gl_drawobject_free(&self.gl, self.drawobject_blit.take().unwrap());
     }
@@ -760,6 +762,7 @@ impl Drop for Renderer {
 
 impl Renderer {
     pub fn new(gl: glow::Context) -> Renderer {
+        let gl = Rc::new(gl);
         unsafe {
             assert!(
                 gl.check_framebuffer_status(glow::FRAMEBUFFER) == glow::FRAMEBUFFER_COMPLETE,
@@ -778,12 +781,15 @@ impl Renderer {
         }
 
         let shader_simple = ShaderProgram::new(
-            &gl,
+            gl.clone(),
             VERTEX_SHADER_SOURCE_SIMPLE,
             FRAGMENT_SHADER_SOURCE_SIMPLE,
         );
-        let shader_blit =
-            ShaderProgram::new(&gl, VERTEX_SHADER_SOURCE_BLIT, FRAGMENT_SHADER_SOURCE_BLIT);
+        let shader_blit = ShaderProgram::new(
+            gl.clone(),
+            VERTEX_SHADER_SOURCE_BLIT,
+            FRAGMENT_SHADER_SOURCE_BLIT,
+        );
 
         let drawobject_simple = gl_drawobject_create(&gl, &shader_simple.attributes);
         let drawobject_blit = gl_drawobject_create(&gl, &shader_blit.attributes);
@@ -793,8 +799,8 @@ impl Renderer {
         Renderer {
             gl,
 
-            shader_simple: Some(shader_simple),
-            shader_blit: Some(shader_blit),
+            shader_simple: shader_simple,
+            shader_blit: shader_blit,
 
             drawobject_simple: Some(drawobject_simple),
             drawobject_blit: Some(drawobject_blit),
@@ -864,10 +870,7 @@ impl Renderer {
                         ShaderParams::Simple { uniform_block } => {
                             assert!(vertexbuffer.indices.len() % 3 == 0);
 
-                            self.shader_simple
-                                .as_ref()
-                                .unwrap()
-                                .activate(&self.gl, uniform_block);
+                            self.shader_simple.activate(uniform_block);
 
                             // NOTE: We need to bind the texture here as the activation of the
                             //       shader might have invalidated our texture unit
@@ -1077,10 +1080,7 @@ impl Renderer {
             DEFAULT_WORLD_ZNEAR,
             DEFAULT_WORLD_ZFAR,
         );
-        self.shader_blit
-            .as_ref()
-            .unwrap()
-            .activate(&self.gl, &transform.into_column_array());
+        self.shader_blit.activate(&transform.into_column_array());
 
         let mut vertexbuffer_blit = VertexbufferBlit::new(0);
         vertexbuffer_blit.push_blit_quad(
