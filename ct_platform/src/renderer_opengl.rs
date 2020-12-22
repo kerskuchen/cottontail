@@ -1,6 +1,6 @@
-use ct_lib::draw::*;
 use ct_lib::draw_common::*;
 use ct_lib::math::*;
+use ct_lib::{draw::*, transmute_to_slice};
 
 use ct_lib::log;
 
@@ -589,43 +589,39 @@ fn gl_drawobject_create(gl: &glow::Context, attributes: &[ShaderAttribute]) -> G
     }
 }
 
-fn gl_drawobject_draw<VertexType: Default + Clone + Copy>(
+fn gl_drawobject_assign_buffer(
     gl: &glow::Context,
     object: &GLDrawobject,
-    vertexbuffer: &Vertexbuffer<VertexType>,
+    vertices: &[f32],
+    indices: &[u32],
 ) {
     unsafe {
-        // NOTE: We use buffer object streaming as described in
-        //       https://www.khronos.org/opengl/wiki/Buffer_Object_Streaming#Buffer_re-specification
-        //       Because of that we call glBufferData with a NULL first
-
         // Vertices
-        let vertices_raw = ct_lib::transmute_to_byte_slice(&vertexbuffer.vertices);
+        let vertices_raw = ct_lib::transmute_to_byte_slice(vertices);
         gl.bind_buffer(glow::ARRAY_BUFFER, Some(object.vertex_buffer));
-        gl.buffer_data_size(
-            glow::ARRAY_BUFFER,
-            vertices_raw.len() as i32,
-            glow::STREAM_DRAW,
-        );
         gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_raw, glow::STREAM_DRAW);
 
         // Indices
-        let indices_raw = ct_lib::transmute_to_byte_slice(&vertexbuffer.indices);
+        let indices_raw = ct_lib::transmute_to_byte_slice(indices);
         gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(object.index_buffer));
-        gl.buffer_data_size(
-            glow::ELEMENT_ARRAY_BUFFER,
-            indices_raw.len() as i32,
-            glow::STREAM_DRAW,
-        );
         gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_raw, glow::STREAM_DRAW);
+    }
+}
 
+fn gl_drawobject_draw(
+    gl: &glow::Context,
+    object: &GLDrawobject,
+    indices_count: usize,
+    indices_start_offset: usize,
+) {
+    unsafe {
         // Draw
         gl.bind_vertex_array(Some(object.vertex_array));
         gl.draw_elements(
             glow::TRIANGLES,
-            vertexbuffer.indices.len() as i32,
+            indices_count as i32,
             glow::UNSIGNED_INT,
-            0,
+            indices_start_offset as i32,
         );
         gl.bind_vertex_array(None);
         gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
@@ -880,10 +876,20 @@ impl Renderer {
                                 self.gl.bind_texture(glow::TEXTURE_2D, Some(texture.id));
                             }
 
+                            let vertices = unsafe {
+                                transmute_to_slice::<Vertex, f32>(&vertexbuffer.vertices)
+                            };
+                            gl_drawobject_assign_buffer(
+                                &self.gl,
+                                &self.drawobject_simple.as_ref().unwrap(),
+                                &vertices,
+                                &vertexbuffer.indices,
+                            );
                             gl_drawobject_draw(
                                 &self.gl,
                                 &self.drawobject_simple.as_ref().unwrap(),
-                                &vertexbuffer,
+                                vertexbuffer.indices.len(),
+                                0,
                             );
                         }
                         ShaderParams::Blit { .. } => {
@@ -1084,10 +1090,19 @@ impl Renderer {
             framebuffer_source.height,
         );
 
+        let vertices =
+            unsafe { transmute_to_slice::<VertexBlit, f32>(&vertexbuffer_blit.vertices) };
+        gl_drawobject_assign_buffer(
+            &self.gl,
+            &self.drawobject_blit.as_ref().unwrap(),
+            &vertices,
+            &vertexbuffer_blit.indices,
+        );
         gl_drawobject_draw(
             &self.gl,
             &self.drawobject_blit.as_ref().unwrap(),
-            &vertexbuffer_blit,
+            vertexbuffer_blit.indices.len(),
+            0,
         );
 
         unsafe {

@@ -182,6 +182,20 @@ pub unsafe fn transmute_to_byte_slice_mut<S>(from: &mut [S]) -> &mut [u8] {
     )
 }
 
+pub unsafe fn transmute_to_slice<S, D>(from: &[S]) -> &[D] {
+    std::slice::from_raw_parts(
+        from.as_ptr() as *const D,
+        from.len() * std::mem::size_of::<S>() / std::mem::size_of::<D>(),
+    )
+}
+
+pub unsafe fn transmute_to_slice_mut<S, D>(from: &mut [S]) -> &mut [D] {
+    std::slice::from_raw_parts_mut(
+        from.as_mut_ptr() as *mut D,
+        from.len() * std::mem::size_of::<S>() / std::mem::size_of::<D>(),
+    )
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Finding in containers
 
