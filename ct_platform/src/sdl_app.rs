@@ -355,13 +355,6 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         for command in &systemcommands {
             match command {
                 SystemCommand::FullscreenToggle => window.toggle_fullscreen(),
-                SystemCommand::FullscreenEnable(enabled) => {
-                    if *enabled {
-                        window.enable_fullscreen();
-                    } else {
-                        window.disable_fullscreen();
-                    }
-                }
                 SystemCommand::TextinputStart {
                     inputrect_x,
                     inputrect_y,

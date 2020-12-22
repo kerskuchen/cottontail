@@ -27,7 +27,6 @@ pub const DEPTH_SCREEN_FADER: Depth = 60.0;
 
 pub enum SystemCommand {
     FullscreenToggle,
-    FullscreenEnable(bool),
     TextinputStart {
         inputrect_x: i32,
         inputrect_y: i32,

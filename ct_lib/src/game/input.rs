@@ -16,6 +16,7 @@ pub struct GameInput {
     pub has_focus: bool,
     pub has_foreground_event: bool,
 
+    pub screen_is_fullscreen: bool,
     pub screen_framebuffer_width: u32,
     pub screen_framebuffer_height: u32,
     pub screen_framebuffer_dimensions_changed: bool,

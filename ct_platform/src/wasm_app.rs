@@ -3,7 +3,7 @@ mod wasm_audio;
 mod wasm_input;
 
 use ct_lib::{
-    game::{FingerPlatformId, GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand},
+    game::{FingerPlatformId, GameInput, GameMemory, GameStateInterface, SystemCommand},
     platform::{current_time_seconds, init_logging},
 };
 
@@ -13,13 +13,18 @@ use renderer_opengl::Renderer;
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{WebGlProgram, WebGlRenderingContext, WebGlShader};
 
 const ENABLE_PANIC_MESSAGES: bool = false;
 const ENABLE_FRAMETIME_LOGGING: bool = false;
 
 fn html_get_window() -> web_sys::Window {
     web_sys::window().expect("no global `window` exists")
+}
+
+fn html_get_screen() -> web_sys::Screen {
+    html_get_window()
+        .screen()
+        .expect("Could not get screen handle")
 }
 
 fn html_request_animation_frame(f: &Closure<dyn FnMut()>) {
@@ -43,43 +48,139 @@ fn html_get_canvas() -> web_sys::HtmlCanvasElement {
         .expect("'canvas' is not a HTML Canvas element")
 }
 
-fn fullscreen_is_enabled() -> bool {
-    html_get_document().fullscreen()
+struct FullscreenHandler {
+    fullscreen_requested: Rc<RefCell<bool>>,
+    preferred_screen_orientation: Option<web_sys::OrientationLockType>,
 }
 
-fn fullscreen_set_enabled(orientation_type: Option<web_sys::OrientationLockType>) {
-    if !fullscreen_is_enabled() {
-        html_get_canvas()
-            .request_fullscreen()
-            .expect("Failed to enter fullscreen");
-        if let Some(orientation_type) = orientation_type {
-            let _promise = html_get_window()
-                .screen()
-                .expect("Could not get screen handle")
-                .orientation()
-                .lock(orientation_type)
-                .expect("Failed to lock screen orientation");
+impl FullscreenHandler {
+    fn new(
+        preferred_screen_orientation: Option<web_sys::OrientationLockType>,
+    ) -> FullscreenHandler {
+        let fullscreen_requested = Rc::new(RefCell::new(false));
+
+        // Key up
+        {
+            let fullscreen_requested = fullscreen_requested.clone();
+            let keyup_callback = Closure::wrap(Box::new(move |_event: web_sys::KeyboardEvent| {
+                let mut fullscreen_requested = fullscreen_requested.borrow_mut();
+                if *fullscreen_requested {
+                    FullscreenHandler::activate_fullscreen(preferred_screen_orientation);
+                    *fullscreen_requested = false;
+                }
+            }) as Box<dyn FnMut(_)>);
+            html_get_canvas()
+                .add_event_listener_with_callback("keyup", keyup_callback.as_ref().unchecked_ref())
+                .expect("Cannot register 'keyup' callback for fullscreen mode");
+            keyup_callback.forget();
+        }
+        // Mouse up
+        {
+            let fullscreen_requested = fullscreen_requested.clone();
+            let mouseup_callback = Closure::wrap(Box::new(move |_event: web_sys::MouseEvent| {
+                let mut fullscreen_requested = fullscreen_requested.borrow_mut();
+                if *fullscreen_requested {
+                    FullscreenHandler::activate_fullscreen(preferred_screen_orientation);
+                    *fullscreen_requested = false;
+                }
+            }) as Box<dyn FnMut(_)>);
+            html_get_canvas()
+                .add_event_listener_with_callback(
+                    "mouseup",
+                    mouseup_callback.as_ref().unchecked_ref(),
+                )
+                .expect("Cannot register 'mouseup' callback for fullscreen mode");
+            mouseup_callback.forget();
+        }
+        // Touch end
+        {
+            let fullscreen_requested = fullscreen_requested.clone();
+            let touchup_callback = Closure::wrap(Box::new(move |_event: web_sys::TouchEvent| {
+                let mut fullscreen_requested = fullscreen_requested.borrow_mut();
+                if *fullscreen_requested {
+                    FullscreenHandler::activate_fullscreen(preferred_screen_orientation);
+                    *fullscreen_requested = false;
+                }
+            }) as Box<dyn FnMut(_)>);
+            html_get_canvas()
+                .add_event_listener_with_callback(
+                    "touchend",
+                    touchup_callback.as_ref().unchecked_ref(),
+                )
+                .expect("Cannot register 'touchend' callback for fullscreen mode");
+            touchup_callback.forget();
+        }
+
+        FullscreenHandler {
+            fullscreen_requested,
+            preferred_screen_orientation,
         }
     }
-}
 
-fn fullscreen_set_disabled() {
-    if fullscreen_is_enabled() {
-        html_get_document().exit_fullscreen();
-        html_get_window()
-            .screen()
-            .expect("Could not get screen handle")
-            .orientation()
-            .unlock()
-            .expect("Failed to lock screen orientation");
+    pub fn is_fullscreen_mode_active() -> bool {
+        html_get_document().fullscreen_element().is_some()
     }
-}
 
-fn fullscreen_toggle(orientation_type: Option<web_sys::OrientationLockType>) {
-    if fullscreen_is_enabled() {
-        fullscreen_set_disabled();
-    } else {
-        fullscreen_set_enabled(orientation_type);
+    // NOTE: Can be true i.e. if user themself pressed F11 on the desktop browser
+    pub fn is_window_covering_fullscreen() -> bool {
+        let window = html_get_window();
+        let screen = html_get_screen();
+        let window_width = window
+            .inner_width()
+            .expect("Cannot determine window inner width")
+            .as_f64()
+            .expect("Window inner width has wrong type") as i32;
+        let window_height = window
+            .inner_height()
+            .expect("Cannot determine window inner width")
+            .as_f64()
+            .expect("Window inner height has wrong type") as i32;
+        let screen_width = screen.width().expect("Could not get screen width");
+        let screen_height = screen.height().expect("Could not get screen width");
+        screen_width == window_width && screen_height == window_height
+    }
+
+    pub fn toggle_fullscreen(&mut self) {
+        if !FullscreenHandler::is_fullscreen_programmatically_toggleable() {
+            return;
+        }
+
+        if FullscreenHandler::is_fullscreen_mode_active() {
+            html_get_document().exit_fullscreen();
+            if self.preferred_screen_orientation.is_some() {
+                html_get_screen()
+                    .orientation()
+                    .unlock()
+                    .expect("Failed to unlock screen orientation");
+            }
+        } else {
+            *self.fullscreen_requested.borrow_mut() = true;
+        }
+    }
+
+    // Based on https://www.rossis.red/wasm.html
+    fn is_fullscreen_programmatically_toggleable() -> bool {
+        let can_fullscreen_be_enabled = html_get_document().fullscreen_enabled();
+        let is_fullscreen_active = FullscreenHandler::is_fullscreen_mode_active();
+        let has_fullsize_window_already = FullscreenHandler::is_window_covering_fullscreen();
+
+        can_fullscreen_be_enabled && (is_fullscreen_active || !has_fullsize_window_already)
+    }
+
+    fn activate_fullscreen(orientation_type: Option<web_sys::OrientationLockType>) {
+        if !FullscreenHandler::is_fullscreen_mode_active() {
+            html_get_document()
+                .document_element()
+                .expect("Failed to get document element")
+                .request_fullscreen()
+                .expect("Failed to enter fullscreen");
+            if let Some(orientation_type) = orientation_type {
+                let _promise = html_get_screen()
+                    .orientation()
+                    .lock(orientation_type)
+                    .expect("Failed to lock screen orientation");
+            }
+        }
     }
 }
 
@@ -119,7 +220,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     let webgl = html_get_canvas()
         .get_context("webgl")?
         .unwrap()
-        .dyn_into::<WebGlRenderingContext>()?;
+        .dyn_into::<web_sys::WebGlRenderingContext>()?;
     let glow_context = glow::Context::from_webgl1_context(webgl);
     let mut renderer = Renderer::new(glow_context);
 
@@ -198,9 +299,6 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     {
         let input = input.clone();
         let mousedown_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
-            // Need handle fullscreen change here because of browser UX limitations
-            fullscreen_toggle(Some(SCREEN_ORIENTATION));
-
             if event.button() >= 3 {
                 // We only support three buttons
                 return;
@@ -430,6 +528,9 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
         blur_callback.forget();
     }
 
+    let mut fullscreen_handler =
+        FullscreenHandler::new(Some(web_sys::OrientationLockType::Landscape));
+
     // Here we want to call `requestAnimationFrame` in a loop, but only a fixed
     // number of times. After it's done we want all our resources cleaned up. To
     // achieve this we're using an `Rc`. The `Rc` will eventually store the
@@ -452,59 +553,14 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
         current_tick += 1;
 
         //--------------------------------------------------------------------------------------
-        // System commands
-
-        for command in &systemcommands {
-            match command {
-                SystemCommand::FullscreenToggle => {
-                    todo!();
-                }
-                SystemCommand::FullscreenEnable(enabled) => {
-                    todo!();
-                }
-                SystemCommand::TextinputStart {
-                    inputrect_x,
-                    inputrect_y,
-                    inputrect_width,
-                    inputrect_height,
-                } => {
-                    todo!();
-                }
-                SystemCommand::TextinputStop => {
-                    todo!();
-                }
-                SystemCommand::WindowedModeAllowResizing(allowed) => {
-                    log::trace!("`WindowedModeAllowResizing` Not available on this platform");
-                }
-                SystemCommand::WindowedModeAllow(allowed) => {
-                    log::trace!("`WindowedModeAllow` Not available on this platform");
-                }
-                SystemCommand::WindowedModeSetSize {
-                    width,
-                    height,
-                    minimum_width,
-                    minimum_height,
-                } => {
-                    log::trace!("`WindowedModeSetSize` Not available on this platform");
-                }
-                SystemCommand::ScreenSetGrabInput(grab_input) => {
-                    let TODO = true;
-                }
-                SystemCommand::Shutdown => {
-                    log::trace!("`Shutdown` Not available on this platform");
-                }
-                SystemCommand::Restart => {
-                    log::trace!("`Restart` Not available on this platform");
-                }
-            }
-        }
-        systemcommands.clear();
-
-        //--------------------------------------------------------------------------------------
         // Event loop
 
-        // resize canvas
+        // resize canvas if necessary
         {
+            let mut input = input.borrow_mut();
+            input.screen_is_fullscreen = FullscreenHandler::is_fullscreen_mode_active()
+                || FullscreenHandler::is_window_covering_fullscreen();
+
             let window_width = (html_get_canvas().client_width() as f64 * dpr).round();
             let window_height = (html_get_canvas().client_height() as f64 * dpr).round();
             let canvas_width = html_get_canvas().width();
@@ -517,7 +573,6 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
                 html_get_canvas().set_width(window_width as u32);
                 html_get_canvas().set_height(window_height as u32);
 
-                let mut input = input.borrow_mut();
                 input.screen_framebuffer_width = window_width as u32;
                 input.screen_framebuffer_height = window_height as u32;
                 input.screen_framebuffer_dimensions_changed = true;
@@ -626,6 +681,52 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
         let post_render_time = current_time_seconds();
 
         //--------------------------------------------------------------------------------------
+        // System commands
+
+        for command in &systemcommands {
+            match command {
+                SystemCommand::FullscreenToggle => {
+                    fullscreen_handler.toggle_fullscreen();
+                }
+                SystemCommand::TextinputStart {
+                    inputrect_x,
+                    inputrect_y,
+                    inputrect_width,
+                    inputrect_height,
+                } => {
+                    todo!();
+                }
+                SystemCommand::TextinputStop => {
+                    todo!();
+                }
+                SystemCommand::WindowedModeAllowResizing(allowed) => {
+                    log::trace!("`WindowedModeAllowResizing` Not available on this platform");
+                }
+                SystemCommand::WindowedModeAllow(allowed) => {
+                    log::trace!("`WindowedModeAllow` Not available on this platform");
+                }
+                SystemCommand::WindowedModeSetSize {
+                    width,
+                    height,
+                    minimum_width,
+                    minimum_height,
+                } => {
+                    log::trace!("`WindowedModeSetSize` Not available on this platform");
+                }
+                SystemCommand::ScreenSetGrabInput(grab_input) => {
+                    let TODO = true;
+                }
+                SystemCommand::Shutdown => {
+                    log::trace!("`Shutdown` Not available on this platform");
+                }
+                SystemCommand::Restart => {
+                    log::trace!("`Restart` Not available on this platform");
+                }
+            }
+        }
+        systemcommands.clear();
+
+        //--------------------------------------------------------------------------------------
         // Debug timing output
 
         let duration_input = post_input_time - pre_input_time;
@@ -646,54 +747,4 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
 
     html_request_animation_frame(g.borrow().as_ref().unwrap());
     Ok(())
-}
-
-pub fn compile_shader(
-    gl: &WebGlRenderingContext,
-    shader_type: u32,
-    source: &str,
-) -> Result<WebGlShader, String> {
-    let shader = gl
-        .create_shader(shader_type)
-        .ok_or_else(|| String::from("Unable to create shader object"))?;
-    gl.shader_source(&shader, source);
-    gl.compile_shader(&shader);
-
-    if gl
-        .get_shader_parameter(&shader, WebGlRenderingContext::COMPILE_STATUS)
-        .as_bool()
-        .unwrap_or(false)
-    {
-        Ok(shader)
-    } else {
-        Err(gl
-            .get_shader_info_log(&shader)
-            .unwrap_or_else(|| String::from("Unknown error creating shader")))
-    }
-}
-
-pub fn link_program(
-    gl: &WebGlRenderingContext,
-    vert_shader: &WebGlShader,
-    frag_shader: &WebGlShader,
-) -> Result<WebGlProgram, String> {
-    let program = gl
-        .create_program()
-        .ok_or_else(|| String::from("Unable to create shader object"))?;
-
-    gl.attach_shader(&program, vert_shader);
-    gl.attach_shader(&program, frag_shader);
-    gl.link_program(&program);
-
-    if gl
-        .get_program_parameter(&program, WebGlRenderingContext::LINK_STATUS)
-        .as_bool()
-        .unwrap_or(false)
-    {
-        Ok(program)
-    } else {
-        Err(gl
-            .get_program_info_log(&program)
-            .unwrap_or_else(|| String::from("Unknown error creating program object")))
-    }
 }
