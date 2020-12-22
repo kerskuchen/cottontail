@@ -1,31 +1,27 @@
 # DONE:
 
-* Input, Fullscreen, Asset loading and GFX in WASM
-* Pixie Stitch: 
-  - Add custom launcher icon
-* Add wasm audio
-* Fix wasm performance
-* bugfixing wasm audiobuffer
-* pause game on focus lost
-* keyboard input by just using a hashmap
-* simplify touch api via hashmap. fix wasm touch api
-* fullscreen toggle with dedicated screen button
-* check if canvas/screen resolution is correct in fullscreen
-- fix DOM error on fullscreen toggle by making screen orientation configurable (i.e. orientation change on desktop) (WONTFIX because of bad code complexity / usefulness ratio)
-- find out why exiting fullscreen on mobile sometimes glitches and/or jumps back to fullscreen (using is_pressed instead of recently_pressed in code)
-- find out why we need to double click our fullscreen button on wasm desktop (because mouseup events outside of browser window are not registered)
+* fix wasm slowdown/crash when fast repeatetly touching canvas 
+  (the problem was that we accessed the wrong finger hashmap)
 
 # CURRENT
 
+
 # NEXT:
 
-* fix wasm slowdown/crash when fast repeatetly touching canvas
-- fix mouseup/touchup events that happen outside of browser window (affects leaving fullscreen)
-- fix focus lost on leaving fullscreen on mobile
-- sometimes when going fullscreen on mobile the canvas does not fully fill the part where the statusbar would be. if we pull down the status bar the canvas grows to full size.
+
+
+- fix mouseup/touchup events that happen outside of browser window (i.e. affects leaving fullscreen)
+  we may need https://developer.mozilla.org/en-US/docs/Web/API/Element/setPointerCapture
+
+- if the user pressed f11 on desktop browser disable the "exit fullscreen" button because it does 
+  not work in this case
+
+- sometimes when going fullscreen on mobile the canvas does not fully fill the part where the 
+  statusbar would be. if we pull down the status bar the canvas grows to full size.
 
 
 * make app pause on onfocus/lost events more robust
+  - show focus lost overlay "press here to continue"
   - give appcode a hint and some time to wind down and save state etc.
   - let appcode respond with an ACK that it won't need to update anymore
   - only replay drawcommands that are don't allocate resources
@@ -131,3 +127,26 @@
 
 * Repeaty:
   - When pressing start button and text input is empty (but previously valid) refill text input
+
+
+---
+
+# Archive
+
+* Input, Fullscreen, Asset loading and GFX in WASM
+* Pixie Stitch: 
+  - Add custom launcher icon
+* Add wasm audio
+* Fix wasm performance
+* bugfixing wasm audiobuffer
+* pause game on focus lost
+* keyboard input by just using a hashmap
+* simplify touch api via hashmap. fix wasm touch api
+* fullscreen toggle with dedicated screen button
+* check if canvas/screen resolution is correct in fullscreen
+- fix DOM error on fullscreen toggle by making screen orientation configurable (i.e. orientation change on desktop) (WONTFIX because of bad code complexity / usefulness ratio)
+- find out why exiting fullscreen on mobile sometimes glitches and/or jumps back to fullscreen (using is_pressed instead of recently_pressed in code)
+- find out why we need to double click our fullscreen button on wasm desktop (because mouseup events outside of browser window are not registered)
+- find out if we can fix focus lost on leaving fullscreen on mobile 
+  https://answers.unity.com/questions/282633/index.html suggests that we cant and should just implement
+  focuslost/pause message screen very similar to initial startup screen

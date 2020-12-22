@@ -202,8 +202,12 @@ impl TouchState {
         pos_y: i32,
         current_tick: u64,
     ) {
-        // NOTE: If the implementation re-used a finger ID faster than we could delete our old one
-        //       we just remove it here
+        // NOTE: It can happen that the implementation re-used a finger ID faster
+        //       than we could delete our corresponding finger one. If that happens we just delete
+        //       our corresponding finger and create a new one with the same ID.
+        //       We use retain here instead of just inserting the new finger because we want
+        //       `get_next_free_finger_id` to give us the correct id in the case we removed the last
+        //       finger in our list
         self.fingers
             .retain(|_id, finger| finger.platform_id != platform_id);
         let id = self.get_next_free_finger_id();
@@ -256,18 +260,19 @@ impl TouchState {
     }
 
     pub fn calculate_move_deltas(&mut self) {
-        for id in self.fingers_previous.keys().cloned() {
-            let (previous_pos_x, previous_pos_y) = {
-                let finger = &self.fingers[&id];
-                (finger.pos_x, finger.pos_y)
+        let ids: Vec<FingerId> = self.fingers.keys().cloned().collect();
+        for id in ids {
+            let previous_pos = {
+                self.fingers_previous
+                    .get(&id)
+                    .map(|previous_finger| (previous_finger.pos_x, previous_finger.pos_y))
             };
 
-            let finger = &mut self
-                .fingers
-                .get_mut(&id)
-                .expect("Previous and current fingers must match at all times");
-            finger.delta_x = finger.pos_x - previous_pos_x;
-            finger.delta_y = finger.pos_y - previous_pos_y;
+            if let Some((previous_pos_x, previous_pos_y)) = previous_pos {
+                let mut finger = self.fingers.get_mut(&id).unwrap();
+                finger.delta_x = finger.pos_x - previous_pos_x;
+                finger.delta_y = finger.pos_y - previous_pos_y;
+            }
         }
     }
 
