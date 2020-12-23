@@ -71,15 +71,15 @@ enum ShaderPrimitiveType {
 }
 
 impl ShaderPrimitiveType {
-    pub fn from_string(typestring: &str) -> Option<ShaderPrimitiveType> {
+    pub fn from_string(typestring: &str) -> Result<ShaderPrimitiveType, String> {
         match typestring {
-            "float" => Some(ShaderPrimitiveType::Float),
-            "vec2" => Some(ShaderPrimitiveType::Vector2),
-            "vec3" => Some(ShaderPrimitiveType::Vector3),
-            "vec4" => Some(ShaderPrimitiveType::Vector4),
-            "mat4" => Some(ShaderPrimitiveType::Matrix4),
-            "sampler2D" => Some(ShaderPrimitiveType::Sampler2D),
-            _ => None,
+            "float" => Ok(ShaderPrimitiveType::Float),
+            "vec2" => Ok(ShaderPrimitiveType::Vector2),
+            "vec3" => Ok(ShaderPrimitiveType::Vector3),
+            "vec4" => Ok(ShaderPrimitiveType::Vector4),
+            "mat4" => Ok(ShaderPrimitiveType::Matrix4),
+            "sampler2D" => Ok(ShaderPrimitiveType::Sampler2D),
+            _ => Err(format!("Unknown primitive type '{}'", typestring)),
         }
     }
 
@@ -114,10 +114,12 @@ struct ShaderUniform {
 }
 
 struct Shader {
-    gl: Rc<glow::Context>,
-    program_id: GlowProgramId,
+    pub name: String,
     pub attributes: Vec<ShaderAttribute>,
     pub uniforms: Vec<ShaderUniform>,
+
+    gl: Rc<glow::Context>,
+    program_id: GlowProgramId,
 }
 
 impl Drop for Shader {
@@ -133,25 +135,40 @@ impl Drop for Shader {
 impl Shader {
     pub fn new(
         gl: Rc<glow::Context>,
+        name: &str,
         vertex_shader_source: &str,
         fragment_shader_source: &str,
-    ) -> Shader {
+    ) -> Result<Shader, String> {
         let program_id =
-            Shader::create_program_from_source(&gl, vertex_shader_source, fragment_shader_source);
+            Shader::create_program_from_source(&gl, vertex_shader_source, fragment_shader_source)
+                .map_err(|error| format!("Could not compile shader '{}': {}", name, error))?;
 
-        let (attributes, uniforms) = Shader::get_attributes_and_uniforms(
-            &gl,
-            &program_id,
-            vertex_shader_source,
-            fragment_shader_source,
-        );
+        let (attributes, uniforms) = {
+            Shader::get_attributes_and_uniforms(
+                &gl,
+                &program_id,
+                vertex_shader_source,
+                fragment_shader_source,
+            )
+            .map_err(|error| {
+                unsafe {
+                    gl.use_program(None);
+                    gl.delete_program(program_id);
+                }
+                format!(
+                    "Failed to load attributes and/or uniforms for shader '{}': {}",
+                    name, error
+                )
+            })?
+        };
 
-        Shader {
-            gl,
-            program_id,
+        Ok(Shader {
+            name: name.to_owned(),
             attributes,
             uniforms,
-        }
+            gl,
+            program_id,
+        })
     }
 
     fn activate(&self, uniform_block: &[f32]) {
@@ -196,45 +213,56 @@ impl Shader {
         gl: &glow::Context,
         vertex_shader_source: &str,
         fragment_shader_source: &str,
-    ) -> GlowProgramId {
+    ) -> Result<GlowProgramId, String> {
         let program = unsafe {
             // Vertex shader
             let vertex_shader = gl
                 .create_shader(glow::VERTEX_SHADER)
-                .expect("Cannot create vertex shader");
+                .map_err(|error| format!("Cannot create vertex shader: {}", error))?;
             gl.shader_source(vertex_shader, vertex_shader_source);
             gl.compile_shader(vertex_shader);
             if !gl.get_shader_compile_status(vertex_shader) {
-                panic!(
+                let result = Err(format!(
                     "Failed to compile vertex shader:\n{}",
-                    gl.get_shader_info_log(vertex_shader)
-                );
+                    gl.get_shader_info_log(vertex_shader),
+                ));
+                gl.delete_shader(vertex_shader);
+                return result;
             }
 
             // Fragment shader
             let fragment_shader = gl
                 .create_shader(glow::FRAGMENT_SHADER)
-                .expect("Cannot create fragment shader");
+                .map_err(|error| format!("Cannot create fragment shader: {}", error))?;
             gl.shader_source(fragment_shader, fragment_shader_source);
             gl.compile_shader(fragment_shader);
             if !gl.get_shader_compile_status(fragment_shader) {
-                panic!(
+                let result = Err(format!(
                     "Failed to compile fragment shader:\n{}",
                     gl.get_shader_info_log(fragment_shader)
-                );
+                ));
+                gl.delete_shader(vertex_shader);
+                gl.delete_shader(fragment_shader);
+                return result;
             }
 
             // Program
-            let program = gl.create_program().expect("Cannot create shader program");
+            let program = gl
+                .create_program()
+                .map_err(|error| format!("Cannot create shader program: {}", error))?;
             gl.attach_shader(program, vertex_shader);
             gl.attach_shader(program, fragment_shader);
             gl.link_program(program);
 
             if !gl.get_program_link_status(program) {
-                panic!(
+                let result = Err(format!(
                     "Failed to link shader program:\n{}",
                     gl.get_program_info_log(program)
-                );
+                ));
+                gl.delete_shader(vertex_shader);
+                gl.delete_shader(fragment_shader);
+                gl.delete_program(program);
+                return result;
             }
 
             // Program is successfully compiled and linked - we don't need the shaders anymore
@@ -244,10 +272,11 @@ impl Shader {
             program
         };
 
+        // NOTE: We use assert instead of Err/Result here just to detect programming errors
         assert!(gl_state_ok(gl), "Could not compile shader program");
         log::info!("Shaderprogram {:?} successfully compiled", program);
 
-        program
+        Ok(program)
     }
 
     fn get_attributes_and_uniforms(
@@ -255,39 +284,35 @@ impl Shader {
         program: &GlowProgramId,
         vertex_shader_source: &str,
         fragment_shader_source: &str,
-    ) -> (Vec<ShaderAttribute>, Vec<ShaderUniform>) {
-        let attributes = Shader::get_attributes(gl, program, vertex_shader_source);
+    ) -> Result<(Vec<ShaderAttribute>, Vec<ShaderUniform>), String> {
+        let attributes = Shader::get_attributes(gl, program, vertex_shader_source)?;
         let uniforms = {
-            let mut uniforms_vertexshader = Shader::get_uniforms(gl, program, vertex_shader_source);
+            let mut uniforms_vertexshader =
+                Shader::get_uniforms(gl, program, vertex_shader_source)?;
             let mut uniforms_fragmentshader =
-                Shader::get_uniforms(gl, program, fragment_shader_source);
+                Shader::get_uniforms(gl, program, fragment_shader_source)?;
             uniforms_vertexshader.append(&mut uniforms_fragmentshader);
             uniforms_vertexshader
         };
-        (attributes, uniforms)
+        Ok((attributes, uniforms))
     }
 
     fn get_attributes(
         gl: &glow::Context,
         program_id: &GlowProgramId,
         shader_source: &str,
-    ) -> Vec<ShaderAttribute> {
+    ) -> Result<Vec<ShaderAttribute>, String> {
         let mut attributes = Vec::new();
         let mut byte_offset_in_vertex = 0;
         let attribute_regex = regex::Regex::new(r"attribute\s(\w+)\s(\w+);").unwrap();
         for capture in attribute_regex.captures_iter(shader_source) {
             let name = &capture[2];
             let type_name = &capture[1];
-            let primitive_type = ShaderPrimitiveType::from_string(type_name).expect(&format!(
-                "Shaderprimitive {} has unknown type {}",
-                name, type_name
-            ));
-            let location = unsafe {
-                gl.get_attrib_location(*program_id, name).expect(&format!(
-                    "Program {:?} has no attribute '{}'",
-                    program_id, name
-                ))
-            };
+            let primitive_type = ShaderPrimitiveType::from_string(type_name)
+                .map_err(|error| format!("Error parsing shader primitive '{}'", type_name))?;
+            let location = unsafe { gl.get_attrib_location(*program_id, name) }
+                .ok_or_else(|| format!("Program {:?} has no attribute '{}'", program_id, name))?;
+
             attributes.push(ShaderAttribute {
                 name: name.to_owned(),
                 location,
@@ -296,36 +321,31 @@ impl Shader {
             });
             byte_offset_in_vertex += primitive_type.size_in_byte();
         }
-        attributes
+        Ok(attributes)
     }
 
     fn get_uniforms(
         gl: &glow::Context,
         program_id: &GlowProgramId,
         shader_source: &str,
-    ) -> Vec<ShaderUniform> {
+    ) -> Result<Vec<ShaderUniform>, String> {
         let mut uniforms = Vec::new();
         let attribute_regex = regex::Regex::new(r"uniform\s(\w+)\s(\w+);").unwrap();
         for capture in attribute_regex.captures_iter(shader_source) {
             let name = &capture[2];
             let type_name = &capture[1];
-            let primitive_type = ShaderPrimitiveType::from_string(type_name).expect(&format!(
-                "Shaderprimitive {} has unknown type {}",
-                name, type_name
-            ));
-            let location = unsafe {
-                gl.get_uniform_location(*program_id, name).expect(&format!(
-                    "Program {:?} has no uniform '{}'",
-                    program_id, name
-                ))
-            };
+            let primitive_type = ShaderPrimitiveType::from_string(type_name)
+                .map_err(|error| format!("Error parsing shader primitive '{}'", type_name))?;
+            let location = unsafe { gl.get_uniform_location(*program_id, name) }
+                .ok_or_else(|| format!("Program {:?} has no uniform '{}'", program_id, name))?;
+
             uniforms.push(ShaderUniform {
                 name: name.to_owned(),
                 primitive_type,
                 location,
             });
         }
-        uniforms
+        Ok(uniforms)
     }
 }
 
@@ -333,10 +353,12 @@ impl Shader {
 // Creating textures from pixelbuffers
 
 struct Texture {
-    gl: Rc<glow::Context>,
-    texture_id: GlowTextureId,
+    pub name: String,
     pub width: u32,
     pub height: u32,
+
+    gl: Rc<glow::Context>,
+    texture_id: GlowTextureId,
 }
 
 impl Drop for Texture {
@@ -350,7 +372,7 @@ impl Drop for Texture {
 }
 
 impl Texture {
-    fn new(gl: Rc<glow::Context>, width: u32, height: u32) -> Texture {
+    fn new(gl: Rc<glow::Context>, name: &str, width: u32, height: u32) -> Texture {
         let texture_id = unsafe {
             let texture = gl.create_texture().expect("Cannot create texture");
             gl.bind_texture(glow::TEXTURE_2D, Some(texture));
@@ -391,10 +413,11 @@ impl Texture {
         };
 
         Texture {
-            gl,
-            texture_id,
+            name: name.to_owned(),
             width,
             height,
+            gl,
+            texture_id,
         }
     }
 
@@ -430,10 +453,12 @@ impl Texture {
 // Creating depthbuffer
 
 struct Depthbuffer {
-    gl: Rc<glow::Context>,
-    depth_id: GlowRenderbufferId,
+    pub name: String,
     pub width: u32,
     pub height: u32,
+
+    gl: Rc<glow::Context>,
+    depth_id: GlowRenderbufferId,
 }
 
 impl Drop for Depthbuffer {
@@ -447,7 +472,7 @@ impl Drop for Depthbuffer {
 }
 
 impl Depthbuffer {
-    fn new(gl: Rc<glow::Context>, width: u32, height: u32) -> Depthbuffer {
+    fn new(gl: Rc<glow::Context>, name: &str, width: u32, height: u32) -> Depthbuffer {
         let depth_id = unsafe {
             let depth = gl
                 .create_renderbuffer()
@@ -465,10 +490,11 @@ impl Depthbuffer {
         };
 
         Depthbuffer {
-            gl,
-            depth_id,
+            name: name.to_owned(),
             width,
             height,
+            gl,
+            depth_id,
         }
     }
 }
@@ -477,13 +503,15 @@ impl Depthbuffer {
 // General purpose offscreen-framebuffers
 
 struct Framebuffer {
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+
     gl: Rc<glow::Context>,
-    // NOTE: This can be `None` if our framebuffer represents the screen framebuffer
+    // NOTE: These can be `None` if our framebuffer represents the screen framebuffer
     framebuffer_id: Option<GlowFramebufferId>,
     color: Option<Texture>,
     _depth: Option<Depthbuffer>,
-    pub width: u32,
-    pub height: u32,
 }
 
 impl Drop for Framebuffer {
@@ -501,20 +529,31 @@ impl Drop for Framebuffer {
 impl Framebuffer {
     pub fn new_screen(gl: Rc<glow::Context>, width: u32, height: u32) -> Framebuffer {
         Framebuffer {
+            name: "screen".to_owned(),
+            width,
+            height,
             gl,
             framebuffer_id: None,
             color: None,
             _depth: None,
-            width,
-            height,
         }
     }
 
-    pub fn new(gl: Rc<glow::Context>, width: u32, height: u32) -> Framebuffer {
+    pub fn new(gl: Rc<glow::Context>, name: &str, width: u32, height: u32) -> Framebuffer {
         unsafe {
             // The color texture
-            let color = Texture::new(gl.clone(), width, height);
-            let depth = Depthbuffer::new(gl.clone(), width, height);
+            let color = Texture::new(
+                gl.clone(),
+                &format!("{} framebuffer color texture", name),
+                width,
+                height,
+            );
+            let depth = Depthbuffer::new(
+                gl.clone(),
+                &format!("{} framebuffer depth texture", name),
+                width,
+                height,
+            );
 
             // Create offscreen framebuffer
             let framebuffer = gl.create_framebuffer().expect("Cannot create framebuffer");
@@ -539,12 +578,13 @@ impl Framebuffer {
             gl.bind_framebuffer(glow::FRAMEBUFFER, None);
 
             Framebuffer {
+                name: name.to_owned(),
+                width,
+                height,
                 gl,
                 framebuffer_id: Some(framebuffer),
                 color: Some(color),
                 _depth: Some(depth),
-                width,
-                height,
             }
         }
     }
@@ -554,6 +594,8 @@ impl Framebuffer {
 // Drawobjects
 
 struct DrawObject {
+    name: String,
+
     gl: Rc<glow::Context>,
     vertex_array_id: GlowVertexArray,
     vertex_buffer_id: GlowBuffer,
@@ -577,6 +619,7 @@ impl Drop for DrawObject {
 
 impl DrawObject {
     fn new_from_shader(gl: Rc<glow::Context>, shader: &Shader) -> DrawObject {
+        let name = format!("{} drawobject", &shader.name);
         let (vertex_array, vertex_buffer, index_buffer) = unsafe {
             let vertex_array = gl
                 .create_vertex_array()
@@ -620,6 +663,7 @@ impl DrawObject {
         };
 
         DrawObject {
+            name,
             gl,
             vertex_array_id: vertex_array,
             vertex_buffer_id: vertex_buffer,
@@ -787,14 +831,18 @@ impl Renderer {
 
         let shader_simple = Shader::new(
             gl.clone(),
+            "simple",
             VERTEX_SHADER_SOURCE_SIMPLE,
             FRAGMENT_SHADER_SOURCE_SIMPLE,
-        );
+        )
+        .expect("Could not compile simple shader");
         let shader_blit = Shader::new(
             gl.clone(),
+            "blit",
             VERTEX_SHADER_SOURCE_BLIT,
             FRAGMENT_SHADER_SOURCE_BLIT,
-        );
+        )
+        .expect("Could not compile blit shader");
 
         let drawobject_simple = DrawObject::new_from_shader(gl.clone(), &shader_simple);
         let drawobject_blit = DrawObject::new_from_shader(gl.clone(), &shader_blit);
@@ -895,7 +943,12 @@ impl Renderer {
                     );
                     self.textures.insert(
                         texture_info.clone(),
-                        Texture::new(gl.clone(), texture_info.width, texture_info.height),
+                        Texture::new(
+                            gl.clone(),
+                            &texture_info.name,
+                            texture_info.width,
+                            texture_info.height,
+                        ),
                     );
                 }
                 Drawcommand::TextureUpdate {
@@ -933,6 +986,7 @@ impl Renderer {
                         FramebufferTarget::Offscreen(framebuffer_info.clone()),
                         Framebuffer::new(
                             gl.clone(),
+                            &framebuffer_info.name,
                             framebuffer_info.width,
                             framebuffer_info.height,
                         ),
