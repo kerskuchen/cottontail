@@ -28,6 +28,10 @@ pub const DEFAULT_WORLD_ZFAR: Depth = -100.0;
 pub const ADDITIVITY_NONE: Additivity = 0.0;
 pub const ADDITIVITY_MAX: Additivity = 1.0;
 
+pub trait Vertex: Sized {
+    const FLOAT_COMPONENT_COUNT: usize = std::mem::size_of::<Self>() / std::mem::size_of::<f32>();
+}
+
 #[derive(Default, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct VertexSimple {
@@ -36,6 +40,7 @@ pub struct VertexSimple {
     pub color: Color,
     pub additivity: Additivity,
 }
+impl Vertex for VertexSimple {}
 
 #[derive(Default, Clone, Copy, Debug)]
 #[repr(C)]
@@ -43,25 +48,28 @@ pub struct VertexBlit {
     pub pos: Vec2,
     pub uv: Vec2,
 }
+impl Vertex for VertexBlit {}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Vertexbuffers
 
-const todoTODO: &str = "this struct got much unsafer since we don't check if the vertex type
-                        of the object we add matches our internal vertex type";
+// NOTE: We don't want to make the vertexbuffer dependent on a specific vertex type via <..>
+//       generics because then it is harder to code share between drawstate and the renderer
 #[derive(Debug, Default, Clone)]
 pub struct Vertexbuffer {
     pub vertices: Vec<f32>,
     pub indices: Vec<VertexIndex>,
     vertices_count: usize,
+    const_vertices_float_component_count: usize,
 }
 
 impl Vertexbuffer {
-    pub fn new() -> Vertexbuffer {
+    pub fn new<VertexType: Vertex>() -> Vertexbuffer {
         Vertexbuffer {
             vertices: Vec::new(),
             indices: Vec::new(),
             vertices_count: 0,
+            const_vertices_float_component_count: VertexType::FLOAT_COMPONENT_COUNT,
         }
     }
 
@@ -83,6 +91,8 @@ impl Vertexbuffer {
         framebuffer_source_width: u32,
         framebuffer_source_height: u32,
     ) -> (VertexIndex, usize) {
+        debug_assert!(self.const_vertices_float_component_count == 4);
+
         let start_index = self.vertices_count as VertexIndex;
         let index_count = 6;
 
@@ -144,6 +154,7 @@ impl Vertexbuffer {
 
     /// Returns (start_index, index_count) of pushed object
     pub fn push_drawable(&mut self, drawable: Drawable) -> (VertexIndex, usize) {
+        debug_assert!(self.const_vertices_float_component_count == 4);
         let depth = drawable.depth;
         let color = drawable.color_modulate;
         let additivity = drawable.additivity;
@@ -624,7 +635,7 @@ impl Drawstate {
             simple_shaderparams_canvas: ShaderParamsSimple::default(),
             simple_shaderparams_screen: ShaderParamsSimple::default(),
             simple_drawables: Vec::new(),
-            simple_vertexbuffer: Rc::new(RefCell::new(Vertexbuffer::new())),
+            simple_vertexbuffer: Rc::new(RefCell::new(Vertexbuffer::new::<VertexSimple>())),
 
             canvas_blit_offset: Vec2::zero(),
 

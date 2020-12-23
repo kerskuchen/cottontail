@@ -1200,7 +1200,7 @@ impl Renderer {
             .expect("Blit shader not found '{}' not found")
             .activate(&transform.into_column_array());
 
-        let mut vertexbuffer = Vertexbuffer::new();
+        let mut vertexbuffer = Vertexbuffer::new::<VertexBlit>();
         let (indices_start_index, indices_count) = vertexbuffer.push_blit_quad(
             rect_target,
             rect_source,

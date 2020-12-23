@@ -14,17 +14,16 @@
 - split drawcommand into buffer assignment and index drawing 
 - Refactor draw/renderer to have one vertex-/index-batch-buffer per shader with offsets into buffer
   (see sokol_gfx appendbuffer mechanism)
+- make vertexbuffers more save (disallow use of different vertex types) 
  
 # CURRENT
 
+- make pushing of vertices faster in vertexbuffer
 
 # NEXT:
 
 ## renderer flexibility + speed + cleanup
-- make vertexbuffers more save (disallow use of different vertex types) and pushing of vertices faster
-- maybe separate drawspaces (world, canvas, screen) into different framebuffers? that way we don't 
-  need to separate drawbatches into 3 different vertexbuffers.
-- move shaders out of renderer and into draw, 
+- add ability to add new shaders from drawstate
 - Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and implement it. Throw out the rest 
 
 ## improve asset loading
@@ -121,6 +120,7 @@
 
 ## wasm performance
 - Find more ways to make wasm perform better
+- test out 22050khz audio?
 - current hotspots are:
   - sorting drawables ~5% (they are pretty big to sort, maybe we can use references as payload?)
   - pushing drawbles ~10% (batches are allocated all over the place (allocation takes up ~7%))
