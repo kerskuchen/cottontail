@@ -8,13 +8,13 @@ use glow::*;
 
 use std::{collections::HashMap, rc::Rc};
 
-type GLProgramId = <glow::Context as glow::HasContext>::Program;
-type GLTextureId = <glow::Context as glow::HasContext>::Texture;
-type GLFramebufferId = <glow::Context as glow::HasContext>::Framebuffer;
-type GLRenderbufferId = <glow::Context as glow::HasContext>::Renderbuffer;
-type GLUniformLocation = <glow::Context as glow::HasContext>::UniformLocation;
-type GLVertexArray = <glow::Context as glow::HasContext>::VertexArray;
-type GLBuffer = <glow::Context as glow::HasContext>::Buffer;
+type GlowProgramId = <glow::Context as glow::HasContext>::Program;
+type GlowTextureId = <glow::Context as glow::HasContext>::Texture;
+type GlowFramebufferId = <glow::Context as glow::HasContext>::Framebuffer;
+type GlowRenderbufferId = <glow::Context as glow::HasContext>::Renderbuffer;
+type GlowUniformLocation = <glow::Context as glow::HasContext>::UniformLocation;
+type GlowVertexArray = <glow::Context as glow::HasContext>::VertexArray;
+type GlowBuffer = <glow::Context as glow::HasContext>::Buffer;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Error checking
@@ -110,17 +110,17 @@ struct ShaderAttribute {
 struct ShaderUniform {
     pub name: String,
     pub primitive_type: ShaderPrimitiveType,
-    pub location: GLUniformLocation,
+    pub location: GlowUniformLocation,
 }
 
-struct ShaderProgram {
+struct Shader {
     gl: Rc<glow::Context>,
-    program_id: GLProgramId,
+    program_id: GlowProgramId,
     pub attributes: Vec<ShaderAttribute>,
     pub uniforms: Vec<ShaderUniform>,
 }
 
-impl Drop for ShaderProgram {
+impl Drop for Shader {
     fn drop(&mut self) {
         let gl = &self.gl;
         unsafe {
@@ -130,26 +130,23 @@ impl Drop for ShaderProgram {
     }
 }
 
-impl ShaderProgram {
+impl Shader {
     pub fn new(
         gl: Rc<glow::Context>,
         vertex_shader_source: &str,
         fragment_shader_source: &str,
-    ) -> ShaderProgram {
-        let program_id = ShaderProgram::create_program_from_source(
-            &gl,
-            vertex_shader_source,
-            fragment_shader_source,
-        );
+    ) -> Shader {
+        let program_id =
+            Shader::create_program_from_source(&gl, vertex_shader_source, fragment_shader_source);
 
-        let (attributes, uniforms) = ShaderProgram::get_attributes_and_uniforms(
+        let (attributes, uniforms) = Shader::get_attributes_and_uniforms(
             &gl,
             &program_id,
             vertex_shader_source,
             fragment_shader_source,
         );
 
-        ShaderProgram {
+        Shader {
             gl,
             program_id,
             attributes,
@@ -199,7 +196,7 @@ impl ShaderProgram {
         gl: &glow::Context,
         vertex_shader_source: &str,
         fragment_shader_source: &str,
-    ) -> GLProgramId {
+    ) -> GlowProgramId {
         let program = unsafe {
             // Vertex shader
             let vertex_shader = gl
@@ -255,16 +252,15 @@ impl ShaderProgram {
 
     fn get_attributes_and_uniforms(
         gl: &glow::Context,
-        program: &GLProgramId,
+        program: &GlowProgramId,
         vertex_shader_source: &str,
         fragment_shader_source: &str,
     ) -> (Vec<ShaderAttribute>, Vec<ShaderUniform>) {
-        let attributes = ShaderProgram::get_attributes(gl, program, vertex_shader_source);
+        let attributes = Shader::get_attributes(gl, program, vertex_shader_source);
         let uniforms = {
-            let mut uniforms_vertexshader =
-                ShaderProgram::get_uniforms(gl, program, vertex_shader_source);
+            let mut uniforms_vertexshader = Shader::get_uniforms(gl, program, vertex_shader_source);
             let mut uniforms_fragmentshader =
-                ShaderProgram::get_uniforms(gl, program, fragment_shader_source);
+                Shader::get_uniforms(gl, program, fragment_shader_source);
             uniforms_vertexshader.append(&mut uniforms_fragmentshader);
             uniforms_vertexshader
         };
@@ -273,7 +269,7 @@ impl ShaderProgram {
 
     fn get_attributes(
         gl: &glow::Context,
-        program_id: &GLProgramId,
+        program_id: &GlowProgramId,
         shader_source: &str,
     ) -> Vec<ShaderAttribute> {
         let mut attributes = Vec::new();
@@ -305,7 +301,7 @@ impl ShaderProgram {
 
     fn get_uniforms(
         gl: &glow::Context,
-        program_id: &GLProgramId,
+        program_id: &GlowProgramId,
         shader_source: &str,
     ) -> Vec<ShaderUniform> {
         let mut uniforms = Vec::new();
@@ -338,7 +334,7 @@ impl ShaderProgram {
 
 struct Texture {
     gl: Rc<glow::Context>,
-    texture_id: GLTextureId,
+    texture_id: GlowTextureId,
     pub width: u32,
     pub height: u32,
 }
@@ -435,7 +431,7 @@ impl Texture {
 
 struct Depthbuffer {
     gl: Rc<glow::Context>,
-    depth_id: GLRenderbufferId,
+    depth_id: GlowRenderbufferId,
     pub width: u32,
     pub height: u32,
 }
@@ -483,7 +479,7 @@ impl Depthbuffer {
 struct Framebuffer {
     gl: Rc<glow::Context>,
     // NOTE: This can be `None` if our framebuffer represents the screen framebuffer
-    framebuffer_id: Option<GLFramebufferId>,
+    framebuffer_id: Option<GlowFramebufferId>,
     color: Option<Texture>,
     _depth: Option<Depthbuffer>,
     pub width: u32,
@@ -557,110 +553,110 @@ impl Framebuffer {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Drawobjects
 
-struct GLDrawobject {
-    vertex_array: GLVertexArray,
-    vertex_buffer: GLBuffer,
-    index_buffer: GLBuffer,
+struct DrawObject {
+    gl: Rc<glow::Context>,
+    vertex_array_id: GlowVertexArray,
+    vertex_buffer_id: GlowBuffer,
+    index_buffer_id: GlowBuffer,
 }
 
-fn gl_drawobject_create(gl: &glow::Context, attributes: &[ShaderAttribute]) -> GLDrawobject {
-    let (vertex_array, vertex_buffer, index_buffer) = unsafe {
-        let vertex_array = gl
-            .create_vertex_array()
-            .expect("Cannot create vertex array");
-        gl.bind_vertex_array(Some(vertex_array));
+impl Drop for DrawObject {
+    fn drop(&mut self) {
+        let gl = &self.gl;
+        unsafe {
+            gl.bind_vertex_array(None);
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
+            gl.bind_buffer(glow::ARRAY_BUFFER, None);
 
-        let vertex_buffer = gl.create_buffer().expect("Cannot create vertex buffer");
-        gl.bind_buffer(glow::ARRAY_BUFFER, Some(vertex_buffer));
-
-        let index_buffer = gl.create_buffer().expect("Cannot create index buffer");
-        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(index_buffer));
-
-        // Assing attributes
-        let stride = attributes.iter().fold(0, |acc, attribute| {
-            acc + attribute.primitive_type.size_in_byte()
-        });
-        for attribute in attributes {
-            let index = attribute.location;
-            let size = attribute.primitive_type.float_component_count();
-            let offset = attribute.byte_offset_in_vertex;
-            let normalized = false;
-
-            gl.enable_vertex_attrib_array(index);
-            gl.vertex_attrib_pointer_f32(
-                index,
-                size as i32,
-                glow::FLOAT,
-                normalized,
-                stride as i32,
-                offset as i32,
-            );
+            gl.delete_vertex_array(self.vertex_array_id);
+            gl.delete_buffer(self.vertex_buffer_id);
+            gl.delete_buffer(self.index_buffer_id);
         }
-
-        // NOTE: The buffers must not be unbound before the vertex array, so the order here is important
-        gl.bind_vertex_array(None);
-        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
-        gl.bind_buffer(glow::ARRAY_BUFFER, None);
-
-        (vertex_array, vertex_buffer, index_buffer)
-    };
-
-    GLDrawobject {
-        vertex_array,
-        vertex_buffer,
-        index_buffer,
     }
 }
 
-fn gl_drawobject_assign_buffer(
-    gl: &glow::Context,
-    object: &GLDrawobject,
-    vertices: &[f32],
-    indices: &[u32],
-) {
-    unsafe {
-        // Vertices
-        let vertices_raw = ct_lib::transmute_to_byte_slice(vertices);
-        gl.bind_buffer(glow::ARRAY_BUFFER, Some(object.vertex_buffer));
-        gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_raw, glow::STREAM_DRAW);
+impl DrawObject {
+    fn new_from_shader(gl: Rc<glow::Context>, shader: &Shader) -> DrawObject {
+        let (vertex_array, vertex_buffer, index_buffer) = unsafe {
+            let vertex_array = gl
+                .create_vertex_array()
+                .expect("Cannot create vertex array");
+            gl.bind_vertex_array(Some(vertex_array));
 
-        // Indices
-        let indices_raw = ct_lib::transmute_to_byte_slice(indices);
-        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(object.index_buffer));
-        gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_raw, glow::STREAM_DRAW);
+            let vertex_buffer = gl.create_buffer().expect("Cannot create vertex buffer");
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(vertex_buffer));
+
+            let index_buffer = gl.create_buffer().expect("Cannot create index buffer");
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(index_buffer));
+
+            // Assing attributes
+            let attributes = &shader.attributes;
+            let stride = attributes.iter().fold(0, |acc, attribute| {
+                acc + attribute.primitive_type.size_in_byte()
+            });
+            for attribute in attributes {
+                let index = attribute.location;
+                let size = attribute.primitive_type.float_component_count();
+                let offset = attribute.byte_offset_in_vertex;
+                let normalized = false;
+
+                gl.enable_vertex_attrib_array(index);
+                gl.vertex_attrib_pointer_f32(
+                    index,
+                    size as i32,
+                    glow::FLOAT,
+                    normalized,
+                    stride as i32,
+                    offset as i32,
+                );
+            }
+
+            // NOTE: The buffers must not be unbound before the vertex array, so the order here is important
+            gl.bind_vertex_array(None);
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
+            gl.bind_buffer(glow::ARRAY_BUFFER, None);
+
+            (vertex_array, vertex_buffer, index_buffer)
+        };
+
+        DrawObject {
+            gl,
+            vertex_array_id: vertex_array,
+            vertex_buffer_id: vertex_buffer,
+            index_buffer_id: index_buffer,
+        }
     }
-}
 
-fn gl_drawobject_draw(
-    gl: &glow::Context,
-    object: &GLDrawobject,
-    indices_count: usize,
-    indices_start_offset: usize,
-) {
-    unsafe {
-        // Draw
-        gl.bind_vertex_array(Some(object.vertex_array));
-        gl.draw_elements(
-            glow::TRIANGLES,
-            indices_count as i32,
-            glow::UNSIGNED_INT,
-            indices_start_offset as i32,
-        );
-        gl.bind_vertex_array(None);
-        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
-        gl.bind_buffer(glow::ARRAY_BUFFER, None);
+    fn assing_buffers(&self, vertices: &[f32], indices: &[u32]) {
+        let gl = &self.gl;
+        unsafe {
+            // Vertices
+            let vertices_raw = ct_lib::transmute_to_byte_slice(vertices);
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vertex_buffer_id));
+            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_raw, glow::STREAM_DRAW);
+
+            // Indices
+            let indices_raw = ct_lib::transmute_to_byte_slice(indices);
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.index_buffer_id));
+            gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_raw, glow::STREAM_DRAW);
+        }
     }
-}
 
-fn gl_drawobject_free(gl: &glow::Context, object: GLDrawobject) {
-    unsafe {
-        gl.bind_vertex_array(None);
-        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
-        gl.bind_buffer(glow::ARRAY_BUFFER, None);
-
-        gl.delete_vertex_array(object.vertex_array);
-        gl.delete_buffer(object.vertex_buffer);
-        gl.delete_buffer(object.index_buffer);
+    fn draw(&self, indices_count: usize, indices_start_offset: usize) {
+        let gl = &self.gl;
+        unsafe {
+            // Draw
+            gl.bind_vertex_array(Some(self.vertex_array_id));
+            gl.draw_elements(
+                glow::TRIANGLES,
+                indices_count as i32,
+                glow::UNSIGNED_INT,
+                indices_start_offset as i32,
+            );
+            gl.bind_vertex_array(None);
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
+            gl.bind_buffer(glow::ARRAY_BUFFER, None);
+        }
     }
 }
 
@@ -759,22 +755,14 @@ void main()
 pub struct Renderer {
     gl: Rc<glow::Context>,
 
-    shader_simple: ShaderProgram,
-    shader_blit: ShaderProgram,
+    shader_simple: Shader,
+    shader_blit: Shader,
 
-    drawobject_simple: Option<GLDrawobject>,
-    drawobject_blit: Option<GLDrawobject>,
+    drawobject_simple: DrawObject,
+    drawobject_blit: DrawObject,
 
     framebuffers: HashMap<FramebufferTarget, Framebuffer>,
     textures: HashMap<TextureInfo, Texture>,
-}
-
-impl Drop for Renderer {
-    fn drop(&mut self) {
-        let gl = &self.gl;
-        gl_drawobject_free(&gl, self.drawobject_simple.take().unwrap());
-        gl_drawobject_free(&gl, self.drawobject_blit.take().unwrap());
-    }
 }
 
 impl Renderer {
@@ -797,31 +785,28 @@ impl Renderer {
             gl.depth_func(glow::GEQUAL);
         }
 
-        let shader_simple = ShaderProgram::new(
+        let shader_simple = Shader::new(
             gl.clone(),
             VERTEX_SHADER_SOURCE_SIMPLE,
             FRAGMENT_SHADER_SOURCE_SIMPLE,
         );
-        let shader_blit = ShaderProgram::new(
+        let shader_blit = Shader::new(
             gl.clone(),
             VERTEX_SHADER_SOURCE_BLIT,
             FRAGMENT_SHADER_SOURCE_BLIT,
         );
 
-        let drawobject_simple = gl_drawobject_create(&gl, &shader_simple.attributes);
-        let drawobject_blit = gl_drawobject_create(&gl, &shader_blit.attributes);
+        let drawobject_simple = DrawObject::new_from_shader(gl.clone(), &shader_simple);
+        let drawobject_blit = DrawObject::new_from_shader(gl.clone(), &shader_blit);
 
         assert!(gl_state_ok(&gl), "Error while creating renderer");
 
         Renderer {
             gl,
-
-            shader_simple: shader_simple,
-            shader_blit: shader_blit,
-
-            drawobject_simple: Some(drawobject_simple),
-            drawobject_blit: Some(drawobject_blit),
-
+            shader_simple,
+            shader_blit,
+            drawobject_simple,
+            drawobject_blit,
             framebuffers: HashMap::new(),
             textures: HashMap::new(),
         }
@@ -893,18 +878,9 @@ impl Renderer {
                             let vertices = unsafe {
                                 transmute_to_slice::<Vertex, f32>(&vertexbuffer.vertices)
                             };
-                            gl_drawobject_assign_buffer(
-                                &gl,
-                                &self.drawobject_simple.as_ref().unwrap(),
-                                &vertices,
-                                &vertexbuffer.indices,
-                            );
-                            gl_drawobject_draw(
-                                &gl,
-                                &self.drawobject_simple.as_ref().unwrap(),
-                                vertexbuffer.indices.len(),
-                                0,
-                            );
+                            self.drawobject_simple
+                                .assing_buffers(&vertices, &vertexbuffer.indices);
+                            self.drawobject_simple.draw(vertexbuffer.indices.len(), 0);
                         }
                         ShaderParams::Blit { .. } => {
                             panic!("The blit shader does not support drawing operations")
@@ -1095,18 +1071,10 @@ impl Renderer {
 
         let vertices =
             unsafe { transmute_to_slice::<VertexBlit, f32>(&vertexbuffer_blit.vertices) };
-        gl_drawobject_assign_buffer(
-            &gl,
-            &self.drawobject_blit.as_ref().unwrap(),
-            &vertices,
-            &vertexbuffer_blit.indices,
-        );
-        gl_drawobject_draw(
-            &gl,
-            &self.drawobject_blit.as_ref().unwrap(),
-            vertexbuffer_blit.indices.len(),
-            0,
-        );
+        self.drawobject_blit
+            .assing_buffers(&vertices, &vertexbuffer_blit.indices);
+        self.drawobject_blit
+            .draw(vertexbuffer_blit.indices.len(), 0);
 
         unsafe {
             gl.enable(glow::BLEND);
