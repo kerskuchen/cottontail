@@ -227,7 +227,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         let vsync_test_start_time = std::time::Instant::now();
 
         for _ in 0..vsync_test_framecount {
-            renderer.clear();
+            renderer.clear_screen();
             window.sdl_window.gl_swap_window();
         }
         std::time::Instant::now()

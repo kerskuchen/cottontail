@@ -7,11 +7,13 @@
 * make drawstate call renderer functions directly? (NO THEN WE CAN'T EASILY REPLAY DRAWCOMMANDS 
   ON FOCUS LOST)
 - make shader parser that knows all attributes and uniforms
+- proper gl object encapsulation and lifetime management
+- make one drawobjects per shader (maybe create from shader or tie more closely to shader?)
+- shader compilation now returns results instead of panicking
+- more errorchecking with debug names in renderer
  
 # CURRENT
 
-- proper gl object encapsulation and lifetime management
-- make one drawobjects per shader (maybe create from shader or tie more closely to shader?)
 
 # NEXT:
 

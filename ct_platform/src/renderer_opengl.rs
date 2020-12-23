@@ -19,23 +19,17 @@ type GlowBuffer = <glow::Context as glow::HasContext>::Buffer;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Error checking
 
-fn gl_state_ok(gl: &glow::Context) -> bool {
-    let mut is_ok = true;
-
-    loop {
-        let error = unsafe { gl.get_error() };
-        if error == glow::NO_ERROR {
-            break;
-        } else {
-            log::error!("OpenGL error: {}", gl_error_string(error));
-            is_ok = false;
-        }
+// WARNING: This function is really expensive
+fn gl_check_state_ok(gl: &glow::Context) -> Result<(), String> {
+    let error = unsafe { gl.get_error() };
+    if error == glow::NO_ERROR {
+        Ok(())
+    } else {
+        Err(format!("OpenGL error: {}", gl_errorcode_to_string(error)))
     }
-
-    return is_ok;
 }
 
-fn gl_error_string(error: u32) -> String {
+fn gl_errorcode_to_string(error: u32) -> String {
     if error == glow::NO_ERROR {
         return "NO_ERROR".to_owned();
     } else if error == glow::INVALID_ENUM {
@@ -162,6 +156,14 @@ impl Shader {
             })?
         };
 
+        gl_check_state_ok(&gl).map_err(|error| {
+            unsafe { gl.delete_program(program_id) };
+            format!(
+                "Something went wrong while compiling shader '{}': {}",
+                name, error
+            )
+        })?;
+
         Ok(Shader {
             name: name.to_owned(),
             attributes,
@@ -205,7 +207,13 @@ impl Shader {
         }
         assert!(
             uniform_block.len() == 0,
-            "Given uniform block contains more data than described in shader"
+            "Given uniform block contains more data than described in shader '{}'",
+            self.name
+        );
+        debug_assert!(
+            gl_check_state_ok(&gl).is_ok(),
+            "Something went wrong while activating shader '{}'",
+            self.name
         );
     }
 
@@ -272,10 +280,6 @@ impl Shader {
             program
         };
 
-        // NOTE: We use assert instead of Err/Result here just to detect programming errors
-        assert!(gl_state_ok(gl), "Could not compile shader program");
-        log::info!("Shaderprogram {:?} successfully compiled", program);
-
         Ok(program)
     }
 
@@ -308,8 +312,9 @@ impl Shader {
         for capture in attribute_regex.captures_iter(shader_source) {
             let name = &capture[2];
             let type_name = &capture[1];
-            let primitive_type = ShaderPrimitiveType::from_string(type_name)
-                .map_err(|error| format!("Error parsing shader primitive '{}'", type_name))?;
+            let primitive_type = ShaderPrimitiveType::from_string(type_name).map_err(|error| {
+                format!("Error parsing shader primitive '{}': {}", type_name, error)
+            })?;
             let location = unsafe { gl.get_attrib_location(*program_id, name) }
                 .ok_or_else(|| format!("Program {:?} has no attribute '{}'", program_id, name))?;
 
@@ -334,8 +339,9 @@ impl Shader {
         for capture in attribute_regex.captures_iter(shader_source) {
             let name = &capture[2];
             let type_name = &capture[1];
-            let primitive_type = ShaderPrimitiveType::from_string(type_name)
-                .map_err(|error| format!("Error parsing shader primitive '{}'", type_name))?;
+            let primitive_type = ShaderPrimitiveType::from_string(type_name).map_err(|error| {
+                format!("Error parsing shader primitive '{}': {}", type_name, error)
+            })?;
             let location = unsafe { gl.get_uniform_location(*program_id, name) }
                 .ok_or_else(|| format!("Program {:?} has no uniform '{}'", program_id, name))?;
 
@@ -374,7 +380,9 @@ impl Drop for Texture {
 impl Texture {
     fn new(gl: Rc<glow::Context>, name: &str, width: u32, height: u32) -> Texture {
         let texture_id = unsafe {
-            let texture = gl.create_texture().expect("Cannot create texture");
+            let texture = gl
+                .create_texture()
+                .expect(&format!("Cannot create texture '{}'", name));
             gl.bind_texture(glow::TEXTURE_2D, Some(texture));
             gl.tex_image_2d(
                 glow::TEXTURE_2D,
@@ -412,6 +420,10 @@ impl Texture {
             texture
         };
 
+        gl_check_state_ok(&gl).expect(&format!(
+            "Something went wrong while creating texture '{}'",
+            name
+        ));
         Texture {
             name: name.to_owned(),
             width,
@@ -446,6 +458,11 @@ impl Texture {
 
             gl.bind_texture(glow::TEXTURE_2D, None);
         }
+
+        gl_check_state_ok(&gl).expect(&format!(
+            "Something went wrong while updating texture '{}'",
+            self.name
+        ));
     }
 }
 
@@ -476,7 +493,7 @@ impl Depthbuffer {
         let depth_id = unsafe {
             let depth = gl
                 .create_renderbuffer()
-                .expect("Cannot create renderbuffer");
+                .expect(&format!("Cannot create depthbuffer '{}'", name));
             gl.bind_renderbuffer(glow::RENDERBUFFER, Some(depth));
             gl.renderbuffer_storage(
                 glow::RENDERBUFFER,
@@ -488,6 +505,11 @@ impl Depthbuffer {
 
             depth
         };
+
+        gl_check_state_ok(&gl).expect(&format!(
+            "Something went wrong while creating depthbuffer '{}'",
+            name
+        ));
 
         Depthbuffer {
             name: name.to_owned(),
@@ -556,7 +578,9 @@ impl Framebuffer {
             );
 
             // Create offscreen framebuffer
-            let framebuffer = gl.create_framebuffer().expect("Cannot create framebuffer");
+            let framebuffer = gl
+                .create_framebuffer()
+                .expect(&format!("Cannot create framebuffer '{}'", name));
             gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
 
             // Attach color and depth buffers
@@ -574,8 +598,17 @@ impl Framebuffer {
                 Some(depth.depth_id),
             );
 
-            assert!(gl.check_framebuffer_status(glow::FRAMEBUFFER) == glow::FRAMEBUFFER_COMPLETE);
+            assert!(
+                gl.check_framebuffer_status(glow::FRAMEBUFFER) == glow::FRAMEBUFFER_COMPLETE,
+                "Framebuffer status was not ok for framebuffer '{}'",
+                name
+            );
             gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+
+            gl_check_state_ok(&gl).expect(&format!(
+                "Something went wrong while creating framebuffer '{}'",
+                name
+            ));
 
             Framebuffer {
                 name: name.to_owned(),
@@ -621,15 +654,22 @@ impl DrawObject {
     fn new_from_shader(gl: Rc<glow::Context>, shader: &Shader) -> DrawObject {
         let name = format!("{} drawobject", &shader.name);
         let (vertex_array, vertex_buffer, index_buffer) = unsafe {
-            let vertex_array = gl
-                .create_vertex_array()
-                .expect("Cannot create vertex array");
+            let vertex_array = gl.create_vertex_array().expect(&format!(
+                "Cannot create vertex array object for drawobject '{}'",
+                name
+            ));
             gl.bind_vertex_array(Some(vertex_array));
 
-            let vertex_buffer = gl.create_buffer().expect("Cannot create vertex buffer");
+            let vertex_buffer = gl.create_buffer().expect(&format!(
+                "Cannot create vertex buffer for drawobject '{}'",
+                name
+            ));
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(vertex_buffer));
 
-            let index_buffer = gl.create_buffer().expect("Cannot create index buffer");
+            let index_buffer = gl.create_buffer().expect(&format!(
+                "Cannot create index buffer for drawobject '{}'",
+                name
+            ));
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(index_buffer));
 
             // Assing attributes
@@ -659,6 +699,11 @@ impl DrawObject {
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
             gl.bind_buffer(glow::ARRAY_BUFFER, None);
 
+            gl_check_state_ok(&gl).expect(&format!(
+                "Something went wrong while creating drawobject '{}'",
+                name
+            ));
+
             (vertex_array, vertex_buffer, index_buffer)
         };
 
@@ -683,6 +728,12 @@ impl DrawObject {
             let indices_raw = ct_lib::transmute_to_byte_slice(indices);
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.index_buffer_id));
             gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_raw, glow::STREAM_DRAW);
+
+            debug_assert!(
+                gl_check_state_ok(&gl).is_ok(),
+                "Something went wrong while binding buffers for drawobject '{}'",
+                self.name
+            );
         }
     }
 
@@ -701,6 +752,14 @@ impl DrawObject {
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
             gl.bind_buffer(glow::ARRAY_BUFFER, None);
         }
+
+        debug_assert!(
+            gl_check_state_ok(&gl).is_ok(),
+            "Something went wrong while drawing buffers from drawobject '{}' with indexcount {} and index offset {}",
+            self.name,
+            indices_count,
+            indices_start_offset
+        );
     }
 }
 
@@ -847,7 +906,7 @@ impl Renderer {
         let drawobject_simple = DrawObject::new_from_shader(gl.clone(), &shader_simple);
         let drawobject_blit = DrawObject::new_from_shader(gl.clone(), &shader_blit);
 
-        assert!(gl_state_ok(&gl), "Error while creating renderer");
+        gl_check_state_ok(&gl).expect("Something went wrong while creating renderer");
 
         Renderer {
             gl,
@@ -860,7 +919,7 @@ impl Renderer {
         }
     }
 
-    pub fn clear(&self) {
+    pub fn clear_screen(&self) {
         let gl = &self.gl;
         unsafe {
             gl.clear_color(0.0, 0.0, 0.0, 1.0);
@@ -1067,13 +1126,11 @@ impl Renderer {
                 }
             }
             debug_assert!(
-                gl_state_ok(&gl),
+                gl_check_state_ok(&gl).is_ok(),
                 "Error after drawcommand {:?}",
                 drawcommand
             );
         }
-
-        debug_assert!(gl_state_ok(&gl), "Error after processing drawcommands");
     }
 
     fn framebuffer_blit(
