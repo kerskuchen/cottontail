@@ -1,3 +1,5 @@
+use crate::{transmute_slice_to_byte_slice, transmute_to_byte_slice, transmute_to_slice};
+
 pub use super::bitmap::*;
 pub use super::color::*;
 use super::draw_common::*;
@@ -30,6 +32,9 @@ pub const ADDITIVITY_MAX: Additivity = 1.0;
 
 pub trait Vertex: Sized {
     const FLOAT_COMPONENT_COUNT: usize = std::mem::size_of::<Self>() / std::mem::size_of::<f32>();
+    fn as_floats(&self) -> &[f32] {
+        unsafe { transmute_to_slice(self) }
+    }
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -55,7 +60,7 @@ impl Vertex for VertexBlit {}
 
 // NOTE: We don't want to make the vertexbuffer dependent on a specific vertex type via <..>
 //       generics because then it is harder to code share between drawstate and the renderer
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct Vertexbuffer {
     pub vertices: Vec<f32>,
     pub indices: Vec<VertexIndex>,
@@ -91,7 +96,9 @@ impl Vertexbuffer {
         framebuffer_source_width: u32,
         framebuffer_source_height: u32,
     ) -> (VertexIndex, usize) {
-        debug_assert!(self.const_vertices_float_component_count == 4);
+        debug_assert!(
+            self.const_vertices_float_component_count == VertexBlit::FLOAT_COMPONENT_COUNT
+        );
 
         let start_index = self.vertices_count as VertexIndex;
         let index_count = 6;
@@ -125,36 +132,47 @@ impl Vertexbuffer {
         ));
 
         // right top
-        self.vertices.push(dim.right());
-        self.vertices.push(dim.top());
-        self.vertices.push(uvs.right());
-        self.vertices.push(uvs.top());
-        self.vertices_count += 1;
+        self.vertices.extend_from_slice(
+            VertexBlit {
+                pos: Vec2::new(dim.right(), dim.top()),
+                uv: Vec2::new(uvs.right(), uvs.top()),
+            }
+            .as_floats(),
+        );
         // right bottom
-        self.vertices.push(dim.right());
-        self.vertices.push(dim.bottom());
-        self.vertices.push(uvs.right());
-        self.vertices.push(uvs.bottom());
-        self.vertices_count += 1;
+        self.vertices.extend_from_slice(
+            VertexBlit {
+                pos: Vec2::new(dim.right(), dim.bottom()),
+                uv: Vec2::new(uvs.right(), uvs.bottom()),
+            }
+            .as_floats(),
+        );
         // left bottom
-        self.vertices.push(dim.left());
-        self.vertices.push(dim.bottom());
-        self.vertices.push(uvs.left());
-        self.vertices.push(uvs.bottom());
-        self.vertices_count += 1;
+        self.vertices.extend_from_slice(
+            VertexBlit {
+                pos: Vec2::new(dim.left(), dim.bottom()),
+                uv: Vec2::new(uvs.left(), uvs.bottom()),
+            }
+            .as_floats(),
+        );
         // left top
-        self.vertices.push(dim.left());
-        self.vertices.push(dim.top());
-        self.vertices.push(uvs.left());
-        self.vertices.push(uvs.top());
-        self.vertices_count += 1;
+        self.vertices.extend_from_slice(
+            VertexBlit {
+                pos: Vec2::new(dim.left(), dim.top()),
+                uv: Vec2::new(uvs.left(), uvs.top()),
+            }
+            .as_floats(),
+        );
+        self.vertices_count += 4;
 
         (start_index, index_count)
     }
 
     /// Returns (start_index, index_count) of pushed object
     pub fn push_drawable(&mut self, drawable: Drawable) -> (VertexIndex, usize) {
-        debug_assert!(self.const_vertices_float_component_count == 4);
+        debug_assert!(
+            self.const_vertices_float_component_count == VertexSimple::FLOAT_COMPONENT_COUNT
+        );
         let depth = drawable.depth;
         let color = drawable.color_modulate;
         let additivity = drawable.additivity;
@@ -175,53 +193,46 @@ impl Vertexbuffer {
                 self.indices.push(indices_start_offset + 3); // left top
 
                 // right top
-                self.vertices.push(quad.vert_right_top.x);
-                self.vertices.push(quad.vert_right_top.y);
-                self.vertices.push(depth);
-                self.vertices.push(uvs.right);
-                self.vertices.push(uvs.top);
-                self.vertices.push(color.r);
-                self.vertices.push(color.g);
-                self.vertices.push(color.b);
-                self.vertices.push(color.a);
-                self.vertices.push(additivity);
-                self.vertices_count += 1;
+                self.vertices.extend_from_slice(
+                    VertexSimple {
+                        pos: Vec3::from_vec2(quad.vert_right_top, depth),
+                        uv: Vec2::new(uvs.right, uvs.top),
+                        color,
+                        additivity,
+                    }
+                    .as_floats(),
+                );
                 // right bottom
-                self.vertices.push(quad.vert_right_bottom.x);
-                self.vertices.push(quad.vert_right_bottom.y);
-                self.vertices.push(depth);
-                self.vertices.push(uvs.right);
-                self.vertices.push(uvs.bottom);
-                self.vertices.push(color.r);
-                self.vertices.push(color.g);
-                self.vertices.push(color.b);
-                self.vertices.push(color.a);
-                self.vertices.push(additivity);
-                self.vertices_count += 1;
+                self.vertices.extend_from_slice(
+                    VertexSimple {
+                        pos: Vec3::from_vec2(quad.vert_right_bottom, depth),
+                        uv: Vec2::new(uvs.right, uvs.bottom),
+                        color,
+                        additivity,
+                    }
+                    .as_floats(),
+                );
                 // left bottom
-                self.vertices.push(quad.vert_left_bottom.x);
-                self.vertices.push(quad.vert_left_bottom.y);
-                self.vertices.push(depth);
-                self.vertices.push(uvs.left);
-                self.vertices.push(uvs.bottom);
-                self.vertices.push(color.r);
-                self.vertices.push(color.g);
-                self.vertices.push(color.b);
-                self.vertices.push(color.a);
-                self.vertices.push(additivity);
-                self.vertices_count += 1;
+                self.vertices.extend_from_slice(
+                    VertexSimple {
+                        pos: Vec3::from_vec2(quad.vert_left_bottom, depth),
+                        uv: Vec2::new(uvs.left, uvs.bottom),
+                        color,
+                        additivity,
+                    }
+                    .as_floats(),
+                );
                 // left top
-                self.vertices.push(quad.vert_left_top.x);
-                self.vertices.push(quad.vert_left_top.y);
-                self.vertices.push(depth);
-                self.vertices.push(uvs.left);
-                self.vertices.push(uvs.top);
-                self.vertices.push(color.r);
-                self.vertices.push(color.g);
-                self.vertices.push(color.b);
-                self.vertices.push(color.a);
-                self.vertices.push(additivity);
-                self.vertices_count += 1;
+                self.vertices.extend_from_slice(
+                    VertexSimple {
+                        pos: Vec3::from_vec2(quad.vert_left_top, depth),
+                        uv: Vec2::new(uvs.left, uvs.top),
+                        color,
+                        additivity,
+                    }
+                    .as_floats(),
+                );
+                self.vertices_count += 4;
 
                 index_count
             }
@@ -236,16 +247,15 @@ impl Vertexbuffer {
                     self.indices.push(indices_start_offset + index);
                 }
                 for (pos, uv) in vertices.iter().zip(uvs.iter()) {
-                    self.vertices.push(pos.x);
-                    self.vertices.push(pos.y);
-                    self.vertices.push(depth);
-                    self.vertices.push(uv.x);
-                    self.vertices.push(uv.y);
-                    self.vertices.push(color.r);
-                    self.vertices.push(color.g);
-                    self.vertices.push(color.b);
-                    self.vertices.push(color.a);
-                    self.vertices.push(additivity);
+                    self.vertices.extend_from_slice(
+                        VertexSimple {
+                            pos: Vec3::from_vec2(*pos, depth),
+                            uv: *uv,
+                            color,
+                            additivity,
+                        }
+                        .as_floats(),
+                    );
                     self.vertices_count += 1;
                 }
 
@@ -258,16 +268,7 @@ impl Vertexbuffer {
                     self.indices.push(indices_start_offset + index);
                 }
                 for vertex in vertices {
-                    self.vertices.push(vertex.pos.x);
-                    self.vertices.push(vertex.pos.y);
-                    self.vertices.push(depth);
-                    self.vertices.push(vertex.uv.x);
-                    self.vertices.push(vertex.uv.y);
-                    self.vertices.push(vertex.color.r);
-                    self.vertices.push(vertex.color.g);
-                    self.vertices.push(vertex.color.b);
-                    self.vertices.push(vertex.color.a);
-                    self.vertices.push(vertex.additivity);
+                    self.vertices.extend_from_slice(vertex.as_floats());
                     self.vertices_count += 1;
                 }
                 index_count
@@ -475,7 +476,7 @@ impl std::fmt::Debug for Drawcommand {
                 f,
                 "AssignDrawBuffers: shader: {}, vertexbuffer floatcount: {}, indices count: {}", 
                 shader,
-                vertexbuffer.borrow().vertices.len(),
+                vertexbuffer.borrow().vertices_count,
                 vertexbuffer.borrow().indices.len()
             ),
             Drawcommand::Draw {

@@ -93,7 +93,7 @@ impl Bitmap {
     }
 
     pub fn from_png_data(png_data: &[u8]) -> Result<Bitmap, String> {
-        use crate::transmute_to_byte_slice_mut;
+        use crate::transmute_slice_to_byte_slice_mut;
 
         let mut decoder = png::Decoder::new(std::io::Cursor::new(png_data));
         decoder.set_transformations(png::Transformations::EXPAND);
@@ -105,7 +105,7 @@ impl Bitmap {
         let mut buffer =
             vec![PixelRGBA::transparent(); size_bytes / std::mem::size_of::<PixelRGBA>()];
         {
-            let buffer_raw = unsafe { transmute_to_byte_slice_mut(&mut buffer) };
+            let buffer_raw = unsafe { transmute_slice_to_byte_slice_mut(&mut buffer) };
             png_reader
                 .next_frame(buffer_raw)
                 .map_err(|error| format!("Could not decode png data: {}", error))?;
@@ -149,7 +149,7 @@ impl Bitmap {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn write_to_png_file(bitmap: &Bitmap, png_filepath: &str) {
-        use crate::transmute_to_byte_slice;
+        use crate::transmute_slice_to_byte_slice;
 
         std::fs::create_dir_all(platform::path_without_filename(png_filepath)).expect(&format!(
             "Could not create necessary directories to write to '{}'",
@@ -165,7 +165,7 @@ impl Bitmap {
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder.write_header().unwrap();
 
-        let pixels_raw = unsafe { transmute_to_byte_slice(&bitmap.data) };
+        let pixels_raw = unsafe { transmute_slice_to_byte_slice(&bitmap.data) };
         writer
             .write_image_data(pixels_raw)
             .expect(&format!("Could not write png file to '{}'", png_filepath));

@@ -15,10 +15,10 @@
 - Refactor draw/renderer to have one vertex-/index-batch-buffer per shader with offsets into buffer
   (see sokol_gfx appendbuffer mechanism)
 - make vertexbuffers more save (disallow use of different vertex types) 
+- pushing of drawables is now slightly faster ~10% -> ~4%
  
 # CURRENT
 
-- make pushing of vertices faster in vertexbuffer
 
 # NEXT:
 
@@ -123,7 +123,6 @@
 - test out 22050khz audio?
 - current hotspots are:
   - sorting drawables ~5% (they are pretty big to sort, maybe we can use references as payload?)
-  - pushing drawbles ~10% (batches are allocated all over the place (allocation takes up ~7%))
   - drawing rects by drawing bresenham lines ~8%
   - copying glyphs when drawing debug logs ~7%
   - render audiochunk ~40%
