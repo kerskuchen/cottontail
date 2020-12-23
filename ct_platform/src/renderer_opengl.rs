@@ -6,7 +6,7 @@ use ct_lib::log;
 
 use glow::*;
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc, unimplemented};
+use std::{collections::HashMap, rc::Rc};
 
 type GLProgramId = <glow::Context as glow::HasContext>::Program;
 type GLTextureId = <glow::Context as glow::HasContext>::Texture;
@@ -122,9 +122,10 @@ struct ShaderProgram {
 
 impl Drop for ShaderProgram {
     fn drop(&mut self) {
+        let gl = &self.gl;
         unsafe {
-            self.gl.use_program(None);
-            self.gl.delete_program(self.program_id);
+            gl.use_program(None);
+            gl.delete_program(self.program_id);
         }
     }
 }
@@ -335,204 +336,221 @@ impl ShaderProgram {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Creating textures from pixelbuffers
 
-struct GLTexture {
-    pub id: GLTextureId,
+struct Texture {
+    gl: Rc<glow::Context>,
+    texture_id: GLTextureId,
     pub width: u32,
     pub height: u32,
 }
 
-fn gl_texture_create(gl: &glow::Context, width: u32, height: u32) -> GLTexture {
-    let texture = unsafe {
-        let texture = gl.create_texture().expect("Cannot create texture");
-        gl.bind_texture(glow::TEXTURE_2D, Some(texture));
-        gl.tex_image_2d(
-            glow::TEXTURE_2D,
-            0,
-            glow::RGBA as i32,
-            width as i32,
-            height as i32,
-            0,
-            glow::RGBA,
-            glow::UNSIGNED_BYTE,
-            None,
-        );
-        gl.tex_parameter_i32(
-            glow::TEXTURE_2D,
-            glow::TEXTURE_MIN_FILTER,
-            glow::NEAREST as i32,
-        );
-        gl.tex_parameter_i32(
-            glow::TEXTURE_2D,
-            glow::TEXTURE_MAG_FILTER,
-            glow::NEAREST as i32,
-        );
-        gl.tex_parameter_i32(
-            glow::TEXTURE_2D,
-            glow::TEXTURE_WRAP_S,
-            glow::CLAMP_TO_EDGE as i32,
-        );
-        gl.tex_parameter_i32(
-            glow::TEXTURE_2D,
-            glow::TEXTURE_WRAP_T,
-            glow::CLAMP_TO_EDGE as i32,
-        );
-        gl.bind_texture(glow::TEXTURE_2D, None);
-
-        texture
-    };
-
-    GLTexture {
-        id: texture,
-        width,
-        height,
+impl Drop for Texture {
+    fn drop(&mut self) {
+        let gl = &self.gl;
+        unsafe {
+            gl.bind_texture(glow::TEXTURE_2D, None);
+            gl.delete_texture(self.texture_id);
+        }
     }
 }
 
-fn gl_texture_update(
-    gl: &glow::Context,
-    texture: &GLTexture,
-    offset_x: u32,
-    offset_y: u32,
-    region_width: u32,
-    region_height: u32,
-    pixels: &[PixelRGBA],
-) {
-    unsafe {
-        gl.bind_texture(glow::TEXTURE_2D, Some(texture.id));
-        gl.tex_sub_image_2d(
-            glow::TEXTURE_2D,
-            0,
-            offset_x as i32,
-            offset_y as i32,
-            region_width as i32,
-            region_height as i32,
-            glow::RGBA,
-            glow::UNSIGNED_BYTE,
-            PixelUnpackData::Slice(ct_lib::transmute_to_byte_slice(pixels)),
-        );
+impl Texture {
+    fn new(gl: Rc<glow::Context>, width: u32, height: u32) -> Texture {
+        let texture_id = unsafe {
+            let texture = gl.create_texture().expect("Cannot create texture");
+            gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+            gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA as i32,
+                width as i32,
+                height as i32,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                None,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MIN_FILTER,
+                glow::NEAREST as i32,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MAG_FILTER,
+                glow::NEAREST as i32,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_WRAP_S,
+                glow::CLAMP_TO_EDGE as i32,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_WRAP_T,
+                glow::CLAMP_TO_EDGE as i32,
+            );
+            gl.bind_texture(glow::TEXTURE_2D, None);
 
-        gl.bind_texture(glow::TEXTURE_2D, None);
+            texture
+        };
+
+        Texture {
+            gl,
+            texture_id,
+            width,
+            height,
+        }
     }
-}
 
-fn gl_texture_delete(gl: &glow::Context, texture: GLTexture) {
-    unsafe {
-        gl.bind_texture(glow::TEXTURE_2D, None);
-        gl.delete_texture(texture.id);
+    fn update_pixels(
+        &self,
+        offset_x: u32,
+        offset_y: u32,
+        region_width: u32,
+        region_height: u32,
+        pixels: &[PixelRGBA],
+    ) {
+        let gl = &self.gl;
+        unsafe {
+            gl.bind_texture(glow::TEXTURE_2D, Some(self.texture_id));
+            gl.tex_sub_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                offset_x as i32,
+                offset_y as i32,
+                region_width as i32,
+                region_height as i32,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                PixelUnpackData::Slice(ct_lib::transmute_to_byte_slice(pixels)),
+            );
+
+            gl.bind_texture(glow::TEXTURE_2D, None);
+        }
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Creating depthbuffer
 
-struct GLDepthbuffer {
-    pub id: GLRenderbufferId,
+struct Depthbuffer {
+    gl: Rc<glow::Context>,
+    depth_id: GLRenderbufferId,
     pub width: u32,
     pub height: u32,
 }
 
-fn gl_depthbuffer_create(gl: &glow::Context, width: u32, height: u32) -> GLDepthbuffer {
-    let depth = unsafe {
-        let depth = gl
-            .create_renderbuffer()
-            .expect("Cannot create renderbuffer");
-        gl.bind_renderbuffer(glow::RENDERBUFFER, Some(depth));
-        gl.renderbuffer_storage(
-            glow::RENDERBUFFER,
-            glow::DEPTH_COMPONENT16,
-            width as i32,
-            height as i32,
-        );
-        gl.bind_renderbuffer(glow::RENDERBUFFER, None);
-
-        depth
-    };
-
-    GLDepthbuffer {
-        id: depth,
-        width,
-        height,
+impl Drop for Depthbuffer {
+    fn drop(&mut self) {
+        let gl = &self.gl;
+        unsafe {
+            gl.bind_renderbuffer(glow::RENDERBUFFER, None);
+            gl.delete_renderbuffer(self.depth_id);
+        }
     }
 }
 
-fn gl_depthbuffer_delete(gl: &glow::Context, depthbuffer: GLDepthbuffer) {
-    unsafe {
-        gl.bind_renderbuffer(glow::RENDERBUFFER, None);
-        gl.delete_renderbuffer(depthbuffer.id);
-    }
-}
+impl Depthbuffer {
+    fn new(gl: Rc<glow::Context>, width: u32, height: u32) -> Depthbuffer {
+        let depth_id = unsafe {
+            let depth = gl
+                .create_renderbuffer()
+                .expect("Cannot create renderbuffer");
+            gl.bind_renderbuffer(glow::RENDERBUFFER, Some(depth));
+            gl.renderbuffer_storage(
+                glow::RENDERBUFFER,
+                glow::DEPTH_COMPONENT16,
+                width as i32,
+                height as i32,
+            );
+            gl.bind_renderbuffer(glow::RENDERBUFFER, None);
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// General purpose offscreen-framebuffers
+            depth
+        };
 
-struct GLFramebuffer {
-    framebuffer_object: Option<GLFramebufferId>,
-    color: Option<GLTexture>,
-    depth: Option<GLDepthbuffer>,
-    width: u32,
-    height: u32,
-}
-
-fn gl_framebuffer_screen(width: u32, height: u32) -> GLFramebuffer {
-    GLFramebuffer {
-        framebuffer_object: None,
-        color: None,
-        depth: None,
-        width,
-        height,
-    }
-}
-
-fn gl_framebuffer_create(gl: &glow::Context, width: u32, height: u32) -> GLFramebuffer {
-    unsafe {
-        // The color texture
-        let color = gl_texture_create(gl, width, height);
-        let depth = gl_depthbuffer_create(gl, width, height);
-
-        // Create offscreen framebuffer
-        let framebuffer = gl.create_framebuffer().expect("Cannot create framebuffer");
-        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
-
-        // Attach color and depth buffers
-        gl.framebuffer_texture_2d(
-            glow::FRAMEBUFFER,
-            glow::COLOR_ATTACHMENT0,
-            glow::TEXTURE_2D,
-            Some(color.id),
-            0,
-        );
-        gl.framebuffer_renderbuffer(
-            glow::FRAMEBUFFER,
-            glow::DEPTH_ATTACHMENT,
-            glow::RENDERBUFFER,
-            Some(depth.id),
-        );
-
-        assert!(gl.check_framebuffer_status(glow::FRAMEBUFFER) == glow::FRAMEBUFFER_COMPLETE);
-        gl.bind_framebuffer(glow::FRAMEBUFFER, None);
-
-        GLFramebuffer {
-            framebuffer_object: Some(framebuffer),
-            color: Some(color),
-            depth: Some(depth),
+        Depthbuffer {
+            gl,
+            depth_id,
             width,
             height,
         }
     }
 }
 
-fn gl_framebuffer_delete(gl: &glow::Context, framebuffer: GLFramebuffer) {
-    if let Some(framebuffer_object) = framebuffer.framebuffer_object {
-        unsafe {
-            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
-            gl.delete_framebuffer(framebuffer_object);
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// General purpose offscreen-framebuffers
+
+struct Framebuffer {
+    gl: Rc<glow::Context>,
+    // NOTE: This can be `None` if our framebuffer represents the screen framebuffer
+    framebuffer_id: Option<GLFramebufferId>,
+    color: Option<Texture>,
+    _depth: Option<Depthbuffer>,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Drop for Framebuffer {
+    fn drop(&mut self) {
+        if let Some(framebuffer_id) = self.framebuffer_id {
+            let gl = &self.gl;
+            unsafe {
+                gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+                gl.delete_framebuffer(framebuffer_id);
+            }
         }
     }
-    if let Some(color) = framebuffer.color {
-        gl_texture_delete(gl, color);
+}
+
+impl Framebuffer {
+    pub fn new_screen(gl: Rc<glow::Context>, width: u32, height: u32) -> Framebuffer {
+        Framebuffer {
+            gl,
+            framebuffer_id: None,
+            color: None,
+            _depth: None,
+            width,
+            height,
+        }
     }
-    if let Some(depth) = framebuffer.depth {
-        gl_depthbuffer_delete(gl, depth);
+
+    pub fn new(gl: Rc<glow::Context>, width: u32, height: u32) -> Framebuffer {
+        unsafe {
+            // The color texture
+            let color = Texture::new(gl.clone(), width, height);
+            let depth = Depthbuffer::new(gl.clone(), width, height);
+
+            // Create offscreen framebuffer
+            let framebuffer = gl.create_framebuffer().expect("Cannot create framebuffer");
+            gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
+
+            // Attach color and depth buffers
+            gl.framebuffer_texture_2d(
+                glow::FRAMEBUFFER,
+                glow::COLOR_ATTACHMENT0,
+                glow::TEXTURE_2D,
+                Some(color.texture_id),
+                0,
+            );
+            gl.framebuffer_renderbuffer(
+                glow::FRAMEBUFFER,
+                glow::DEPTH_ATTACHMENT,
+                glow::RENDERBUFFER,
+                Some(depth.depth_id),
+            );
+
+            assert!(gl.check_framebuffer_status(glow::FRAMEBUFFER) == glow::FRAMEBUFFER_COMPLETE);
+            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+
+            Framebuffer {
+                gl,
+                framebuffer_id: Some(framebuffer),
+                color: Some(color),
+                _depth: Some(depth),
+                width,
+                height,
+            }
+        }
     }
 }
 
@@ -747,16 +765,15 @@ pub struct Renderer {
     drawobject_simple: Option<GLDrawobject>,
     drawobject_blit: Option<GLDrawobject>,
 
-    framebuffers: HashMap<FramebufferTarget, GLFramebuffer>,
-    textures: HashMap<TextureInfo, GLTexture>,
+    framebuffers: HashMap<FramebufferTarget, Framebuffer>,
+    textures: HashMap<TextureInfo, Texture>,
 }
 
 impl Drop for Renderer {
     fn drop(&mut self) {
-        self.reset();
-
-        gl_drawobject_free(&self.gl, self.drawobject_simple.take().unwrap());
-        gl_drawobject_free(&self.gl, self.drawobject_blit.take().unwrap());
+        let gl = &self.gl;
+        gl_drawobject_free(&gl, self.drawobject_simple.take().unwrap());
+        gl_drawobject_free(&gl, self.drawobject_blit.take().unwrap());
     }
 }
 
@@ -811,23 +828,17 @@ impl Renderer {
     }
 
     pub fn clear(&self) {
+        let gl = &self.gl;
         unsafe {
-            self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
-            self.gl.clear_depth_f32(0.0);
-            self.gl
-                .clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
+            gl.clear_color(0.0, 0.0, 0.0, 1.0);
+            gl.clear_depth_f32(0.0);
+            gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
         }
     }
 
     pub fn reset(&mut self) {
-        for (framebuffer_target, framebuffer) in self.framebuffers.drain() {
-            if let FramebufferTarget::Offscreen(_framebuffer_info) = framebuffer_target {
-                gl_framebuffer_delete(&self.gl, framebuffer);
-            }
-        }
-        for (_texture_info, texture) in self.textures.drain() {
-            gl_texture_delete(&self.gl, texture);
-        }
+        self.framebuffers.clear();
+        self.textures.clear();
     }
 
     pub fn process_drawcommands(
@@ -836,10 +847,12 @@ impl Renderer {
         screen_height: u32,
         drawcommands: &[Drawcommand],
     ) {
+        let gl = &self.gl;
+
         // Update our screen framebuffer
         self.framebuffers.insert(
             FramebufferTarget::Screen,
-            gl_framebuffer_screen(screen_width, screen_height),
+            Framebuffer::new_screen(gl.clone(), screen_width, screen_height),
         );
 
         for drawcommand in drawcommands {
@@ -860,10 +873,8 @@ impl Renderer {
                         .expect(&format!("No texture found for '{:?}'", texture_info));
 
                     unsafe {
-                        self.gl
-                            .bind_framebuffer(glow::FRAMEBUFFER, framebuffer.framebuffer_object);
-                        self.gl
-                            .viewport(0, 0, framebuffer.width as i32, framebuffer.height as i32);
+                        gl.bind_framebuffer(glow::FRAMEBUFFER, framebuffer.framebuffer_id);
+                        gl.viewport(0, 0, framebuffer.width as i32, framebuffer.height as i32);
                     }
 
                     match shader_params {
@@ -875,21 +886,21 @@ impl Renderer {
                             // NOTE: We need to bind the texture here as the activation of the
                             //       shader might have invalidated our texture unit
                             unsafe {
-                                self.gl.active_texture(glow::TEXTURE0);
-                                self.gl.bind_texture(glow::TEXTURE_2D, Some(texture.id));
+                                gl.active_texture(glow::TEXTURE0);
+                                gl.bind_texture(glow::TEXTURE_2D, Some(texture.texture_id));
                             }
 
                             let vertices = unsafe {
                                 transmute_to_slice::<Vertex, f32>(&vertexbuffer.vertices)
                             };
                             gl_drawobject_assign_buffer(
-                                &self.gl,
+                                &gl,
                                 &self.drawobject_simple.as_ref().unwrap(),
                                 &vertices,
                                 &vertexbuffer.indices,
                             );
                             gl_drawobject_draw(
-                                &self.gl,
+                                &gl,
                                 &self.drawobject_simple.as_ref().unwrap(),
                                 vertexbuffer.indices.len(),
                                 0,
@@ -906,9 +917,10 @@ impl Renderer {
                         "A texture already exists for: '{:?}'",
                         texture_info
                     );
-                    let texture =
-                        gl_texture_create(&self.gl, texture_info.width, texture_info.height);
-                    self.textures.insert(texture_info.clone(), texture);
+                    self.textures.insert(
+                        texture_info.clone(),
+                        Texture::new(gl.clone(), texture_info.width, texture_info.height),
+                    );
                 }
                 Drawcommand::TextureUpdate {
                     texture_info,
@@ -920,9 +932,7 @@ impl Renderer {
                         .textures
                         .get(&texture_info)
                         .expect(&format!("No texture found for '{:?}'", texture_info));
-                    gl_texture_update(
-                        &self.gl,
-                        texture,
+                    texture.update_pixels(
                         *offset_x,
                         *offset_y,
                         bitmap.width as u32,
@@ -931,11 +941,9 @@ impl Renderer {
                     );
                 }
                 Drawcommand::TextureFree(texture_info) => {
-                    let texture = self
-                        .textures
+                    self.textures
                         .remove(texture_info)
                         .expect(&format!("No texture found for '{:?}'", texture_info));
-                    gl_texture_delete(&self.gl, texture);
                 }
                 Drawcommand::FramebufferCreate(framebuffer_info) => {
                     assert!(
@@ -945,25 +953,22 @@ impl Renderer {
                         "A framebuffer already exists for: '{:?}'",
                         framebuffer_info,
                     );
-                    let framebuffer = gl_framebuffer_create(
-                        &self.gl,
-                        framebuffer_info.width,
-                        framebuffer_info.height,
-                    );
                     self.framebuffers.insert(
                         FramebufferTarget::Offscreen(framebuffer_info.clone()),
-                        framebuffer,
+                        Framebuffer::new(
+                            gl.clone(),
+                            framebuffer_info.width,
+                            framebuffer_info.height,
+                        ),
                     );
                 }
                 Drawcommand::FramebufferFree(framebuffer_info) => {
-                    let framebuffer = self
-                        .framebuffers
+                    self.framebuffers
                         .remove(&FramebufferTarget::Offscreen(framebuffer_info.clone()))
                         .expect(&format!(
                             "No framebuffer found for '{:?}'",
                             framebuffer_info
                         ));
-                    gl_framebuffer_delete(&self.gl, framebuffer);
                 }
                 Drawcommand::FramebufferClear {
                     framebuffer_target,
@@ -976,21 +981,19 @@ impl Renderer {
                     ));
 
                     unsafe {
-                        self.gl
-                            .bind_framebuffer(glow::FRAMEBUFFER, framebuffer.framebuffer_object);
-                        self.gl
-                            .viewport(0, 0, framebuffer.width as i32, framebuffer.height as i32);
+                        gl.bind_framebuffer(glow::FRAMEBUFFER, framebuffer.framebuffer_id);
+                        gl.viewport(0, 0, framebuffer.width as i32, framebuffer.height as i32);
 
                         let mut clear_mask = 0;
                         if let Some(color) = new_color {
                             clear_mask |= glow::COLOR_BUFFER_BIT;
-                            self.gl.clear_color(color.r, color.g, color.b, color.a);
+                            gl.clear_color(color.r, color.g, color.b, color.a);
                         }
                         if let Some(depth) = new_depth {
                             clear_mask |= glow::DEPTH_BUFFER_BIT;
-                            self.gl.clear_depth_f32(*depth);
+                            gl.clear_depth_f32(*depth);
                         }
-                        self.gl.clear(clear_mask);
+                        gl.clear(clear_mask);
                     }
                 }
                 Drawcommand::FramebufferBlit {
@@ -1034,40 +1037,40 @@ impl Renderer {
                 }
             }
             debug_assert!(
-                gl_state_ok(&self.gl),
+                gl_state_ok(&gl),
                 "Error after drawcommand {:?}",
                 drawcommand
             );
         }
 
-        debug_assert!(gl_state_ok(&self.gl), "Error after processing drawcommands");
+        debug_assert!(gl_state_ok(&gl), "Error after processing drawcommands");
     }
 
     fn framebuffer_blit(
         &self,
-        framebuffer_target: &GLFramebuffer,
-        framebuffer_source: &GLFramebuffer,
+        framebuffer_target: &Framebuffer,
+        framebuffer_source: &Framebuffer,
         rect_target: BlitRect,
         rect_source: BlitRect,
     ) {
+        let gl = &self.gl;
         unsafe {
-            self.gl
-                .bind_framebuffer(glow::FRAMEBUFFER, framebuffer_target.framebuffer_object);
-            self.gl.viewport(
+            gl.bind_framebuffer(glow::FRAMEBUFFER, framebuffer_target.framebuffer_id);
+            gl.viewport(
                 0,
                 0,
                 framebuffer_target.width as i32,
                 framebuffer_target.height as i32,
             );
 
-            self.gl.disable(glow::BLEND);
-            self.gl.disable(glow::DEPTH_TEST);
+            gl.disable(glow::BLEND);
+            gl.disable(glow::DEPTH_TEST);
 
-            self.gl.active_texture(glow::TEXTURE0);
-            self.gl.bind_texture(
+            gl.active_texture(glow::TEXTURE0);
+            gl.bind_texture(
                 glow::TEXTURE_2D,
                 if let Some(color) = &framebuffer_source.color {
-                    Some(color.id)
+                    Some(color.texture_id)
                 } else {
                     None
                 },
@@ -1093,21 +1096,21 @@ impl Renderer {
         let vertices =
             unsafe { transmute_to_slice::<VertexBlit, f32>(&vertexbuffer_blit.vertices) };
         gl_drawobject_assign_buffer(
-            &self.gl,
+            &gl,
             &self.drawobject_blit.as_ref().unwrap(),
             &vertices,
             &vertexbuffer_blit.indices,
         );
         gl_drawobject_draw(
-            &self.gl,
+            &gl,
             &self.drawobject_blit.as_ref().unwrap(),
             vertexbuffer_blit.indices.len(),
             0,
         );
 
         unsafe {
-            self.gl.enable(glow::BLEND);
-            self.gl.enable(glow::DEPTH_TEST);
+            gl.enable(glow::BLEND);
+            gl.enable(glow::DEPTH_TEST);
         }
     }
 }
