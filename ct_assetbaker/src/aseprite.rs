@@ -6,8 +6,8 @@ use super::{
 };
 
 use ct_lib::math::*;
-use ct_lib::sprite::*;
 use ct_lib::platform;
+use ct_lib::sprite::*;
 
 use ct_lib::indexmap::indexmap;
 use ct_lib::indexmap::IndexMap;

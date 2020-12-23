@@ -1,8 +1,6 @@
+use ct_lib::draw::*;
 use ct_lib::draw_common::*;
 use ct_lib::math::*;
-use ct_lib::{draw::*, transmute_to_slice};
-
-use ct_lib::log;
 
 use glow::*;
 
@@ -433,7 +431,25 @@ impl Texture {
         }
     }
 
-    fn update_pixels(
+    pub fn activate(&self, texture_unit: usize) {
+        let texture_unit = match texture_unit {
+            0 => glow::TEXTURE0,
+            1 => glow::TEXTURE1,
+            2 => glow::TEXTURE2,
+            3 => glow::TEXTURE3,
+            _ => panic!(
+                "Activating texture '{}' on texture unit {} not supported",
+                self.name, texture_unit
+            ),
+        };
+        let gl = &self.gl;
+        unsafe {
+            gl.active_texture(texture_unit);
+            gl.bind_texture(glow::TEXTURE_2D, Some(self.texture_id));
+        }
+    }
+
+    pub fn update_pixels(
         &self,
         offset_x: u32,
         offset_y: u32,
@@ -621,6 +637,14 @@ impl Framebuffer {
             }
         }
     }
+
+    pub fn activate(&self) {
+        let gl = &self.gl;
+        unsafe {
+            gl.bind_framebuffer(glow::FRAMEBUFFER, self.framebuffer_id);
+            gl.viewport(0, 0, self.width as i32, self.height as i32);
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -652,7 +676,7 @@ impl Drop for DrawObject {
 
 impl DrawObject {
     fn new_from_shader(gl: Rc<glow::Context>, shader: &Shader) -> DrawObject {
-        let name = format!("{} drawobject", &shader.name);
+        let name = shader.name.clone();
         let (vertex_array, vertex_buffer, index_buffer) = unsafe {
             let vertex_array = gl.create_vertex_array().expect(&format!(
                 "Cannot create vertex array object for drawobject '{}'",
@@ -672,7 +696,7 @@ impl DrawObject {
             ));
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(index_buffer));
 
-            // Assing attributes
+            // Assign attributes
             let attributes = &shader.attributes;
             let stride = attributes.iter().fold(0, |acc, attribute| {
                 acc + attribute.primitive_type.size_in_byte()
@@ -716,7 +740,7 @@ impl DrawObject {
         }
     }
 
-    fn assing_buffers(&self, vertices: &[f32], indices: &[u32]) {
+    fn assign_buffers(&self, vertices: &[f32], indices: &[u32]) {
         let gl = &self.gl;
         unsafe {
             // Vertices
@@ -737,8 +761,9 @@ impl DrawObject {
         }
     }
 
-    fn draw(&self, indices_count: usize, indices_start_offset: usize) {
+    fn draw(&self, indices_start_offset: VertexIndex, indices_count: usize) {
         let gl = &self.gl;
+        let indices_offset_in_bytes = std::mem::size_of::<u32>() * indices_start_offset as usize;
         unsafe {
             // Draw
             gl.bind_vertex_array(Some(self.vertex_array_id));
@@ -746,7 +771,7 @@ impl DrawObject {
                 glow::TRIANGLES,
                 indices_count as i32,
                 glow::UNSIGNED_INT,
-                indices_start_offset as i32,
+                indices_offset_in_bytes as i32,
             );
             gl.bind_vertex_array(None);
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
@@ -858,11 +883,8 @@ void main()
 pub struct Renderer {
     gl: Rc<glow::Context>,
 
-    shader_simple: Shader,
-    shader_blit: Shader,
-
-    drawobject_simple: DrawObject,
-    drawobject_blit: DrawObject,
+    shaders: HashMap<String, Shader>,
+    drawobjects: HashMap<String, DrawObject>,
 
     framebuffers: HashMap<FramebufferTarget, Framebuffer>,
     textures: HashMap<TextureInfo, Texture>,
@@ -906,14 +928,20 @@ impl Renderer {
         let drawobject_simple = DrawObject::new_from_shader(gl.clone(), &shader_simple);
         let drawobject_blit = DrawObject::new_from_shader(gl.clone(), &shader_blit);
 
+        let mut drawobjects = HashMap::new();
+        drawobjects.insert("simple".to_owned(), drawobject_simple);
+        drawobjects.insert("blit".to_owned(), drawobject_blit);
+
+        let mut shaders = HashMap::new();
+        shaders.insert("simple".to_owned(), shader_simple);
+        shaders.insert("blit".to_owned(), shader_blit);
+
         gl_check_state_ok(&gl).expect("Something went wrong while creating renderer");
 
         Renderer {
             gl,
-            shader_simple,
-            shader_blit,
-            drawobject_simple,
-            drawobject_blit,
+            shaders,
+            drawobjects,
             framebuffers: HashMap::new(),
             textures: HashMap::new(),
         }
@@ -949,50 +977,57 @@ impl Renderer {
 
         for drawcommand in drawcommands {
             match drawcommand {
-                Drawcommand::Draw {
-                    framebuffer_target,
-                    texture_info,
-                    shader_params,
+                Drawcommand::AssignDrawBuffers {
+                    shader,
                     vertexbuffer,
                 } => {
-                    let framebuffer = self.framebuffers.get(framebuffer_target).expect(&format!(
-                        "No framebuffer found for '{:?}'",
-                        framebuffer_target
-                    ));
-                    let texture = self
-                        .textures
+                    let vertexbuffer = vertexbuffer.borrow();
+                    assert!(
+                        vertexbuffer.indices.len() % 3 == 0,
+                        "We only support triangle rendering"
+                    );
+                    self.drawobjects
+                        .get(shader)
+                        .expect(&format!("No drawobject found for shader '{}'", shader))
+                        .assign_buffers(&vertexbuffer.vertices, &vertexbuffer.indices);
+                }
+                Drawcommand::Draw {
+                    shader,
+                    uniform_block,
+                    framebuffer_target,
+                    texture_info,
+                    indices_start_offset,
+                    indices_count,
+                } => {
+                    assert!(
+                        shader != "blit",
+                        "The blit shader does not support drawing operations"
+                    );
+
+                    self.framebuffers
+                        .get(framebuffer_target)
+                        .expect(&format!(
+                            "No framebuffer found for '{:?}'",
+                            framebuffer_target
+                        ))
+                        .activate();
+
+                    self.shaders
+                        .get(shader)
+                        .expect(&format!("Shader '{}' not found", shader))
+                        .activate(uniform_block);
+
+                    // NOTE: We need to bind the texture after shader activation as it
+                    //       might have invalidated our texture unit
+                    self.textures
                         .get(texture_info)
-                        .expect(&format!("No texture found for '{:?}'", texture_info));
+                        .expect(&format!("No texture found for '{:?}'", texture_info))
+                        .activate(0);
 
-                    unsafe {
-                        gl.bind_framebuffer(glow::FRAMEBUFFER, framebuffer.framebuffer_id);
-                        gl.viewport(0, 0, framebuffer.width as i32, framebuffer.height as i32);
-                    }
-
-                    match shader_params {
-                        ShaderParams::Simple { uniform_block } => {
-                            assert!(vertexbuffer.indices.len() % 3 == 0);
-
-                            self.shader_simple.activate(uniform_block);
-
-                            // NOTE: We need to bind the texture here as the activation of the
-                            //       shader might have invalidated our texture unit
-                            unsafe {
-                                gl.active_texture(glow::TEXTURE0);
-                                gl.bind_texture(glow::TEXTURE_2D, Some(texture.texture_id));
-                            }
-
-                            let vertices = unsafe {
-                                transmute_to_slice::<Vertex, f32>(&vertexbuffer.vertices)
-                            };
-                            self.drawobject_simple
-                                .assing_buffers(&vertices, &vertexbuffer.indices);
-                            self.drawobject_simple.draw(vertexbuffer.indices.len(), 0);
-                        }
-                        ShaderParams::Blit { .. } => {
-                            panic!("The blit shader does not support drawing operations")
-                        }
-                    }
+                    self.drawobjects
+                        .get(shader)
+                        .expect(&format!("Drawobject '{}' not found", shader))
+                        .draw(*indices_start_offset, *indices_count);
                 }
                 Drawcommand::TextureCreate(texture_info) => {
                     assert!(
@@ -1064,15 +1099,12 @@ impl Renderer {
                     new_color,
                     new_depth,
                 } => {
-                    let framebuffer = self.framebuffers.get(&framebuffer_target).expect(&format!(
+                    let framebuffer = self.framebuffers.get(framebuffer_target).expect(&format!(
                         "No framebuffer found for '{:?}'",
                         framebuffer_target
                     ));
-
+                    framebuffer.activate();
                     unsafe {
-                        gl.bind_framebuffer(glow::FRAMEBUFFER, framebuffer.framebuffer_id);
-                        gl.viewport(0, 0, framebuffer.width as i32, framebuffer.height as i32);
-
                         let mut clear_mask = 0;
                         if let Some(color) = new_color {
                             clear_mask |= glow::COLOR_BUFFER_BIT;
@@ -1098,8 +1130,6 @@ impl Renderer {
                         source_framebuffer_info,
                     );
 
-                    // NOTE: Instead of just borrowing our value we need to take it out
-                    //       of the map here to please the borrowchecker. Lets find a better way
                     let source_framebuffer = self
                         .framebuffers
                         .get(&FramebufferTarget::Offscreen(
@@ -1142,17 +1172,12 @@ impl Renderer {
     ) {
         let gl = &self.gl;
         unsafe {
-            gl.bind_framebuffer(glow::FRAMEBUFFER, framebuffer_target.framebuffer_id);
-            gl.viewport(
-                0,
-                0,
-                framebuffer_target.width as i32,
-                framebuffer_target.height as i32,
-            );
-
             gl.disable(glow::BLEND);
             gl.disable(glow::DEPTH_TEST);
+        }
 
+        framebuffer_target.activate();
+        unsafe {
             gl.active_texture(glow::TEXTURE0);
             gl.bind_texture(
                 glow::TEXTURE_2D,
@@ -1170,22 +1195,25 @@ impl Renderer {
             DEFAULT_WORLD_ZNEAR,
             DEFAULT_WORLD_ZFAR,
         );
-        self.shader_blit.activate(&transform.into_column_array());
+        self.shaders
+            .get("blit")
+            .expect("Blit shader not found '{}' not found")
+            .activate(&transform.into_column_array());
 
-        let mut vertexbuffer_blit = VertexbufferBlit::new(0);
-        vertexbuffer_blit.push_blit_quad(
+        let mut vertexbuffer = Vertexbuffer::new();
+        let (indices_start_index, indices_count) = vertexbuffer.push_blit_quad(
             rect_target,
             rect_source,
             framebuffer_source.width,
             framebuffer_source.height,
         );
 
-        let vertices =
-            unsafe { transmute_to_slice::<VertexBlit, f32>(&vertexbuffer_blit.vertices) };
-        self.drawobject_blit
-            .assing_buffers(&vertices, &vertexbuffer_blit.indices);
-        self.drawobject_blit
-            .draw(vertexbuffer_blit.indices.len(), 0);
+        let drawobject_blit = self
+            .drawobjects
+            .get("blit")
+            .expect("Blit drawobject not found for shader");
+        drawobject_blit.assign_buffers(&vertexbuffer.vertices, &vertexbuffer.indices);
+        drawobject_blit.draw(indices_start_index, indices_count);
 
         unsafe {
             gl.enable(glow::BLEND);

@@ -2,8 +2,8 @@ use ct_lib::platform;
 use ct_lib::platform::PathHelper;
 
 use ct_lib::indexmap::IndexMap;
-use ct_lib::serde_json;
 use ct_lib::platform::easy_process;
+use ct_lib::serde_json;
 
 use chrono::prelude::*;
 use heck::{CamelCase, TitleCase};

@@ -1,5 +1,3 @@
-use crate::transmute_to_byte_slice;
-
 pub use super::bitmap::*;
 pub use super::color::*;
 use super::draw_common::*;
@@ -32,7 +30,7 @@ pub const ADDITIVITY_MAX: Additivity = 1.0;
 
 #[derive(Default, Clone, Copy, Debug)]
 #[repr(C)]
-pub struct Vertex {
+pub struct VertexSimple {
     pub pos: Vec3,
     pub uv: Vec2,
     pub color: Color,
@@ -49,35 +47,44 @@ pub struct VertexBlit {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Vertexbuffers
 
-pub type VertexbufferSimple = Vertexbuffer<Vertex>;
-pub type VertexbufferBlit = Vertexbuffer<VertexBlit>;
-
+const todoTODO: &str = "this struct got much unsafer since we don't check if the vertex type
+                        of the object we add matches our internal vertex type";
 #[derive(Debug, Default, Clone)]
-pub struct Vertexbuffer<VertexType: Copy + Clone + Default> {
-    pub texture_index: TextureIndex,
-    pub vertices: Vec<VertexType>,
+pub struct Vertexbuffer {
+    pub vertices: Vec<f32>,
     pub indices: Vec<VertexIndex>,
+    vertices_count: usize,
 }
 
-impl<VertexType: Copy + Clone + Default> Vertexbuffer<VertexType> {
-    pub fn new(texture_index: TextureIndex) -> Vertexbuffer<VertexType> {
+impl Vertexbuffer {
+    pub fn new() -> Vertexbuffer {
         Vertexbuffer {
-            texture_index,
             vertices: Vec::new(),
             indices: Vec::new(),
+            vertices_count: 0,
         }
     }
-}
 
-impl VertexbufferBlit {
+    pub fn clear(&mut self) {
+        self.vertices.clear();
+        self.indices.clear();
+        self.vertices_count = 0;
+    }
+
+    pub fn current_offset(&self) -> VertexIndex {
+        self.indices.len() as VertexIndex
+    }
+
+    /// Returns (start_index_offset, index_count) of pushed object
     pub fn push_blit_quad(
         &mut self,
         rect_target: BlitRect,
         rect_source: BlitRect,
         framebuffer_source_width: u32,
         framebuffer_source_height: u32,
-    ) {
-        let start_index = self.vertices.len() as VertexIndex;
+    ) -> (VertexIndex, usize) {
+        let start_index = self.vertices_count as VertexIndex;
+        let index_count = 6;
 
         // first triangle
         self.indices.push(start_index + 3); // left top
@@ -108,103 +115,154 @@ impl VertexbufferBlit {
         ));
 
         // right top
-        self.vertices.push(VertexBlit {
-            pos: Vec2::new(dim.right(), dim.top()),
-            uv: Vec2::new(uvs.right(), uvs.top()),
-        });
+        self.vertices.push(dim.right());
+        self.vertices.push(dim.top());
+        self.vertices.push(uvs.right());
+        self.vertices.push(uvs.top());
+        self.vertices_count += 1;
         // right bottom
-        self.vertices.push(VertexBlit {
-            pos: Vec2::new(dim.right(), dim.bottom()),
-            uv: Vec2::new(uvs.right(), uvs.bottom()),
-        });
+        self.vertices.push(dim.right());
+        self.vertices.push(dim.bottom());
+        self.vertices.push(uvs.right());
+        self.vertices.push(uvs.bottom());
+        self.vertices_count += 1;
         // left bottom
-        self.vertices.push(VertexBlit {
-            pos: Vec2::new(dim.left(), dim.bottom()),
-            uv: Vec2::new(uvs.left(), uvs.bottom()),
-        });
+        self.vertices.push(dim.left());
+        self.vertices.push(dim.bottom());
+        self.vertices.push(uvs.left());
+        self.vertices.push(uvs.bottom());
+        self.vertices_count += 1;
         // left top
-        self.vertices.push(VertexBlit {
-            pos: Vec2::new(dim.left(), dim.top()),
-            uv: Vec2::new(uvs.left(), uvs.top()),
-        });
-    }
-}
+        self.vertices.push(dim.left());
+        self.vertices.push(dim.top());
+        self.vertices.push(uvs.left());
+        self.vertices.push(uvs.top());
+        self.vertices_count += 1;
 
-impl VertexbufferSimple {
-    pub fn push_drawable(&mut self, drawable: Drawable) {
+        (start_index, index_count)
+    }
+
+    /// Returns (start_index, index_count) of pushed object
+    pub fn push_drawable(&mut self, drawable: Drawable) -> (VertexIndex, usize) {
         let depth = drawable.depth;
         let color = drawable.color_modulate;
         let additivity = drawable.additivity;
+        let indices_start_offset = self.vertices_count as VertexIndex;
 
-        match drawable.geometry {
+        let index_count = match drawable.geometry {
             Geometry::QuadMesh { uvs, quad } => {
-                let start_index = self.vertices.len() as VertexIndex;
+                let index_count = 6;
 
                 // first triangle
-                self.indices.push(start_index + 3); // left top
-                self.indices.push(start_index + 0); // right top
-                self.indices.push(start_index + 1); // right bottom
+                self.indices.push(indices_start_offset + 3); // left top
+                self.indices.push(indices_start_offset + 0); // right top
+                self.indices.push(indices_start_offset + 1); // right bottom
 
                 // second triangle
-                self.indices.push(start_index + 2); // left bottom
-                self.indices.push(start_index + 1); // right bottom
-                self.indices.push(start_index + 3); // left top
+                self.indices.push(indices_start_offset + 2); // left bottom
+                self.indices.push(indices_start_offset + 1); // right bottom
+                self.indices.push(indices_start_offset + 3); // left top
 
                 // right top
-                self.vertices.push(Vertex {
-                    pos: Vec3::from_vec2(quad.vert_right_top, depth),
-                    uv: Vec2::new(uvs.right, uvs.top),
-                    color,
-                    additivity,
-                });
+                self.vertices.push(quad.vert_right_top.x);
+                self.vertices.push(quad.vert_right_top.y);
+                self.vertices.push(depth);
+                self.vertices.push(uvs.right);
+                self.vertices.push(uvs.top);
+                self.vertices.push(color.r);
+                self.vertices.push(color.g);
+                self.vertices.push(color.b);
+                self.vertices.push(color.a);
+                self.vertices.push(additivity);
+                self.vertices_count += 1;
                 // right bottom
-                self.vertices.push(Vertex {
-                    pos: Vec3::from_vec2(quad.vert_right_bottom, depth),
-                    uv: Vec2::new(uvs.right, uvs.bottom),
-                    color,
-                    additivity,
-                });
+                self.vertices.push(quad.vert_right_bottom.x);
+                self.vertices.push(quad.vert_right_bottom.y);
+                self.vertices.push(depth);
+                self.vertices.push(uvs.right);
+                self.vertices.push(uvs.bottom);
+                self.vertices.push(color.r);
+                self.vertices.push(color.g);
+                self.vertices.push(color.b);
+                self.vertices.push(color.a);
+                self.vertices.push(additivity);
+                self.vertices_count += 1;
                 // left bottom
-                self.vertices.push(Vertex {
-                    pos: Vec3::from_vec2(quad.vert_left_bottom, depth),
-                    uv: Vec2::new(uvs.left, uvs.bottom),
-                    color,
-                    additivity,
-                });
+                self.vertices.push(quad.vert_left_bottom.x);
+                self.vertices.push(quad.vert_left_bottom.y);
+                self.vertices.push(depth);
+                self.vertices.push(uvs.left);
+                self.vertices.push(uvs.bottom);
+                self.vertices.push(color.r);
+                self.vertices.push(color.g);
+                self.vertices.push(color.b);
+                self.vertices.push(color.a);
+                self.vertices.push(additivity);
+                self.vertices_count += 1;
                 // left top
-                self.vertices.push(Vertex {
-                    pos: Vec3::from_vec2(quad.vert_left_top, depth),
-                    uv: Vec2::new(uvs.left, uvs.top),
-                    color,
-                    additivity,
-                });
+                self.vertices.push(quad.vert_left_top.x);
+                self.vertices.push(quad.vert_left_top.y);
+                self.vertices.push(depth);
+                self.vertices.push(uvs.left);
+                self.vertices.push(uvs.top);
+                self.vertices.push(color.r);
+                self.vertices.push(color.g);
+                self.vertices.push(color.b);
+                self.vertices.push(color.a);
+                self.vertices.push(additivity);
+                self.vertices_count += 1;
+
+                index_count
             }
             Geometry::PolygonMesh {
                 vertices,
                 uvs,
                 indices,
             } => {
-                let start_index = self.vertices.len() as VertexIndex;
+                let index_count = indices.len();
+
                 for index in indices {
-                    self.indices.push(start_index + index);
+                    self.indices.push(indices_start_offset + index);
                 }
-                for (vertex, uv) in vertices.iter().zip(uvs.iter()) {
-                    self.vertices.push(Vertex {
-                        pos: Vec3::from_vec2(*vertex, depth),
-                        uv: *uv,
-                        color,
-                        additivity,
-                    });
+                for (pos, uv) in vertices.iter().zip(uvs.iter()) {
+                    self.vertices.push(pos.x);
+                    self.vertices.push(pos.y);
+                    self.vertices.push(depth);
+                    self.vertices.push(uv.x);
+                    self.vertices.push(uv.y);
+                    self.vertices.push(color.r);
+                    self.vertices.push(color.g);
+                    self.vertices.push(color.b);
+                    self.vertices.push(color.a);
+                    self.vertices.push(additivity);
+                    self.vertices_count += 1;
                 }
+
+                index_count
             }
             Geometry::LineMesh { vertices, indices } => {
-                let start_index = self.vertices.len() as VertexIndex;
+                let index_count = indices.len();
+
                 for index in indices {
-                    self.indices.push(start_index + index);
+                    self.indices.push(indices_start_offset + index);
                 }
-                self.vertices.extend(vertices.iter());
+                for vertex in vertices {
+                    self.vertices.push(vertex.pos.x);
+                    self.vertices.push(vertex.pos.y);
+                    self.vertices.push(depth);
+                    self.vertices.push(vertex.uv.x);
+                    self.vertices.push(vertex.uv.y);
+                    self.vertices.push(vertex.color.r);
+                    self.vertices.push(vertex.color.g);
+                    self.vertices.push(vertex.color.b);
+                    self.vertices.push(vertex.color.a);
+                    self.vertices.push(vertex.additivity);
+                    self.vertices_count += 1;
+                }
+                index_count
             }
-        }
+        };
+        (indices_start_offset, index_count)
     }
 }
 
@@ -236,7 +294,7 @@ pub enum Geometry {
         indices: Vec<VertexIndex>,
     },
     LineMesh {
-        vertices: Vec<Vertex>,
+        vertices: Vec<VertexSimple>,
         indices: Vec<VertexIndex>,
     },
 }
@@ -253,7 +311,7 @@ pub struct Drawable {
     pub geometry: Geometry,
 }
 
-use std::cmp::Ordering;
+use std::{cell::RefCell, cmp::Ordering, rc::Rc};
 impl Drawable {
     #[inline]
     pub fn compare(a: &Drawable, b: &Drawable) -> Ordering {
@@ -361,11 +419,17 @@ pub struct TextureInfo {
 
 #[derive(Clone)]
 pub enum Drawcommand {
+    AssignDrawBuffers {
+        shader: String,
+        vertexbuffer: Rc<RefCell<Vertexbuffer>>,
+    },
     Draw {
+        shader: String,
+        uniform_block: Vec<f32>,
         framebuffer_target: FramebufferTarget,
         texture_info: TextureInfo,
-        shader_params: ShaderParams,
-        vertexbuffer: VertexbufferSimple,
+        indices_start_offset: VertexIndex,
+        indices_count: usize,
     },
     TextureCreate(TextureInfo),
     TextureUpdate {
@@ -393,18 +457,32 @@ pub enum Drawcommand {
 impl std::fmt::Debug for Drawcommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Drawcommand::Draw {
-                framebuffer_target,
-                texture_info,
-                shader_params,
+            Drawcommand::AssignDrawBuffers {
+                shader,
                 vertexbuffer,
             } => write!(
                 f,
-                "Draw: {:?} {:?} {:?} vertexcount: {}",
+                "AssignDrawBuffers: shader: {}, vertexbuffer floatcount: {}, indices count: {}", 
+                shader,
+                vertexbuffer.borrow().vertices.len(),
+                vertexbuffer.borrow().indices.len()
+            ),
+            Drawcommand::Draw {
+                shader,
+                uniform_block,
                 framebuffer_target,
                 texture_info,
-                shader_params,
-                vertexbuffer.vertices.len()
+                indices_count,
+                indices_start_offset,
+            } => write!(
+                f,
+                "Draw: shader: {}, uniform_block_length: {}, {:?}, {:?}, indices_count: {}, indices_start_offset: {}",
+                shader,
+                uniform_block.len(),
+                framebuffer_target,
+                texture_info,
+                indices_count,
+                indices_start_offset,
             ),
             Drawcommand::TextureCreate(texture_info) => {
                 write!(f, "TextureCreate: {:?} ", texture_info)
@@ -481,7 +559,7 @@ pub struct Drawstate {
     simple_shaderparams_canvas: ShaderParamsSimple,
     simple_shaderparams_screen: ShaderParamsSimple,
     simple_drawables: Vec<Drawable>,
-    simple_vertexbuffer: VertexbufferSimple,
+    simple_vertexbuffer: Rc<RefCell<Vertexbuffer>>,
 
     canvas_blit_offset: Vec2,
 
@@ -546,7 +624,7 @@ impl Drawstate {
             simple_shaderparams_canvas: ShaderParamsSimple::default(),
             simple_shaderparams_screen: ShaderParamsSimple::default(),
             simple_drawables: Vec::new(),
-            simple_vertexbuffer: VertexbufferSimple::default(),
+            simple_vertexbuffer: Rc::new(RefCell::new(Vertexbuffer::new())),
 
             canvas_blit_offset: Vec2::zero(),
 
@@ -665,8 +743,7 @@ impl Drawstate {
         if !self.is_first_run {
             self.drawcommands.clear();
             self.simple_drawables.clear();
-            self.simple_vertexbuffer.indices.clear();
-            self.simple_vertexbuffer.vertices.clear();
+            self.simple_vertexbuffer.borrow_mut().clear();
             self.debug_log_offset = Vec2::zero();
         } else {
             self.is_first_run = false;
@@ -713,23 +790,26 @@ impl Drawstate {
 
         // Collect draw batches
         struct DrawBatch {
-            drawspace: DrawSpace,
-            buffer: VertexbufferSimple,
+            pub drawspace: DrawSpace,
+            pub texture_index: TextureIndex,
+            pub indices_start_offset: VertexIndex,
+            pub indices_count: usize,
         };
         self.simple_drawables.sort_by(Drawable::compare);
         let mut batches_world = Vec::new();
         let mut batches_canvas = Vec::new();
         let mut batches_screen = Vec::new();
         if !self.simple_drawables.is_empty() {
-            let TODO = "PERFORMANCE: later we want to the batches just referencing slices of 
-             one static buffer per shader ";
+            let mut vertexbuffer = self.simple_vertexbuffer.borrow_mut();
             let mut current_batch = DrawBatch {
                 drawspace: self.simple_drawables[0].drawspace,
-                buffer: VertexbufferSimple::new(self.simple_drawables[0].texture_index),
+                texture_index: self.simple_drawables[0].texture_index,
+                indices_start_offset: 0,
+                indices_count: 0,
             };
 
             for drawable in self.simple_drawables.drain(..) {
-                if drawable.texture_index != current_batch.buffer.texture_index
+                if drawable.texture_index != current_batch.texture_index
                     || drawable.drawspace != current_batch.drawspace
                 {
                     match current_batch.drawspace {
@@ -739,11 +819,14 @@ impl Drawstate {
                     }
                     current_batch = DrawBatch {
                         drawspace: drawable.drawspace,
-                        buffer: VertexbufferSimple::new(drawable.texture_index),
+                        texture_index: drawable.texture_index,
+                        indices_start_offset: vertexbuffer.current_offset(),
+                        indices_count: 0,
                     };
                 }
 
-                current_batch.buffer.push_drawable(drawable);
+                let (_indices_start_offset, indices_count) = vertexbuffer.push_drawable(drawable);
+                current_batch.indices_count += indices_count;
             }
 
             match current_batch.drawspace {
@@ -753,6 +836,11 @@ impl Drawstate {
             }
         }
 
+        self.drawcommands.push(Drawcommand::AssignDrawBuffers {
+            shader: "simple".to_owned(),
+            vertexbuffer: self.simple_vertexbuffer.clone(),
+        });
+
         // Draw world- and canvas-space batches
         for world_batch in batches_world.into_iter() {
             self.drawcommands.push(Drawcommand::Draw {
@@ -760,12 +848,12 @@ impl Drawstate {
                 texture_info: Drawstate::textureinfo_for_page(
                     self.textures_size,
                     self.textures.len(),
-                    world_batch.buffer.texture_index,
+                    world_batch.texture_index,
                 ),
-                shader_params: ShaderParams::Simple {
-                    uniform_block: self.simple_shaderparams_world.as_vec(),
-                },
-                vertexbuffer: world_batch.buffer,
+                shader: "simple".to_owned(),
+                uniform_block: self.simple_shaderparams_world.as_vec(),
+                indices_start_offset: world_batch.indices_start_offset,
+                indices_count: world_batch.indices_count,
             });
         }
         for canvas_batch in batches_canvas.into_iter() {
@@ -774,12 +862,12 @@ impl Drawstate {
                 texture_info: Drawstate::textureinfo_for_page(
                     self.textures_size,
                     self.textures.len(),
-                    canvas_batch.buffer.texture_index,
+                    canvas_batch.texture_index,
                 ),
-                shader_params: ShaderParams::Simple {
-                    uniform_block: self.simple_shaderparams_canvas.as_vec(),
-                },
-                vertexbuffer: canvas_batch.buffer,
+                shader: "simple".to_owned(),
+                uniform_block: self.simple_shaderparams_canvas.as_vec(),
+                indices_start_offset: canvas_batch.indices_start_offset,
+                indices_count: canvas_batch.indices_count,
             });
         }
 
@@ -820,12 +908,12 @@ impl Drawstate {
                 texture_info: Drawstate::textureinfo_for_page(
                     self.textures_size,
                     self.textures.len(),
-                    screen_batch.buffer.texture_index,
+                    screen_batch.texture_index,
                 ),
-                shader_params: ShaderParams::Simple {
-                    uniform_block: self.simple_shaderparams_screen.as_vec(),
-                },
-                vertexbuffer: screen_batch.buffer,
+                shader: "simple".to_owned(),
+                uniform_block: self.simple_shaderparams_screen.as_vec(),
+                indices_start_offset: screen_batch.indices_start_offset,
+                indices_count: screen_batch.indices_count,
             });
         }
     }
@@ -1512,28 +1600,28 @@ impl Drawstate {
         // Right quad
 
         // right top
-        vertices.push(Vertex {
+        vertices.push(VertexSimple {
             pos: Vec3::from_vec2(quad_right.vert_right_top, depth),
             uv,
             color: color_edges,
             additivity,
         });
         // right bottom
-        vertices.push(Vertex {
+        vertices.push(VertexSimple {
             pos: Vec3::from_vec2(quad_right.vert_right_bottom, depth),
             uv,
             color: color_edges,
             additivity,
         });
         // left bottom
-        vertices.push(Vertex {
+        vertices.push(VertexSimple {
             pos: Vec3::from_vec2(quad_right.vert_left_bottom, depth),
             uv,
             color,
             additivity,
         });
         // left top
-        vertices.push(Vertex {
+        vertices.push(VertexSimple {
             pos: Vec3::from_vec2(quad_right.vert_left_top, depth),
             uv,
             color,
@@ -1554,28 +1642,28 @@ impl Drawstate {
         // Left quad
 
         // right top
-        vertices.push(Vertex {
+        vertices.push(VertexSimple {
             pos: Vec3::from_vec2(quad_left.vert_right_top, depth),
             uv,
             color,
             additivity,
         });
         // right bottom
-        vertices.push(Vertex {
+        vertices.push(VertexSimple {
             pos: Vec3::from_vec2(quad_left.vert_right_bottom, depth),
             uv,
             color,
             additivity,
         });
         // left bottom
-        vertices.push(Vertex {
+        vertices.push(VertexSimple {
             pos: Vec3::from_vec2(quad_left.vert_left_bottom, depth),
             uv,
             color: color_edges,
             additivity,
         });
         // left top
-        vertices.push(Vertex {
+        vertices.push(VertexSimple {
             pos: Vec3::from_vec2(quad_left.vert_left_top, depth),
             uv,
             color: color_edges,

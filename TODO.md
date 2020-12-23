@@ -11,6 +11,9 @@
 - make one drawobjects per shader (maybe create from shader or tie more closely to shader?)
 - shader compilation now returns results instead of panicking
 - more errorchecking with debug names in renderer
+- split drawcommand into buffer assignment and index drawing 
+- Refactor draw/renderer to have one vertex-/index-batch-buffer per shader with offsets into buffer
+  (see sokol_gfx appendbuffer mechanism)
  
 # CURRENT
 
@@ -18,9 +21,10 @@
 # NEXT:
 
 ## renderer flexibility + speed + cleanup
+- make vertexbuffers more save (disallow use of different vertex types) and pushing of vertices faster
+- maybe separate drawspaces (world, canvas, screen) into different framebuffers? that way we don't 
+  need to separate drawbatches into 3 different vertexbuffers.
 - move shaders out of renderer and into draw, 
-* Refactor draw/renderer to have one vertex-/index-batch-buffer per shader with offsets into buffer
-  (see sokol_gfx appendbuffer mechanism)
 - Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and implement it. Throw out the rest 
 
 ## improve asset loading
