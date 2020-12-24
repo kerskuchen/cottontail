@@ -46,6 +46,15 @@ impl From<(i32, i32)> for Vec2 {
 }
 
 impl Vec2 {
+    /// Direct conversion, no round/floor/ceil happening
+    #[inline]
+    pub fn to_i32(self) -> Vec2i {
+        Vec2i {
+            x: self.x as i32,
+            y: self.y as i32,
+        }
+    }
+
     #[inline]
     pub fn floor(self) -> Vec2 {
         Vec2 {

@@ -1,4 +1,4 @@
-use crate::{transmute_slice_to_byte_slice, transmute_to_byte_slice, transmute_to_slice};
+use crate::transmute_to_slice;
 
 pub use super::bitmap::*;
 pub use super::color::*;
@@ -1555,8 +1555,8 @@ impl Drawstate {
         additivity: Additivity,
         drawspace: DrawSpace,
     ) {
-        let start = start.pixel_snapped_i32();
-        let end = end.pixel_snapped_i32();
+        let start = start.pixel_snapped().to_i32();
+        let end = end.pixel_snapped().to_i32();
         iterate_line_bresenham(start, end, skip_last_pixel, &mut |x, y| {
             self.draw_pixel(
                 Vec2::new(x as f32, y as f32),
@@ -1722,8 +1722,8 @@ impl Drawstate {
         additivity: Additivity,
         drawspace: DrawSpace,
     ) -> Vec2 {
-        let origin = starting_origin.pixel_snapped_i32();
-        let offset = starting_offset.pixel_snapped_i32();
+        let origin = starting_origin.pixel_snapped().to_i32();
+        let offset = starting_offset.pixel_snapped().to_i32();
         if let Some(color_background) = color_background {
             font.iter_text_glyphs_aligned_in_point(
                 text,
@@ -1807,10 +1807,10 @@ impl Drawstate {
         additivity: Additivity,
         drawspace: DrawSpace,
     ) {
-        let origin = starting_origin.pixel_snapped_i32();
-        let offset = starting_offset.pixel_snapped_i32();
+        let origin = starting_origin.pixel_snapped().to_i32();
+        let offset = starting_offset.pixel_snapped().to_i32();
         let clipping_recti = Recti::from_pos_dim(
-            clipping_rect.pos.pixel_snapped_i32(),
+            clipping_rect.pos.pixel_snapped().to_i32(),
             clipping_rect.dim.roundi(),
         );
         font.iter_text_glyphs_clipped(

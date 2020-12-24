@@ -20,6 +20,9 @@ pub use intersection::*;
 
 pub mod easing;
 
+mod random;
+pub use random::*;
+
 pub type Point = Vec2;
 pub type Pointi = Vec2i;
 
@@ -464,14 +467,6 @@ impl Transform {
 
     pub fn rotation_dir(&self) -> Vec2 {
         Vec2::from_angle_flipped_y(self.dir_angle)
-    }
-
-    pub fn pixel_snapped(&self) -> Transform {
-        Transform {
-            pos: self.pos.pixel_snapped(),
-            scale: self.scale,
-            dir_angle: self.dir_angle,
-        }
     }
 }
 

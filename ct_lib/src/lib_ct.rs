@@ -5,13 +5,12 @@ pub mod draw;
 pub mod draw_common;
 pub mod font;
 pub mod grid;
-pub mod random;
 pub mod sprite;
 
 #[path = "game/mod_game.rs"]
 pub mod game;
-#[path = "math/mod_math.rs"]
-pub mod math;
+
+pub use ct_lib_math as math;
 
 pub use bincode;
 pub use indexmap;

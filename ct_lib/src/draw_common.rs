@@ -18,39 +18,40 @@ pub type Canvaspoint = Point;
 /// Same as Canvaspoint only as vector
 pub type Canvasvec = Vec2;
 
-impl Worldpoint {
+pub trait PixelSnapped {
+    fn pixel_snapped(self) -> Self;
+}
+
+impl PixelSnapped for Worldpoint {
     /// For a given Worldpoint returns the nearest Worldpoint that is aligned to the
     /// canvas's pixel grid when drawn.
     ///
     /// For example pixel-snapping the cameras position before drawing prevents pixel-jittering
     /// artifacts on visible objects if the camera is moving at sub-pixel distances.
-    pub fn pixel_snapped(self) -> Worldpoint {
+    #[inline]
+    fn pixel_snapped(self) -> Worldpoint {
         Worldpoint {
             x: f32::floor(self.x),
             y: f32::floor(self.y),
         }
     }
+}
 
-    /// For a given Worldpoint returns the nearest Worldpoint that is aligned to the
-    /// canvas's pixel grid when drawn.
-    ///
-    /// For example pixel-snapping the cameras position before drawing prevents pixel-jittering
-    /// artifacts on visible objects if the camera is moving at sub-pixel distances.
-    pub fn pixel_snapped_i32(self) -> Vec2i {
-        Vec2i {
-            x: floori(self.x),
-            y: floori(self.y),
+impl PixelSnapped for Transform {
+    #[inline]
+    fn pixel_snapped(self) -> Transform {
+        Transform {
+            pos: self.pos.pixel_snapped(),
+            scale: self.scale,
+            dir_angle: self.dir_angle,
         }
     }
 }
 
-impl Rect {
-    pub fn pixel_snapped(self) -> Rect {
+impl PixelSnapped for Rect {
+    #[inline]
+    fn pixel_snapped(self) -> Rect {
         Rect::from_pos_dim(self.pos.pixel_snapped(), self.dim.round())
-    }
-
-    pub fn pixel_snapped_i32(self) -> Recti {
-        Recti::from_pos_dim(self.pos.pixel_snapped_i32(), self.dim.roundi())
     }
 }
 

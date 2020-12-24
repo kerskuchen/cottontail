@@ -50,6 +50,15 @@ impl From<Recti> for Rect {
 }
 
 impl Rect {
+    /// Direct conversion, no round/floor/ceil happening
+    #[inline]
+    pub fn to_i32(self) -> Recti {
+        Recti {
+            pos: self.pos.to_i32(),
+            dim: self.dim.to_i32(),
+        }
+    }
+
     #[inline]
     pub fn floor(self) -> Rect {
         Rect {

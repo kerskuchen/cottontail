@@ -10,7 +10,6 @@ use super::audio::*;
 use super::bitmap::*;
 use super::draw::*;
 use super::math::*;
-use super::random::*;
 use super::sprite::*;
 use super::*;
 
@@ -499,8 +498,8 @@ impl GameCamera {
         self.pos = if self.use_pixel_perfect_smoothing {
             let mut points_till_target = Vec::new();
             iterate_line_bresenham(
-                self.pos.pixel_snapped_i32(),
-                self.pos_target.pixel_snapped_i32(),
+                self.pos.pixel_snapped().to_i32(),
+                self.pos_target.pixel_snapped().to_i32(),
                 false,
                 &mut |x, y| points_till_target.push(Vec2::new(x as f32, y as f32)),
             );

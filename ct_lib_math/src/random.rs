@@ -2,7 +2,7 @@
 // Random
 //
 
-use super::math::*;
+use super::*;
 
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
