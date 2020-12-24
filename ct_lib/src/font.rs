@@ -38,8 +38,8 @@ const FIRST_VISIBLE_ASCII_CODE_POINT: Codepoint = 32;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TextAlignment {
-    pub alignment_horizontal: AlignmentHorizontal,
-    pub alignment_vertical: AlignmentVertical,
+    pub horizontal: AlignmentHorizontal,
+    pub vertical: AlignmentVertical,
     pub origin_is_baseline: bool,
     pub ignore_whitespace: bool,
 }
@@ -283,13 +283,13 @@ pub trait Font<GlyphType: Glyph> {
             let rect = self.get_text_bounding_rect(text, font_scale, alignment.ignore_whitespace);
             let origin_aligned = if alignment.ignore_whitespace {
                 Vec2i::new(
-                    block_aligned_in_point(rect.dim.x, origin.x, alignment.alignment_horizontal),
-                    block_aligned_in_point(rect.dim.y, origin.y, alignment.alignment_vertical),
+                    block_aligned_in_point(rect.dim.x, origin.x, alignment.horizontal),
+                    block_aligned_in_point(rect.dim.y, origin.y, alignment.vertical),
                 ) - rect.pos
             } else {
                 Vec2i::new(
-                    block_aligned_in_point(rect.dim.x, origin.x, alignment.alignment_horizontal),
-                    block_aligned_in_point(rect.dim.y, origin.y, alignment.alignment_vertical),
+                    block_aligned_in_point(rect.dim.x, origin.x, alignment.horizontal),
+                    block_aligned_in_point(rect.dim.y, origin.y, alignment.vertical),
                 )
             };
 
@@ -804,7 +804,7 @@ mod tests {
             FONT_DEFAULT_TINY_RASTER_OFFSET,
             4,
             32,
-            "tests/fontsize_tester.png",
+            "target/tests/fontsize_tester.png",
         )
     }
 
@@ -835,8 +835,8 @@ mod tests {
                     Vec2i::new(bitmap_width / 2, 0),
                     Vec2i::zero(),
                     Some(TextAlignment {
-                        x: AlignmentHorizontal::Center,
-                        y: AlignmentVertical::Top,
+                        horizontal: AlignmentHorizontal::Center,
+                        vertical: AlignmentVertical::Top,
                         origin_is_baseline: false,
                         ignore_whitespace: false,
                     }),
@@ -848,8 +848,8 @@ mod tests {
                     bitmap_center,
                     Vec2i::zero(),
                     Some(TextAlignment {
-                        x: *alignment_x,
-                        y: *alignment_y,
+                        horizontal: *alignment_x,
+                        vertical: *alignment_y,
                         origin_is_baseline: false,
                         ignore_whitespace: false,
                     }),
@@ -861,7 +861,10 @@ mod tests {
 
         let final_bitmap =
             Bitmap::glue_together_multiple(&bitmaps, GluePosition::RightTop, 1, PixelRGBA::black());
-        Bitmap::write_to_png_file(&final_bitmap, "tests/bitmapfont_aligned_text_drawing.png");
+        Bitmap::write_to_png_file(
+            &final_bitmap,
+            "target/tests/bitmapfont_aligned_text_drawing.png",
+        );
     }
 
     #[test]
@@ -897,8 +900,8 @@ mod tests {
                     Vec2i::new(bitmap_width / 2, 0),
                     Vec2i::zero(),
                     Some(TextAlignment {
-                        x: AlignmentHorizontal::Center,
-                        y: AlignmentVertical::Top,
+                        horizontal: AlignmentHorizontal::Center,
+                        vertical: AlignmentVertical::Top,
                         origin_is_baseline: false,
                         ignore_whitespace: false,
                     }),
@@ -910,8 +913,8 @@ mod tests {
                     bitmap_center,
                     Vec2i::zero(),
                     Some(TextAlignment {
-                        x: *alignment_x,
-                        y: *alignment_y,
+                        horizontal: *alignment_x,
+                        vertical: *alignment_y,
                         origin_is_baseline: false,
                         ignore_whitespace: true,
                     }),
@@ -925,7 +928,7 @@ mod tests {
             Bitmap::glue_together_multiple(&bitmaps, GluePosition::RightTop, 1, PixelRGBA::black());
         Bitmap::write_to_png_file(
             &final_bitmap,
-            "tests/bitmapfont_aligned_text_drawing_exact.png",
+            "target/tests/bitmapfont_aligned_text_drawing_exact.png",
         );
     }
 
@@ -956,8 +959,8 @@ mod tests {
                     Vec2i::new(bitmap_width / 2, 0),
                     Vec2i::zero(),
                     Some(TextAlignment {
-                        x: AlignmentHorizontal::Center,
-                        y: AlignmentVertical::Top,
+                        horizontal: AlignmentHorizontal::Center,
+                        vertical: AlignmentVertical::Top,
                         origin_is_baseline: false,
                         ignore_whitespace: false,
                     }),
@@ -969,8 +972,8 @@ mod tests {
                     bitmap_center,
                     Vec2i::zero(),
                     Some(TextAlignment {
-                        x: *alignment_x,
-                        y: *alignment_y,
+                        horizontal: *alignment_x,
+                        vertical: *alignment_y,
                         origin_is_baseline: false,
                         ignore_whitespace: true,
                     }),
@@ -984,7 +987,7 @@ mod tests {
             Bitmap::glue_together_multiple(&bitmaps, GluePosition::RightTop, 1, PixelRGBA::black());
         Bitmap::write_to_png_file(
             &final_bitmap,
-            "tests/bitmapfont_aligned_text_drawing_exact_single_glyph.png",
+            "target/tests/bitmapfont_aligned_text_drawing_exact_single_glyph.png",
         );
     }
 }

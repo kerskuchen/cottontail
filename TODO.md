@@ -22,17 +22,6 @@
 
 # NEXT:
 
-## renderer flexibility + speed + cleanup
-- add ability to add new shaders from drawstate
-- Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and implement it. Throw out the rest 
-
-## improve asset loading
-- refactor gamememory/audio/draw/asset initialization to 
-  - allow hotloading of assets
-  - improve wasm startup speed
-- Support ogg audio and differentiate between mono/stereo recordings
-- streaming long audio (music)
-
 ## better platform layer
 - Unify platform layers a bit to allow feature sharing 
 - keep same loop functions and objects, just call functions from different modules?
@@ -98,6 +87,17 @@
   https://codesigncert.com/cheapcodesigning
   Also useful:
   https://social.technet.microsoft.com/wiki/contents/articles/38117.microsoft-trusted-root-certificate-program-participants-as-of-june-27-2017.aspx#C
+
+## renderer flexibility + speed + cleanup
+- add ability to add new shaders from drawstate
+- Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and implement it. Throw out the rest 
+
+## improve asset loading
+- refactor gamememory/audio/draw/asset initialization to 
+  - allow hotloading of assets
+  - improve wasm startup speed
+- Support ogg audio and differentiate between mono/stereo recordings
+- streaming long audio (music)
 
 # user interface
 - make app pause on onfocus/lost events more robust

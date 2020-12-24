@@ -245,92 +245,6 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Camera and coordinates
 
-/// Camera with its position in the center of its view-rect.
-///
-/// zoom_level > 1.0 : zoomed in
-/// zoom_level < 1.0 : zoomed out
-///
-/// # Example: Camera bounds
-/// ```
-/// # use game_lib::math::*;
-///
-/// let pos = Point::new(50.0, -50.0);
-/// let dim = Vec2::new(200.0, 100.0);
-/// let zoom = 2.0;
-///
-///
-/// let cam_origin = Point::new(12.0, 34.0);
-/// let mut cam = Camera::new(cam_origin, dim.x, dim.y, -1.0, 1.0);
-///
-/// // NOTE: Our panning vector is the negative of our move vector. This is to simulate the
-/// //       mouse grabbing and panning of the canvas, like i.e. touch-navigation on mobile devices.
-/// let move_vec = pos - cam_origin;
-/// let panning_vec = -move_vec;
-/// cam.pan(panning_vec);
-/// assert_eq!(cam.pos(), pos);
-///
-/// cam.zoom_to_world_point(pos, zoom);
-/// assert_eq!(cam.zoom_level, zoom);
-/// assert_eq!(cam.dim_zoomed(), dim / zoom);
-///
-/// let left =   pos.x - 0.5 * dim.x / zoom;
-/// let right =  pos.x + 0.5 * dim.x / zoom;
-/// let top =    pos.y - 0.5 * dim.y / zoom;
-/// let bottom = pos.y + 0.5 * dim.y / zoom;
-///
-/// let bounds = cam.frustum();
-/// assert_eq!(bounds.left, left);
-/// assert_eq!(bounds.right, right);
-/// assert_eq!(bounds.bottom, bottom);
-/// assert_eq!(bounds.top, top);
-/// ```
-///
-/// # Example: Mouse panning and zooming
-///
-/// ```
-/// # use game_lib::math::*;
-///
-/// // Canvas and camera setup
-/// let canvas_width = 320.0;
-/// let canvas_height = 180.0;
-/// let mut cam = Camera::new(Point::zero(), canvas_width, canvas_height, -1.0, 1.0);
-///
-/// // Current and old mouse state
-/// let mouse_pos_canvas = CanvasPoint::new(50.0, 130.0);
-/// let mouse_delta_canvas = Canvasvec::new(15.0, -20.0);
-/// let mouse_button_right_pressed = true;
-/// let mouse_button_middle_pressed = false;
-/// let mouse_wheel_delta = 0;
-///
-/// // World mouse position and delta
-/// let mouse_pos_world = cam.canvas_point_to_world_point(mouse_pos_canvas);
-/// let mouse_delta_world = cam.canvas_vec_to_world_vec(mouse_pos_canvas);
-///
-/// // Pan camera
-/// if mouse_button_right_pressed {
-///     cam.pan(mouse_delta_canvas);
-/// }
-/// // Reset zoom
-/// if mouse_button_middle_pressed {
-///     cam.zoom_to_world_point(mouse_pos_world, 1.0);
-/// }
-/// // Zoom in or out by factors of two
-/// if mouse_wheel_delta > 0 {
-///     // Magnify up till 8x
-///     let new_zoom_level = f32::min(cam.zoom_level * 2.0, 8.0);
-///     cam.zoom_to_world_point(mouse_pos_world, new_zoom_level);
-/// } else if mouse_wheel_delta < 0 {
-///     // Minify down till 1/8
-///     let new_zoom_level = f32::max(cam.zoom_level / 2.0, 1.0 / 8.0);
-///     cam.zoom_to_world_point(mouse_pos_world, new_zoom_level);
-/// }
-///
-/// // Get project-view-matrix from cam and use it for drawing
-/// let transform = cam.proj_view_matrix();
-///
-/// // ..
-/// ```
-
 /// NOTE: Camera pos equals is the top-left of the screen or the center depending on the
 /// `is_centered` flag. It has the following bounds in world coordinates:
 /// non-centered: [pos.x, pos.x + dim_frustum.w] x [pos.y, pos.y + dim_frustum.h]
@@ -339,8 +253,8 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
 ///
 /// with:
 /// dim_frustum = dim_canvas / zoom
-/// zoom > 0.0 -> zooming in
-/// zoom < 0.0 -> zooming out
+/// zoom > 1.0 -> zooming in
+/// zoom < 1.0 -> zooming out
 #[derive(Clone, Default)]
 pub struct Camera {
     pos: Vec2,
@@ -2365,8 +2279,8 @@ impl Scene for SceneDebug {
             button_fullscreen_rect.center(),
             Vec2::zero(),
             Some(TextAlignment {
-                alignment_horizontal: AlignmentHorizontal::Center,
-                alignment_vertical: AlignmentVertical::Center,
+                horizontal: AlignmentHorizontal::Center,
+                vertical: AlignmentVertical::Center,
                 origin_is_baseline: false,
                 ignore_whitespace: false,
             }),
@@ -2717,8 +2631,8 @@ impl Scene for SceneDebug {
             hp_rect_initial.pos,
             Vec2::filled_y(-5.0),
             Some(TextAlignment {
-                alignment_horizontal: AlignmentHorizontal::Left,
-                alignment_vertical: AlignmentVertical::Top,
+                horizontal: AlignmentHorizontal::Left,
+                vertical: AlignmentVertical::Top,
                 origin_is_baseline: true,
                 ignore_whitespace: false,
             }),
@@ -2850,8 +2764,8 @@ impl Scene for SceneDebug {
             draw_pos,
             Vec2::zero(),
             Some(TextAlignment {
-                alignment_horizontal: AlignmentHorizontal::Left,
-                alignment_vertical: AlignmentVertical::Top,
+                horizontal: AlignmentHorizontal::Left,
+                vertical: AlignmentVertical::Top,
                 origin_is_baseline: true,
                 ignore_whitespace: false,
             }),
