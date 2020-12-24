@@ -142,6 +142,7 @@ impl Recti {
 
     /// Returns the closest point the given rect needs to be moved to, to not overlap with any of
     /// the other given rects
+    #[inline]
     pub fn get_closest_position_without_overlapping(self, others: &[Recti]) -> Vec2i {
         if !others
             .iter()

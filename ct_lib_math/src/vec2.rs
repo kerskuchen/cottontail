@@ -156,6 +156,7 @@ impl Vec2 {
     /// Returns a unit vector constructed from a given angle in range [-180, 180]
     /// which represents the angle between the resulting vector and the vector (1,0) in the
     /// 2D cartesian coordinate system.
+    #[inline]
     pub fn from_angle(angle_deg: f32) -> Vec2 {
         let angle_rad = DEGREE_TO_RADIANS * angle_deg;
         Vec2::new(f32::cos(angle_rad), f32::sin(angle_rad))
@@ -164,6 +165,7 @@ impl Vec2 {
     /// Returns a unit vector constructed from a given angle in range [-180, 180]
     /// which represents the angle between the resulting vector and the vector (1,0) in a y-flipped
     /// 2D cartesian coordinate system.
+    #[inline]
     pub fn from_angle_flipped_y(angle_deg: f32) -> Vec2 {
         let angle_rad = DEGREE_TO_RADIANS * angle_deg;
         Vec2::new(f32::cos(-angle_rad), f32::sin(-angle_rad))
@@ -172,6 +174,7 @@ impl Vec2 {
     /// Returns a vector constructed from a given magnitude and an angle in range [-180, 180]
     /// which represents the angle between the resulting vector and the vector (1,0) in the
     /// 2D cartesian coordinate system.
+    #[inline]
     pub fn from_angle_magnitude(angle_deg: f32, magnitude: f32) -> Vec2 {
         let angle_rad = DEGREE_TO_RADIANS * angle_deg;
         Vec2::new(
@@ -803,6 +806,3 @@ impl DivAssign<i32> for Vec2 {
         }
     }
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// 2D Vector

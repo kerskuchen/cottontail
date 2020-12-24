@@ -214,6 +214,7 @@ pub fn ceili(x: f32) -> i32 {
     f32::ceil(x) as i32
 }
 
+#[inline]
 pub fn ceil_to_multiple_of_target_i32(value: i32, target: i32) -> i32 {
     assert!(target > 0);
 
@@ -229,6 +230,7 @@ pub fn ceil_to_multiple_of_target_i32(value: i32, target: i32) -> i32 {
     }
 }
 
+#[inline]
 pub fn floor_to_multiple_of_target_i32(value: i32, target: i32) -> i32 {
     assert!(target > 0);
 
@@ -425,6 +427,7 @@ pub struct Transform {
 }
 
 impl Transform {
+    #[inline]
     pub const fn from_pos(pos: Vec2) -> Transform {
         Transform {
             pos,
@@ -433,6 +436,7 @@ impl Transform {
         }
     }
 
+    #[inline]
     pub const fn from_pos_angle(pos: Vec2, dir_angle: f32) -> Transform {
         Transform {
             pos,
@@ -441,6 +445,7 @@ impl Transform {
         }
     }
 
+    #[inline]
     pub fn from_pos_dir(pos: Vec2, dir: Vec2) -> Transform {
         Transform {
             pos,
@@ -449,6 +454,7 @@ impl Transform {
         }
     }
 
+    #[inline]
     pub const fn from_pos_scale(pos: Vec2, scale: Vec2) -> Transform {
         Transform {
             pos,
@@ -457,6 +463,7 @@ impl Transform {
         }
     }
 
+    #[inline]
     pub const fn from_pos_scale_uniform(pos: Vec2, scale: f32) -> Transform {
         Transform {
             pos,
@@ -465,6 +472,7 @@ impl Transform {
         }
     }
 
+    #[inline]
     pub fn rotation_dir(&self) -> Vec2 {
         Vec2::from_angle_flipped_y(self.dir_angle)
     }
@@ -580,6 +588,7 @@ impl Line {
     }
 }
 
+#[inline]
 pub fn iterate_line_bresenham<FunctorType: FnMut(i32, i32)>(
     start: Vec2i,
     end: Vec2i,
@@ -637,6 +646,7 @@ impl Circle {
 
     /// For a given radius (in pixels) this returns the number of vertices a circle needs to have a
     /// visible pixel error of less than 1/2 pixels
+    #[inline]
     pub fn get_optimal_vertex_count_for_drawing(radius: f32) -> usize {
         if radius < 0.5 {
             return 4;
@@ -823,6 +833,7 @@ pub fn linear_motion_integrate(
     *inout_vel = vel;
 }
 
+#[inline]
 fn vel_quantized(vel: f32, ticks_per_second: f32) -> f32 {
     let result = if vel >= ticks_per_second {
         round_to_multiple_of_target(vel, ticks_per_second)
@@ -849,6 +860,7 @@ fn vel_quantized(vel: f32, ticks_per_second: f32) -> f32 {
 /// add_or_zero_when_changing_sign(4, -5) = 0
 /// add_or_zero_when_changing_sign(0, 2) = 0
 /// add_or_zero_when_changing_sign(0, -3) = 0
+#[inline]
 fn add_or_zero_when_changing_sign(x: f32, to_add: f32) -> f32 {
     let sum = x + to_add;
     let have_same_sign = sum * x > 0.0;
@@ -1053,6 +1065,7 @@ pub fn linear_motion_integrate_with_drag_quantized_vel_v2(
 
 /// IMPORTANT: source_min <= source_samplepoint < source_max
 ///            dest_min < dest_max
+#[inline]
 pub fn sample_integer_upper_exclusive_floored(
     source_samplepoint: i32,
     source_min: i32,
@@ -1086,10 +1099,12 @@ pub struct Interval {
 
 // Conversion
 impl Interval {
+    #[inline]
     pub fn as_range(self) -> Range<i64> {
         self.start..self.end
     }
 
+    #[inline]
     pub fn as_range_usize(self) -> Range<usize> {
         use std::convert::TryFrom;
         assert!(0 <= self.start && self.start <= self.end);
@@ -1115,6 +1130,7 @@ impl Interval {
         }
     }
 
+    #[inline]
     pub fn from_range(range: Range<i64>) -> Interval {
         Interval {
             start: range.start,
@@ -1122,6 +1138,7 @@ impl Interval {
         }
     }
 
+    #[inline]
     pub fn from_start_end(start: i64, end: i64) -> Interval {
         Interval { start, end }
     }
@@ -1181,7 +1198,7 @@ impl Interval {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-/// Tests
+/// Easing
 
 #[derive(Debug, Copy, Clone)]
 pub enum EasingType {
@@ -1191,6 +1208,7 @@ pub enum EasingType {
     StepEnd,
 }
 
+#[inline]
 pub fn ease(percent: f32, easing_type: EasingType) -> f32 {
     match easing_type {
         EasingType::Linear => percent,

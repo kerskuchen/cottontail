@@ -80,14 +80,17 @@ impl Vec2i {
 // Creation Special
 
 impl Vec2i {
+    #[inline]
     pub fn from_vec2_floored(v: Vec2) -> Vec2i {
         Vec2i::new(v.x as i32, v.y as i32)
     }
 
+    #[inline]
     pub fn from_vec2_ceiled(v: Vec2) -> Vec2i {
         Vec2i::new(ceili(v.x), ceili(v.y))
     }
 
+    #[inline]
     pub fn from_vec2_rounded(v: Vec2) -> Vec2i {
         Vec2i::new(roundi(v.x), roundi(v.y))
     }
@@ -139,6 +142,7 @@ impl Vec2i {
 impl Vec2i {
     /// Returns the given vector clamped to a given rect
     #[must_use]
+    #[inline]
     pub fn clamped_to_recti(self, rect: Recti) -> Vec2i {
         Vec2i::new(
             clampi(self.x, rect.left(), rect.right()),

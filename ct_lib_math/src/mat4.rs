@@ -261,6 +261,7 @@ impl Mul<f32> for Mat4 {
 }
 impl Mul<Mat4> for f32 {
     type Output = Mat4;
+    #[inline]
     fn mul(self, rhs: Mat4) -> Mat4 {
         Mat4 {
             cols: [
@@ -273,6 +274,7 @@ impl Mul<Mat4> for f32 {
     }
 }
 impl MulAssign<f32> for Mat4 {
+    #[inline]
     fn mul_assign(&mut self, rhs: f32) {
         *self = *self * rhs;
     }
