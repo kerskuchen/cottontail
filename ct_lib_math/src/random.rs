@@ -4,16 +4,10 @@
 
 use super::*;
 
-use rand::distributions::Distribution;
-use rand::distributions::Uniform;
-use rand::Error;
-use rand::SeedableRng;
-pub use rand::{Rng, RngCore};
-
 #[derive(Clone)]
 pub struct Random {
     pub seed: u64,
-    pub generator: rand_pcg::Pcg32,
+    pub generator: oorandom::Rand32,
 }
 
 impl Random {
@@ -21,63 +15,65 @@ impl Random {
     pub fn new_from_seed(seed: u64) -> Random {
         Random {
             seed,
-            generator: rand_pcg::Pcg32::seed_from_u64(seed),
+            generator: oorandom::Rand32::new(seed),
         }
     }
-}
 
-impl Random {
     // Picks a random element from given slice
     #[inline]
     pub fn pick_from_slice<ElemType>(&mut self, slice: &[ElemType]) -> ElemType
     where
         ElemType: Copy + Clone,
     {
-        let index = self.gen_range(0, slice.len());
+        assert!(
+            slice.len() < std::u32::MAX as usize,
+            "Shufflebag only supports u32 sized containers"
+        );
+        let index = self.u32_bounded_exclusive(slice.len() as u32) as usize;
         slice[index]
     }
 
-    /// Returns a uniformly distributed number in [min, max]
+    /// Returns a uniformly distributed number in [min, max[
     #[inline]
-    pub fn f32_in_range_closed(&mut self, min: f32, max: f32) -> f32 {
-        Uniform::new_inclusive(min, max).sample(self)
+    pub fn f32_in_range(&mut self, min: f32, max: f32) -> f32 {
+        min + (max - min) * self.generator.rand_float()
     }
 
-    /// Returns a uniformly distributed number in [min, max]
+    /// Returns a uniformly distributed number in [0.0, 1.0[
     #[inline]
-    pub fn f32_in_range_open(&mut self, min: f32, max: f32) -> f32 {
-        min + (max - min) * self.sample::<f32, _>(rand::distributions::Open01)
+    pub fn f32(&mut self) -> f32 {
+        self.generator.rand_float()
     }
 
-    /// Returns a uniformly distributed number in [0.0, 1.0]
+    /// Returns a uniformly distributed integer in [std::i32::MIN, std::i32::MAX]
     #[inline]
-    pub fn f32_in_01_closed(&mut self) -> f32 {
-        Uniform::new_inclusive(0.0, 1.0).sample(self)
+    pub fn i32(&mut self) -> i32 {
+        self.generator.rand_i32()
     }
 
-    /// Returns a uniformly distributed number in ]0.0, 1.0[
+    /// Returns a uniformly distributed integer in [0, std::u32::MAX]
     #[inline]
-    pub fn f32_in_01_open(&mut self) -> f32 {
-        self.sample(rand::distributions::Open01)
+    pub fn u32(&mut self) -> u32 {
+        self.generator.rand_u32()
     }
 
     /// Returns a uniformly distributed integer in [0, max]
     #[inline]
-    pub fn usize_bounded(&mut self, max: usize) -> usize {
-        Uniform::new_inclusive(0, max).sample(self)
+    pub fn u32_bounded(&mut self, max: u32) -> u32 {
+        self.generator.rand_range(0..max)
     }
 
     /// Returns a uniformly distributed integer in [0, max - 1]
     #[inline]
-    pub fn usize_bounded_exclusive(&mut self, max: usize) -> usize {
-        self.gen_range(0, max)
+    pub fn u32_bounded_exclusive(&mut self, max_exclusive: u32) -> u32 {
+        self.generator.rand_range(0..(max_exclusive - 1))
     }
 
     #[inline]
     pub fn vec2_in_rect(&mut self, rect: Rect) -> Vec2 {
         Vec2 {
-            x: self.f32_in_range_closed(rect.left(), rect.right()),
-            y: self.f32_in_range_closed(rect.top(), rect.bottom()),
+            x: self.f32_in_range(rect.left(), rect.right()),
+            y: self.f32_in_range(rect.top(), rect.bottom()),
         }
     }
 
@@ -86,12 +82,12 @@ impl Random {
         center + radius * self.vec2_in_unit_disk()
     }
 
-    /// NOTE: Returns values in [-1, 1]x[-1, 1]
+    /// NOTE: Returns values in [-1, 1[x[-1, 1[
     #[inline]
     pub fn vec2_in_unit_rect(&mut self) -> Vec2 {
         Vec2 {
-            x: self.f32_in_range_closed(-1.0, 1.0),
-            y: self.f32_in_range_closed(-1.0, 1.0),
+            x: self.f32_in_range(-1.0, 1.0),
+            y: self.f32_in_range(-1.0, 1.0),
         }
     }
 
@@ -108,27 +104,8 @@ impl Random {
 
     #[inline]
     pub fn vec2_in_unit_circle(&mut self) -> Vec2 {
-        let angle = self.f32_in_range_closed(-PI, PI);
+        let angle = self.f32_in_range(-PI, PI);
         Vec2::from_angle_flipped_y(angle)
-    }
-}
-
-impl RngCore for Random {
-    #[inline]
-    fn next_u32(&mut self) -> u32 {
-        self.generator.next_u32()
-    }
-    #[inline]
-    fn next_u64(&mut self) -> u64 {
-        self.generator.next_u64()
-    }
-    #[inline]
-    fn fill_bytes(&mut self, dest: &mut [u8]) {
-        self.generator.fill_bytes(dest)
-    }
-    #[inline]
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
-        self.generator.try_fill_bytes(dest)
     }
 }
 
@@ -153,6 +130,10 @@ where
 {
     #[inline]
     pub fn new(elems: Vec<ElemType>) -> Shufflebag<ElemType> {
+        assert!(
+            elems.len() <= std::u32::MAX as usize,
+            "Shufflebag only supports u32 sized containers"
+        );
         let elem_count = elems.len();
         Shufflebag {
             elems,
@@ -165,11 +146,19 @@ where
         let mut elems = Vec::new();
 
         for (elem, count) in elems_and_counts {
+            assert!(
+                *count <= std::u32::MAX as usize,
+                "Shufflebag only supports u32 sized containers"
+            );
             for _ in 0..*count {
                 elems.push(*elem);
             }
         }
 
+        assert!(
+            elems.len() <= std::u32::MAX as usize,
+            "Shufflebag only supports u32 sized containers"
+        );
         let elem_count = elems.len();
         Shufflebag {
             elems,
@@ -183,7 +172,7 @@ where
             self.current_bagsize = self.elems.len();
             self.elems[0]
         } else {
-            let index = random.usize_bounded_exclusive(self.current_bagsize);
+            let index = random.u32_bounded_exclusive(self.current_bagsize as u32) as usize;
             self.current_bagsize -= 1;
             self.elems.swap(index, self.current_bagsize);
             self.elems[self.current_bagsize]

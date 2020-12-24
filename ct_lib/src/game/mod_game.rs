@@ -2564,7 +2564,7 @@ impl Scene for SceneDebug {
             );
 
             self.hp_previous = self.hp;
-            self.hp -= globals.random.f32_in_range_closed(0.15, 0.3);
+            self.hp -= globals.random.f32_in_range(0.15, 0.3);
             if self.hp <= 0.01 {
                 self.hp = 0.01;
             }
@@ -2665,7 +2665,7 @@ impl Scene for SceneDebug {
                 }
 
                 if self.choreographer_randoms.once() {
-                    println!("Random number {}: {}", index, globals.random.next_u64());
+                    println!("Random number {}: {}", index, globals.random.u32());
                 }
             }
         })();
@@ -2801,7 +2801,7 @@ fn collect_line(
         let pause_time = if letter == '.' || letter == ',' || letter == '?' {
             0.250
         } else {
-            random.f32_in_range_closed(0.03, 0.05)
+            random.f32_in_range(0.03, 0.05)
         };
 
         if !choreo.wait(pause_time) {
