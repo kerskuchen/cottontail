@@ -1,6 +1,6 @@
 use super::renderer_opengl::Renderer;
 
-use ct_lib::log;
+use ct_lib::core::log;
 
 use std::collections::HashMap;
 

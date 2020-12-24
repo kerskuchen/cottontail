@@ -2,10 +2,8 @@ mod renderer_opengl;
 mod wasm_audio;
 mod wasm_input;
 
-use ct_lib::{
-    game::{FingerPlatformId, GameInput, GameMemory, GameStateInterface, SystemCommand},
-    platform::{current_time_seconds, init_logging},
-};
+use ct_lib::core::platform::*;
+use ct_lib::game::{FingerPlatformId, GameInput, GameMemory, GameStateInterface, SystemCommand};
 
 use std::{cell::RefCell, rc::Rc};
 

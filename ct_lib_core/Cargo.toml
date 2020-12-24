@@ -1,0 +1,35 @@
+[package]
+name = "ct_lib_core"
+version = "0.1.0"
+authors = ["Jakob Schwab <j.schwab@mail.de>"]
+edition = "2018"
+
+[lib]
+path = "src/lib_core.rs"
+
+[dependencies]
+log = "0.4.11"
+indexmap = { version = "1.3.2", features = ["serde-1"] } 
+serde = "1.0.118"
+serde_json ="1.0.60"
+serde_derive = "1.0.118"
+bincode = "1.2.1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+walkdir = "2.3.1"
+glob = "0.3.0"
+easy_process = "0.2.0"
+directories = "2.0.2"
+fern = "0.6.0"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.69"
+js-sys = "0.3.46"
+console_error_panic_hook = "0.1.6"
+console_log = "0.2.0"
+web-sys = { version = "0.3.4", features = [
+  "XmlHttpRequest",
+  "XmlHttpRequestEventTarget",
+  "XmlHttpRequestResponseType"
+] }
+

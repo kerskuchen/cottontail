@@ -1,14 +1,13 @@
 pub use super::color::{Color, PixelRGBA};
 pub use super::font::{BitmapFont, Font, TextAlignment};
 pub use super::grid::GluePosition;
-pub use super::math;
+use super::math;
 pub use super::math::{AlignmentHorizontal, AlignmentVertical, Vec2i};
-
-pub use super::platform;
 
 use serde_derive::Serialize;
 
-use super::indexmap::IndexMap;
+use super::core::indexmap::IndexMap;
+use super::core::platform;
 
 use rect_packer;
 
@@ -93,8 +92,6 @@ impl Bitmap {
     }
 
     pub fn from_png_data(png_data: &[u8]) -> Result<Bitmap, String> {
-        use crate::transmute_slice_to_byte_slice_mut;
-
         let mut decoder = png::Decoder::new(std::io::Cursor::new(png_data));
         decoder.set_transformations(png::Transformations::EXPAND);
         let (png_info, mut png_reader) = decoder
@@ -105,7 +102,7 @@ impl Bitmap {
         let mut buffer =
             vec![PixelRGBA::transparent(); size_bytes / std::mem::size_of::<PixelRGBA>()];
         {
-            let buffer_raw = unsafe { transmute_slice_to_byte_slice_mut(&mut buffer) };
+            let buffer_raw = unsafe { super::core::transmute_slice_to_byte_slice_mut(&mut buffer) };
             png_reader
                 .next_frame(buffer_raw)
                 .map_err(|error| format!("Could not decode png data: {}", error))?;
@@ -149,7 +146,7 @@ impl Bitmap {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn write_to_png_file(bitmap: &Bitmap, png_filepath: &str) {
-        use crate::transmute_slice_to_byte_slice;
+        use super::core::transmute_slice_to_byte_slice;
 
         std::fs::create_dir_all(platform::path_without_filename(png_filepath)).expect(&format!(
             "Could not create necessary directories to write to '{}'",

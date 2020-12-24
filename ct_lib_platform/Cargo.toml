@@ -8,6 +8,8 @@ edition = "2018"
 path = "src/lib_platform.rs"
 
 [dependencies]
+ct_lib = { path = "../ct_lib"}
+
 ringbuf = "0.2"
 regex = "1.4.2"
 
@@ -62,6 +64,3 @@ web-sys = { version = "0.3.4", features = [
   'OrientationLockType',
   'Screen'
 ] }
-
-[dependencies.ct_lib]
-path = "../ct_lib"

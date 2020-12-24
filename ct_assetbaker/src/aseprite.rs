@@ -5,14 +5,14 @@ use super::{
     Spritename, Spritename3D,
 };
 
+use ct_lib::core::platform;
+use ct_lib::draw::sprite::*;
 use ct_lib::math::*;
-use ct_lib::platform;
-use ct_lib::sprite::*;
 
-use ct_lib::indexmap::indexmap;
-use ct_lib::indexmap::IndexMap;
-use ct_lib::serde_derive::Deserialize;
-use ct_lib::serde_json;
+use ct_lib::core::indexmap::indexmap;
+use ct_lib::core::indexmap::IndexMap;
+use ct_lib::core::serde_derive::Deserialize;
+use ct_lib::core::serde_json;
 
 use rayon::prelude::*;
 use std::collections::HashSet;

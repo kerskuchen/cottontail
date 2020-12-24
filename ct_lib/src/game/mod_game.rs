@@ -4,16 +4,16 @@ mod input;
 pub use assets::*;
 pub use input::*;
 
-use crate::platform::TimerScoped;
-
 use super::audio::*;
-use super::bitmap::*;
+use super::draw::bitmap::*;
+use super::draw::draw::*;
+use super::draw::sprite::*;
 use super::draw::*;
 use super::math::*;
-use super::sprite::*;
 use super::*;
 
-use super::platform;
+use super::core::platform;
+use super::core::platform::TimerScoped;
 
 use serde_derive::{Deserialize, Serialize};
 

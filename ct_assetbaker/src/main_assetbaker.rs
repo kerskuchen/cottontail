@@ -1,20 +1,20 @@
 mod aseprite;
 
-use ct_lib::bitmap::{BitmapAtlasPosition, BitmapMultiAtlas};
-use ct_lib::color::*;
+use ct_lib::core::platform;
+use ct_lib::draw::bitmap::{BitmapAtlasPosition, BitmapMultiAtlas};
+use ct_lib::draw::color::*;
+use ct_lib::draw::font;
+use ct_lib::draw::sprite::*;
 use ct_lib::draw::*;
-use ct_lib::font;
 use ct_lib::game::*;
 use ct_lib::math::*;
-use ct_lib::platform;
-use ct_lib::sprite::*;
 
-use ct_lib::bincode;
-use ct_lib::indexmap::indexmap;
-use ct_lib::indexmap::IndexMap;
-use ct_lib::log;
-use ct_lib::serde_derive::{Deserialize, Serialize};
-use ct_lib::serde_json;
+use ct_lib::core::bincode;
+use ct_lib::core::indexmap::indexmap;
+use ct_lib::core::indexmap::IndexMap;
+use ct_lib::core::log;
+use ct_lib::core::serde_derive::{Deserialize, Serialize};
+use ct_lib::core::serde_json;
 
 use ico;
 use rayon::prelude::*;
@@ -896,10 +896,11 @@ fn recreate_directory(path: &str) {
 fn main() {
     let start_time = std::time::Instant::now();
 
-    ct_lib::platform::init_logging("target/assetbaker_log.txt", log::Level::Trace)
+    ct_lib::core::platform::init_logging("target/assetbaker_log.txt", log::Level::Trace)
         .expect("Unable to init logging");
     std::panic::set_hook(Box::new(|panic_info| {
-        let (message, location) = ct_lib::panic_message_split_to_message_and_location(panic_info);
+        let (message, location) =
+            ct_lib::core::panic_message_split_to_message_and_location(panic_info);
         let final_message = format!("{}\n\nError occured at: {}", message, location);
         log::error!("{}", final_message);
 

@@ -1,13 +1,8 @@
-use crate::transmute_to_slice;
-
-pub use super::bitmap::*;
-pub use super::color::*;
+use super::color::*;
 use super::draw_common::*;
-pub use super::font::*;
+use super::font::*;
 use super::math::*;
 use super::sprite::*;
-
-pub use hsl;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Vertex format
@@ -33,7 +28,7 @@ pub const ADDITIVITY_MAX: Additivity = 1.0;
 pub trait Vertex: Sized {
     const FLOAT_COMPONENT_COUNT: usize = std::mem::size_of::<Self>() / std::mem::size_of::<f32>();
     fn as_floats(&self) -> &[f32] {
-        unsafe { transmute_to_slice(self) }
+        unsafe { super::core::transmute_to_slice(self) }
     }
 }
 

@@ -1,9 +1,6 @@
-use ct_lib::platform;
-use ct_lib::platform::PathHelper;
-
-use ct_lib::indexmap::IndexMap;
-use ct_lib::platform::easy_process;
-use ct_lib::serde_json;
+use ct_lib::core::indexmap::IndexMap;
+use ct_lib::core::platform::{self, PathHelper};
+use ct_lib::core::serde_json;
 
 use chrono::prelude::*;
 use heck::{CamelCase, TitleCase};
@@ -11,8 +8,6 @@ use heck::{CamelCase, TitleCase};
 type ProjectDetails = IndexMap<String, String>;
 type ProjectDetailsLocal = IndexMap<String, String>;
 type ProjectDetailsMerged = IndexMap<String, String>;
-
-use std::path::Path;
 
 const PROGRAM_USAGE: &str = "Expected usage: 
  - for refreshing a project we can call `ct_makeproject` without any arguments.
@@ -283,19 +278,19 @@ fn project_refresh() {
         {
             template_copy_to_dir(template_filepath, "assets", &project_details, false);
         }
-        ct_lib::platform::path_copy_directory_contents_recursive(
+        platform::path_copy_directory_contents_recursive(
             "cottontail/ct_makeproject/templates_assets/assets",
             "assets",
         );
     }
     if !platform::path_exists("assets_copy") {
-        ct_lib::platform::path_copy_directory_contents_recursive(
+        platform::path_copy_directory_contents_recursive(
             "cottontail/ct_makeproject/templates_assets/assets_copy",
             "assets_copy",
         );
     }
     if !platform::path_exists("assets_executable") {
-        ct_lib::platform::path_copy_directory_contents_recursive(
+        platform::path_copy_directory_contents_recursive(
             "cottontail/ct_makeproject/templates_assets/assets_executable",
             "assets_executable",
         );
@@ -361,7 +356,7 @@ fn project_create(project_directory_name: &str, project_git_url: Option<String>)
         project_directory_name
     );
     std::fs::create_dir(&project_directory_name).expect("Cannot create project directory");
-    std::env::set_current_dir(&Path::new(&project_directory_name))
+    std::env::set_current_dir(&std::path::Path::new(&project_directory_name))
         .expect("Cannot switch to project directory");
 
     // Init git repo and add initial commit
@@ -374,7 +369,7 @@ fn project_create(project_directory_name: &str, project_git_url: Option<String>)
         print!(
             "> {}\n{}",
             command,
-            easy_process::run(command)
+            platform::easy_process::run(command)
                 .expect("Cannot make initial commit")
                 .stdout
         );
@@ -389,7 +384,7 @@ fn project_create(project_directory_name: &str, project_git_url: Option<String>)
         print!(
             "> {}\n{}",
             command,
-            easy_process::run(command)
+            platform::easy_process::run(command)
                 .expect(&format!("Failed to add Cottontail"))
                 .stdout
         );
@@ -404,7 +399,7 @@ fn project_create(project_directory_name: &str, project_git_url: Option<String>)
             print!(
                 "> {}\n{}",
                 command,
-                easy_process::run(command)
+                platform::easy_process::run(command)
                     .expect(&format!(
                         "Initial push to remote '{}' failed (does it exist?)",
                         &project_url,
@@ -426,7 +421,7 @@ fn project_create(project_directory_name: &str, project_git_url: Option<String>)
 }
 
 fn main() {
-    ct_lib::panic_set_hook_wait_for_keypress();
+    ct_lib::core::panic_set_hook_wait_for_keypress();
 
     let (project_name, project_git_url) = {
         let args: Vec<String> = std::env::args().collect();

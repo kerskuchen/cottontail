@@ -1,9 +1,8 @@
 pub use super::bitmap::*;
 pub use super::draw_common::*;
-
 use super::math::*;
 
-use serde_derive::{Deserialize, Serialize};
+use super::core::serde_derive::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 
