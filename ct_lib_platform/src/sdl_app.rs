@@ -766,7 +766,12 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             .as_secs_f64();
         input.audio_playback_rate_hz = audio_output.audio_playback_rate_hz;
 
-        game_memory.update(&input, &mut systemcommands);
+        if input.has_focus {
+            game_memory.update(&input, &mut systemcommands);
+        } else {
+            let TODO = "just repeat the drawcommands from last time - but without the 
+                update/create texture commands or other expensive/complex commands";
+        }
 
         // Clear input state
         input.screen_framebuffer_dimensions_changed = false;
@@ -797,11 +802,13 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
 
         let TODO = "make it so that audio is always there and can handle loading its sounds later";
         if game_memory.audio.is_some() {
-            let audio = game_memory
-                .audio
-                .as_mut()
-                .expect("No audiostate initialized");
-            audio_output.render_frames(audio, input.has_focus, 2.0 * target_seconds_per_frame);
+            if input.has_focus {
+                let audio = game_memory
+                    .audio
+                    .as_mut()
+                    .expect("No audiostate initialized");
+                audio_output.render_frames(audio, 2.0 * target_seconds_per_frame);
+            }
         }
 
         let post_sound_time = std::time::Instant::now();

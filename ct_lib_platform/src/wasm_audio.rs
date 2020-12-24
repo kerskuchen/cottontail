@@ -237,11 +237,6 @@ impl AudioOutput {
                 *frame = AudioFrame::silence();
             }
             audio.render_audio_chunk(&mut self.out_chunk);
-            // NOTE: We want to avoid submitting frames because we cannot guarentee that it will
-            //       sound ok when our window is not in focus. We still want to let the
-            //       Audiostate render chunks though so that it can keep track of time.
-            //       When not submitting new frames the callback will automatically fade out
-            //       to avoid cracking
             self.submit_rendered_chunk();
         }
     }

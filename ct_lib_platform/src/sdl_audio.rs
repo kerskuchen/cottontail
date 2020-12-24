@@ -136,12 +136,7 @@ impl AudioOutput {
         }
     }
 
-    pub fn render_frames(
-        &mut self,
-        audio: &mut Audiostate,
-        window_has_focus: bool,
-        minimum_seconds_to_buffer: f32,
-    ) {
+    pub fn render_frames(&mut self, audio: &mut Audiostate, minimum_seconds_to_buffer: f32) {
         let chunkcount_to_render = {
             let minimum_buffer_size =
                 (self.audio_playback_rate_hz as f32 * minimum_seconds_to_buffer) as usize;
@@ -159,14 +154,7 @@ impl AudioOutput {
         for _ in 0..chunkcount_to_render {
             let mut out_chunk = [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES];
             audio.render_audio_chunk(&mut out_chunk);
-            if window_has_focus {
-                // NOTE: We want to avoid submitting frames because we cannot guarentee that it will
-                //       sound ok when our window is not in focus. We still want to let the
-                //       Audiostate render chunks though so that it can keep track of time.
-                //       When not submitting new frames the callback will automatically fade out
-                //       to avoid cracking
-                self.submit_rendered_chunk(&out_chunk);
-            }
+            self.submit_rendered_chunk(&out_chunk);
         }
     }
 }
