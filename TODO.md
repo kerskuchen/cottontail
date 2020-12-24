@@ -72,7 +72,7 @@
 
 ## better project structure and generator
 - Get rid of crates that are not necessary or replace them with smaller/faster ones 
-- nanoserde, nanorand, minimp3, ...
+- nanoserde, oorandom, minimp3, ...
 - get rid of sdl in favor of something more simple?
 - look how other projects like bevy handle project templates
 - convert debug scene to example in a dedicated examples folder with its own assets and build scripts

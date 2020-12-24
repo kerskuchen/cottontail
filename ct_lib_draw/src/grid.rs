@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Grid
 
+use super::core::serde_derive::{Deserialize, Serialize};
 use super::math::*;
-use serde_derive::{Deserialize, Serialize};
 
 #[derive(Copy, Clone)]
 pub enum GluePosition {

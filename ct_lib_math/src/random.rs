@@ -6,8 +6,8 @@ use super::*;
 
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
-pub use rand::Error;
-pub use rand::SeedableRng;
+use rand::Error;
+use rand::SeedableRng;
 pub use rand::{Rng, RngCore};
 
 #[derive(Clone)]

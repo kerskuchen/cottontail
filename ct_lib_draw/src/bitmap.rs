@@ -1,13 +1,12 @@
 pub use super::color::{Color, PixelRGBA};
 pub use super::font::{BitmapFont, Font, TextAlignment};
 pub use super::grid::GluePosition;
-use super::math;
 pub use super::math::{AlignmentHorizontal, AlignmentVertical, Vec2i};
-
-use serde_derive::Serialize;
 
 use super::core::indexmap::IndexMap;
 use super::core::platform;
+use super::core::serde_derive::Serialize;
+use super::math;
 
 use rect_packer;
 

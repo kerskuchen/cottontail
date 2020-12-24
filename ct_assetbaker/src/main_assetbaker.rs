@@ -1,10 +1,6 @@
 mod aseprite;
 
 use ct_lib::core::platform;
-use ct_lib::draw::bitmap::{BitmapAtlasPosition, BitmapMultiAtlas};
-use ct_lib::draw::color::*;
-use ct_lib::draw::font;
-use ct_lib::draw::sprite::*;
 use ct_lib::draw::*;
 use ct_lib::game::*;
 use ct_lib::math::*;

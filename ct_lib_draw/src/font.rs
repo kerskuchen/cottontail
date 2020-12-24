@@ -3,8 +3,8 @@ use super::color::*;
 use super::math::*;
 use super::sprite::*;
 
+use super::core::serde_derive::{Deserialize, Serialize};
 use indexmap::IndexMap;
-use serde_derive::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 

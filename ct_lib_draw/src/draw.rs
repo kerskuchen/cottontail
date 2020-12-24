@@ -1,8 +1,7 @@
 use super::color::*;
-use super::draw_common::*;
 use super::font::*;
-use super::math::*;
 use super::sprite::*;
+use super::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Vertex format

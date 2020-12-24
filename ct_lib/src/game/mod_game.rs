@@ -5,9 +5,6 @@ pub use assets::*;
 pub use input::*;
 
 use super::audio::*;
-use super::draw::bitmap::*;
-use super::draw::draw::*;
-use super::draw::sprite::*;
 use super::draw::*;
 use super::math::*;
 use super::*;
@@ -15,7 +12,7 @@ use super::*;
 use super::core::platform;
 use super::core::platform::TimerScoped;
 
-use serde_derive::{Deserialize, Serialize};
+use super::core::serde_derive::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 
