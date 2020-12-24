@@ -9,12 +9,12 @@ use super::draw::*;
 use super::math::*;
 use super::*;
 
+use super::core::dformat;
 use super::core::platform;
 use super::core::platform::TimerScoped;
-
 use super::core::serde_derive::{Deserialize, Serialize};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 pub const DEPTH_DEBUG: Depth = 90.0;
 pub const DEPTH_DEVELOP_OVERLAY: Depth = 80.0;
@@ -2111,6 +2111,8 @@ pub struct SceneDebug {
     circle_radius: f32,
 
     current_measure: usize,
+
+    drumtimes: VecDeque<f64>,
 }
 
 impl SceneDebug {
@@ -2159,6 +2161,8 @@ impl SceneDebug {
             circle_radius: 50.0,
 
             current_measure: 0,
+
+            drumtimes: VecDeque::new(),
         }
     }
 }
@@ -2519,33 +2523,65 @@ impl Scene for SceneDebug {
         );
 
         // Drummydrumms
-        let measure_time = MusicalInterval::Measure {
+        let measure_length = MusicalInterval::Measure {
             beats_per_minute: 120,
             beats_per_measure: 4,
         }
         .length_seconds();
-        let quarter_beat_time = MusicalInterval::QuarterBeat {
+        let halfbeat_length = MusicalInterval::HalfBeat {
             beats_per_minute: 120,
         }
         .length_seconds();
-        if self.current_measure == (audio.current_time_seconds() / measure_time) as usize {
+        if self.current_measure < (audio.current_time_seconds() / measure_length) as usize {
             self.current_measure += 1;
-            for index in 0..16 {
-                audio.play_oneshot(
-                    "drum",
-                    music_get_next_point_in_time(
-                        audio.current_time_seconds(),
-                        MusicalInterval::Measure {
-                            beats_per_minute: 120,
-                            beats_per_measure: 4,
-                        },
-                    ) + index as f64 * quarter_beat_time,
-                    0.3,
-                    1.0,
-                    0.0,
-                );
+            let halfbeats_per_measure = (measure_length / halfbeat_length).round() as usize;
+            for index in 0..halfbeats_per_measure {
+                let drumtime = (self.current_measure + 1) as f64 * measure_length
+                    + index as f64 * halfbeat_length;
+                audio.play_oneshot("drum", drumtime, 0.3, 1.0, 0.0);
+                self.drumtimes.push_back(drumtime);
             }
         }
+        draw.debug_log(dformat!(self.current_measure));
+
+        let measure_size_pixels = globals.canvas_width / 2.0;
+        let beat_size_pixels = measure_size_pixels / 2.0;
+        for index in 0..8 {
+            let pos_x = index as f32 * beat_size_pixels;
+            draw.draw_rect(
+                Rect::from_xy_width_height(pos_x, globals.canvas_height - 20.0, 2.0, 10.0),
+                true,
+                DEPTH_DEBUG,
+                Color::greyscale(0.8),
+                ADDITIVITY_NONE,
+                DrawSpace::Canvas,
+            )
+        }
+        for index in 0..2 {
+            let pos_x = index as f32 * measure_size_pixels;
+            draw.draw_rect(
+                Rect::from_xy_width_height(pos_x, globals.canvas_height - 20.0, 2.0, 10.0),
+                true,
+                DEPTH_DEBUG,
+                Color::greyscale(0.2),
+                ADDITIVITY_NONE,
+                DrawSpace::Canvas,
+            )
+        }
+        for time in &self.drumtimes {
+            let pos_x =
+                (time - audio.current_time_seconds()) / measure_length * measure_size_pixels as f64;
+            draw.draw_rect(
+                Rect::from_xy_width_height(pos_x as f32, globals.canvas_height - 20.0, 2.0, 10.0),
+                true,
+                DEPTH_DEBUG,
+                Color::red() * 0.5,
+                0.5,
+                DrawSpace::Canvas,
+            )
+        }
+        self.drumtimes
+            .retain(|&time| time >= audio.current_time_seconds());
 
         // HP BAR
         //
@@ -2693,7 +2729,7 @@ impl Scene for SceneDebug {
         );
 
         draw.draw_rect(
-            Rect::from_xy_width_height(5.0, 220.0, beat_completion_ratio * 30.0, 5.0),
+            Rect::from_xy_width_height(5.0, 210.0, beat_completion_ratio * 30.0, 5.0),
             true,
             DEPTH_DEBUG,
             Color::magenta(),
@@ -2701,7 +2737,7 @@ impl Scene for SceneDebug {
             DrawSpace::World,
         );
         draw.draw_rect(
-            Rect::from_xy_width_height(5.0, 225.0, measure_completion_ratio * 30.0, 5.0),
+            Rect::from_xy_width_height(5.0, 215.0, measure_completion_ratio * 30.0, 5.0),
             true,
             DEPTH_DEBUG,
             Color::blue(),
@@ -2728,7 +2764,7 @@ impl Scene for SceneDebug {
         let text = "Loaded font test gorgeous!|\u{08A8}";
         let text_width = test_font.get_text_bounding_rect(text, 1, false).dim.x;
         // Draw origin is top-left
-        let draw_pos = Vec2::new(5.0, globals.canvas_height - 40.0);
+        let draw_pos = Vec2::new(5.0, globals.canvas_height - 50.0);
         draw.draw_text(
             text,
             &test_font,
@@ -2752,7 +2788,7 @@ impl Scene for SceneDebug {
             DrawSpace::World,
         );
         // Draw origin is baseline
-        let draw_pos = Vec2::new(5.0, globals.canvas_height - 15.0);
+        let draw_pos = Vec2::new(5.0, globals.canvas_height - 25.0);
         draw.draw_text(
             text,
             &test_font,
