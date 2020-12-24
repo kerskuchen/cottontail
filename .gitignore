@@ -1,5 +1,4 @@
 /target
-/ct_assetbaker/target
-/ct_platform/target
+/*/target
 Cargo.lock
 **/*.rs.bk

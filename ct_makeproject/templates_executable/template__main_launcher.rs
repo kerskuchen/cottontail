@@ -3,7 +3,7 @@ use ct_lib::draw::*;
 use ct_lib::game::*;
 use ct_lib::math::*;
 use ct_lib::random::*;
-use ct_platform;
+use ct_lib_platform;
 
 const CANVAS_WIDTH: f32 = 480.0;
 const CANVAS_HEIGHT: f32 = 270.0;
@@ -173,5 +173,5 @@ impl GameStateInterface for GameState {
 }
 
 fn main() {
-    ct_platform::run_main::<GameState>();
+    ct_lib_platform::run_main::<GameState>();
 }

@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "cottontail/ct_platform",
-    "cottontail/ct_assetbaker",
     "cottontail/ct_lib",
+    "cottontail/ct_lib_platform",
+    "cottontail/ct_assetbaker",
     "cottontail/ct_makeproject",
     "launcher",
 ]
@@ -11,8 +11,8 @@ members = [
 [profile.dev.package."*"]
 opt-level = 3
 
-# NOTE: The following optimizes ct_platform 
-# [profile.dev.package.ct_platform]
+# NOTE: The following optimizes ct_lib_math 
+# [profile.dev.package.ct_lib_math]
 # opt-level = 3
 
 # NOTE: The following overrides the whole project 

@@ -1,5 +1,5 @@
 [package]
-name = "ct_platform"
+name = "ct_lib_platform"
 version = "0.1.0"
 authors = ["Jakob Schwab <j.schwab@mail.de>"]
 edition = "2018"
