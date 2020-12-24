@@ -10,27 +10,20 @@ path = "src/lib_platform.rs"
 [dependencies]
 ct_lib = { path = "../ct_lib"}
 
-ringbuf = "0.2"
+serde = "1.0.118"
+ringbuf = "0.2.2"
 regex = "1.4.2"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-serde = "1.0"
-# glow = { version="0.6.1", default-features=false, features=["web-sys"]}
-# Using git repo until https://github.com/grovesNL/glow/pull/137 is released
-glow = { git = "https://github.com/grovesNL/glow", branch = "main", default-features=false}
-sdl2 = "0.32"
-fern = "0.5"
-backtrace = "0.3"
-gilrs = "0.7"
+glow = { version="0.7.0", default-features=false }
+sdl2 = "0.34.3"
+backtrace = "0.3.55"
+gilrs = "0.8"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-serde = "1.0"
-# glow = { version="0.6.1", features=["web-sys"]}
-# Using git repo until https://github.com/grovesNL/glow/pull/137 is released
-glow = { git = "https://github.com/grovesNL/glow", branch = "main", features=["web-sys"]}
+glow = { version="0.7.0", features=["web-sys"]}
 js-sys = "0.3.46"
 wasm-bindgen = "0.2.69"
-log = "0.4"
 web-sys = { version = "0.3.4", features = [
   'Performance',
   'Document',

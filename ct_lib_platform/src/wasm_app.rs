@@ -2,15 +2,16 @@ mod renderer_opengl;
 mod wasm_audio;
 mod wasm_input;
 
+use renderer_opengl::Renderer;
+
+use ct_lib::core::log;
 use ct_lib::core::platform::*;
 use ct_lib::game::{FingerPlatformId, GameInput, GameMemory, GameStateInterface, SystemCommand};
 
-use std::{cell::RefCell, rc::Rc};
-
-use renderer_opengl::Renderer;
-
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+
+use std::{cell::RefCell, rc::Rc};
 
 const ENABLE_PANIC_MESSAGES: bool = false;
 const ENABLE_FRAMETIME_LOGGING: bool = false;

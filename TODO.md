@@ -1,24 +1,13 @@
 # DONE:
 
-* fix wasm slowdown/crash when fast repeatetly touching canvas 
-  (the problem was that we accessed the wrong finger hashmap)
-* allow drawing in platform app launcher layer for debug purposes (on mobile wasm its difficult 
-  to look at logs) WONTFIX because we can use edge browser to track logs made on mobile
-* make drawstate call renderer functions directly? (NO THEN WE CAN'T EASILY REPLAY DRAWCOMMANDS 
-  ON FOCUS LOST)
-- make shader parser that knows all attributes and uniforms
-- proper gl object encapsulation and lifetime management
-- make one drawobjects per shader (maybe create from shader or tie more closely to shader?)
-- shader compilation now returns results instead of panicking
-- more errorchecking with debug names in renderer
-- split drawcommand into buffer assignment and index drawing 
-- Refactor draw/renderer to have one vertex-/index-batch-buffer per shader with offsets into buffer
-  (see sokol_gfx appendbuffer mechanism)
-- make vertexbuffers more save (disallow use of different vertex types) 
-- pushing of drawables is now slightly faster ~10% -> ~4%
+- splitting up some cottontail lib 
+- updating dependencies
  
 # CURRENT
 
+- split gamecode out of ct lib
+- split audio out of ct lib
+- replace rand with oorandom
 
 # NEXT:
 
@@ -159,3 +148,20 @@
 - find out if we can fix focus lost on leaving fullscreen on mobile 
   https://answers.unity.com/questions/282633/index.html suggests that we cant and should just implement
   focuslost/pause message screen very similar to initial startup screen
+
+* fix wasm slowdown/crash when fast repeatetly touching canvas 
+  (the problem was that we accessed the wrong finger hashmap)
+* allow drawing in platform app launcher layer for debug purposes (on mobile wasm its difficult 
+  to look at logs) WONTFIX because we can use edge browser to track logs made on mobile
+* make drawstate call renderer functions directly? (NO THEN WE CAN'T EASILY REPLAY DRAWCOMMANDS 
+  ON FOCUS LOST)
+- make shader parser that knows all attributes and uniforms
+- proper gl object encapsulation and lifetime management
+- make one drawobjects per shader (maybe create from shader or tie more closely to shader?)
+- shader compilation now returns results instead of panicking
+- more errorchecking with debug names in renderer
+- split drawcommand into buffer assignment and index drawing 
+- Refactor draw/renderer to have one vertex-/index-batch-buffer per shader with offsets into buffer
+  (see sokol_gfx appendbuffer mechanism)
+- make vertexbuffers more save (disallow use of different vertex types) 
+- pushing of drawables is now slightly faster ~10% -> ~4%

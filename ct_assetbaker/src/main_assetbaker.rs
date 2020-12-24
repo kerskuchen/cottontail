@@ -1,16 +1,15 @@
 mod aseprite;
 
-use ct_lib::core::platform;
-use ct_lib::draw::*;
-use ct_lib::game::*;
-use ct_lib::math::*;
-
 use ct_lib::core::bincode;
 use ct_lib::core::indexmap::indexmap;
 use ct_lib::core::indexmap::IndexMap;
 use ct_lib::core::log;
+use ct_lib::core::platform;
 use ct_lib::core::serde_derive::{Deserialize, Serialize};
 use ct_lib::core::serde_json;
+use ct_lib::draw::*;
+use ct_lib::game::*;
+use ct_lib::math::*;
 
 use ico;
 use rayon::prelude::*;

@@ -1,6 +1,8 @@
+use ct_lib::audio::{AudioChunkStereo, AudioFrame, Audiostate, AUDIO_CHUNKSIZE_IN_FRAMES};
+use ct_lib::core::log;
+
 use std::{cell::RefCell, rc::Rc};
 
-use ct_lib::audio::{AudioChunkStereo, AudioFrame, Audiostate, AUDIO_CHUNKSIZE_IN_FRAMES};
 use wasm_bindgen::{prelude::*, JsCast};
 
 const AUDIO_SAMPLE_RATE: usize = 44100;
