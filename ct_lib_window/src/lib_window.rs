@@ -1,12 +1,12 @@
 #[cfg(target_arch = "wasm32")]
-#[path = "wasm_app.rs"]
+#[path = "platform_wasm/wasm_app.rs"]
 pub mod app;
 
 #[cfg(not(target_arch = "wasm32"))]
-#[path = "sdl_app.rs"]
+#[path = "platform_sdl2/sdl_app.rs"]
 pub mod app;
 
-mod renderer_opengl;
+pub mod renderer_opengl;
 
 use ct_lib_audio as audio;
 use ct_lib_core as core;

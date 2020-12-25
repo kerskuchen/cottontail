@@ -8,21 +8,16 @@
 - sdl layer now pauses on focus lost
 - split audio out of ct lib
 - replaces audrey crate with wav crate
+- split input out of ct lib into platform
  
 # CURRENT
 
-- rename ctlib to app
-- split input out of ct lib into platform
 - let app use platform (reverse controlflow)
-
-- could we split draw crate into bitmap and draw?
-  - bitmap crate has color + bitmaps + bitmapfonts + grid + font trait
-  - draw crate has sprites and spritefont and drawstate and depends on bitmap crate
-  - later draw crate can also depend on opengl renderer layer 
-    - if we can make opengl layer a dependency of draw we can put vertices and traits into 
-      opengl layer and maybe make vertexbuffers typesafe again because we won't need to create
-      drawcommands anymore and can just pass the vertices and indices out of the vertexbuffers in 
-      a function call to the opengl layer?
+- if we can make opengl layer a dependency of draw we can put vertices and traits into 
+  opengl layer and maybe make vertexbuffers typesafe again because we won't need to create
+  drawcommands anymore and can just pass the vertices and indices out of the vertexbuffers in 
+  a function call to the opengl layer?
+- rename ctlib to app
 
 # NEXT:
 
