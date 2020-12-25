@@ -146,18 +146,13 @@ impl GameAssets {
             .filter(|&path| path.ends_with(".wav"))
         {
             let wav_data = &self.files_bindata[wav_filepath];
-            let mut wav_file =
-                audrey::Reader::new(std::io::Cursor::new(wav_data)).expect(&format!(
-                    "Could not decode audio file for reading: '{}'",
-                    wav_filepath
-                ));
-
-            let TODO = "make a more correct 'without extension' function that works for wasm";
+            let (sample_rate_hz, samples) = audio::decode_wav_from_bytes(wav_data).expect(
+                &format!("Could not decode wav audio file: '{}'", wav_filepath),
+            );
+            let TODO = "Introduce concept of asset name in our indexfile and get rid of this replacing hack";
             let name = wav_filepath
                 .replace(&format!("{}/", self.assets_folder), "")
                 .replace(".wav", "");
-            let sample_rate_hz = wav_file.description().sample_rate() as usize;
-            let samples: Vec<AudioSample> = wav_file.samples().map(Result::unwrap).collect();
             let samplecount = samples.len();
             let recording = AudioBufferMono {
                 name: name.clone(),

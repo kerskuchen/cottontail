@@ -2,12 +2,24 @@
 
 - splitting up some cottontail lib 
 - updating dependencies
+- replace rand with oorandom
+- fixes audio bug in example scene
+- adds audio debug visualization to example scene
+- sdl layer now pauses on focus lost
  
 # CURRENT
 
 - split gamecode out of ct lib
 - split audio out of ct lib
-- replace rand with oorandom
+
+- could we split draw crate into bitmap and draw?
+  - bitmap crate has color + bitmaps + bitmapfonts + grid + font trait
+  - draw crate has sprites and spritefont and drawstate and depends on bitmap crate
+  - later draw crate can also depend on opengl renderer layer 
+    - if we can make opengl layer a dependency of draw we can put vertices and traits into 
+      opengl layer and maybe make vertexbuffers typesafe again because we won't need to create
+      drawcommands anymore and can just pass the vertices and indices out of the vertexbuffers in 
+      a function call to the opengl layer?
 
 # NEXT:
 
