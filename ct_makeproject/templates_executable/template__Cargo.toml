@@ -12,7 +12,7 @@ name = "launcher"
 [dependencies.ct_lib]
 path = "../cottontail/ct_lib"
 
-[dependencies.ct_lib_platform]
-path = "../cottontail/ct_lib_platform"
+[dependencies.ct_lib_window]
+path = "../cottontail/ct_lib_window"
 
 [dependencies]

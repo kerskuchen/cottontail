@@ -1,11 +1,11 @@
 [package]
-name = "ct_lib_platform"
+name = "ct_lib_window"
 version = "0.1.0"
 authors = ["Jakob Schwab <j.schwab@mail.de>"]
 edition = "2018"
 
 [lib]
-path = "src/lib_platform.rs"
+path = "src/lib_window.rs"
 
 [dependencies]
 ct_lib = { path = "../ct_lib"}

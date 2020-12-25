@@ -6,11 +6,14 @@
 - fixes audio bug in example scene
 - adds audio debug visualization to example scene
 - sdl layer now pauses on focus lost
+- split audio out of ct lib
+- replaces audrey crate with wav crate
  
 # CURRENT
 
-- split gamecode out of ct lib
-- split audio out of ct lib
+- rename ctlib to app
+- split input out of ct lib into platform
+- let app use platform (reverse controlflow)
 
 - could we split draw crate into bitmap and draw?
   - bitmap crate has color + bitmaps + bitmapfonts + grid + font trait
