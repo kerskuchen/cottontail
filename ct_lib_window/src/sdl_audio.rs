@@ -1,5 +1,5 @@
-use super::log;
-use ct_lib::audio::{AudioChunkStereo, AudioFrame, Audiostate, AUDIO_CHUNKSIZE_IN_FRAMES};
+use crate::audio::{AudioChunkStereo, AudioFrame, Audiostate, AUDIO_CHUNKSIZE_IN_FRAMES};
+use crate::core::log;
 
 #[derive(Eq, PartialEq)]
 enum AudioFadeState {

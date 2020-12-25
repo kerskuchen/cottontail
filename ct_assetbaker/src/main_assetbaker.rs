@@ -1,17 +1,26 @@
 mod aseprite;
 
-use ct_lib::core::bincode;
-use ct_lib::core::indexmap::indexmap;
-use ct_lib::core::indexmap::IndexMap;
-use ct_lib::core::log;
-use ct_lib::core::platform;
-use ct_lib::core::serde_derive::{Deserialize, Serialize};
-use ct_lib::core::serde_json;
-use ct_lib::draw::*;
-use ct_lib::game::*;
-use ct_lib::math::*;
+use ct_lib_audio as audio;
+use ct_lib_core as core;
+use ct_lib_draw as draw;
+use ct_lib_game as game;
+use ct_lib_image as image;
+use ct_lib_math as math;
 
-use ico;
+use crate::core::bincode;
+use crate::core::indexmap::indexmap;
+use crate::core::indexmap::IndexMap;
+use crate::core::log;
+use crate::core::platform;
+use crate::core::serde_derive::{Deserialize, Serialize};
+use crate::core::serde_json;
+
+use audio::*;
+use draw::*;
+use game::*;
+use image::*;
+use math::*;
+
 use rayon::prelude::*;
 
 use std::{
@@ -891,11 +900,10 @@ fn recreate_directory(path: &str) {
 fn main() {
     let start_time = std::time::Instant::now();
 
-    ct_lib::core::platform::init_logging("target/assetbaker_log.txt", log::Level::Trace)
+    platform::init_logging("target/assetbaker_log.txt", log::Level::Trace)
         .expect("Unable to init logging");
     std::panic::set_hook(Box::new(|panic_info| {
-        let (message, location) =
-            ct_lib::core::panic_message_split_to_message_and_location(panic_info);
+        let (message, location) = core::panic_message_split_to_message_and_location(panic_info);
         let final_message = format!("{}\n\nError occured at: {}", message, location);
         log::error!("{}", final_message);
 

@@ -1,18 +1,24 @@
-mod assets;
-mod input;
+pub mod assets;
+pub mod input;
 
 pub use assets::*;
 pub use input::*;
 
-use super::audio::*;
-use super::draw::*;
-use super::math::*;
-use super::*;
+use ct_lib_audio as audio;
+use ct_lib_core as core;
+use ct_lib_draw as draw;
+use ct_lib_image as image;
+use ct_lib_math as math;
 
-use super::core::dformat;
-use super::core::platform;
-use super::core::platform::TimerScoped;
-use super::core::serde_derive::{Deserialize, Serialize};
+use audio::*;
+use draw::*;
+use image::*;
+use math::*;
+
+use crate::core::dformat;
+use crate::core::platform;
+use crate::core::platform::TimerScoped;
+use crate::core::serde_derive::{Deserialize, Serialize};
 
 use std::collections::{HashMap, VecDeque};
 

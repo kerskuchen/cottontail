@@ -1,6 +1,6 @@
-use ct_lib::core::indexmap::IndexMap;
-use ct_lib::core::platform::{self, PathHelper};
-use ct_lib::core::serde_json;
+use ct_lib_core::platform::{self, PathHelper};
+use ct_lib_core::serde_json;
+use ct_lib_core::{indexmap::IndexMap, panic_set_hook_wait_for_keypress};
 
 use chrono::prelude::*;
 use heck::{CamelCase, TitleCase};
@@ -421,7 +421,7 @@ fn project_create(project_directory_name: &str, project_git_url: Option<String>)
 }
 
 fn main() {
-    ct_lib::core::panic_set_hook_wait_for_keypress();
+    panic_set_hook_wait_for_keypress();
 
     let (project_name, project_git_url) = {
         let args: Vec<String> = std::env::args().collect();

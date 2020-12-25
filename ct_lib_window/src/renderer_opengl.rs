@@ -1,6 +1,8 @@
-use ct_lib::draw::draw::*;
-use ct_lib::draw::*;
-use ct_lib::math::*;
+use super::core::*;
+use super::draw::draw::*;
+use super::draw::*;
+use super::image::*;
+use super::math::*;
 
 use glow::*;
 
@@ -469,7 +471,7 @@ impl Texture {
                 region_height as i32,
                 glow::RGBA,
                 glow::UNSIGNED_BYTE,
-                PixelUnpackData::Slice(ct_lib::core::transmute_slice_to_byte_slice(pixels)),
+                PixelUnpackData::Slice(transmute_slice_to_byte_slice(pixels)),
             );
 
             gl.bind_texture(glow::TEXTURE_2D, None);
@@ -744,12 +746,12 @@ impl DrawObject {
         let gl = &self.gl;
         unsafe {
             // Vertices
-            let vertices_raw = ct_lib::core::transmute_slice_to_byte_slice(vertices);
+            let vertices_raw = transmute_slice_to_byte_slice(vertices);
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vertex_buffer_id));
             gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_raw, glow::STREAM_DRAW);
 
             // Indices
-            let indices_raw = ct_lib::core::transmute_slice_to_byte_slice(indices);
+            let indices_raw = transmute_slice_to_byte_slice(indices);
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.index_buffer_id));
             gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_raw, glow::STREAM_DRAW);
 

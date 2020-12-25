@@ -1,16 +1,17 @@
 [package]
-name = "ct_lib"
+name = "ct_lib_game"
 version = "0.1.0"
 authors = ["Jakob Schwab <j.schwab@mail.de>"]
 edition = "2018"
 
 [lib]
-path = "src/lib_ct.rs"
+path = "src/lib_game.rs"
 
 [dependencies]
 ct_lib_core = { path = "../ct_lib_core"}
 ct_lib_math = { path = "../ct_lib_math"}
 ct_lib_draw = { path = "../ct_lib_draw"}
+ct_lib_image = { path = "../ct_lib_image"}
 ct_lib_audio = { path = "../ct_lib_audio"}
 
 serde = "1.0.118"

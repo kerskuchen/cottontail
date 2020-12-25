@@ -1,13 +1,12 @@
-mod renderer_opengl;
 mod sdl_audio;
 mod sdl_input;
 mod sdl_window;
 
-use ct_lib::core::platform;
-use ct_lib::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand};
-
-use ct_lib::core::log;
-use ct_lib::core::serde_derive::{Deserialize, Serialize};
+use super::core::log;
+use super::core::platform;
+use super::core::serde_derive::{Deserialize, Serialize};
+use super::core::{deserialize_from_json_file, serialize_to_json_file};
+use super::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand};
 
 use std::{collections::VecDeque, time::Duration};
 
@@ -183,14 +182,14 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     let launcher_config: LauncherConfig = {
         let config_filepath = platform::path_join(&savedata_dir, "launcher_config.json");
         if platform::path_exists(&config_filepath) {
-            ct_lib::core::deserialize_from_json_file(&config_filepath)
+            deserialize_from_json_file(&config_filepath)
         } else {
             let config = LauncherConfig {
                 display_index_to_use: 0,
                 controller_deadzone_threshold_x: 0.1,
                 controller_deadzone_threshold_y: 0.1,
             };
-            ct_lib::core::serialize_to_json_file(&config, &config_filepath);
+            serialize_to_json_file(&config, &config_filepath);
             config
         }
     };

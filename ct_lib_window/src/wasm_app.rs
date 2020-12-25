@@ -1,12 +1,11 @@
-mod renderer_opengl;
 mod wasm_audio;
 mod wasm_input;
 
-use renderer_opengl::Renderer;
+use super::renderer_opengl::Renderer;
 
-use ct_lib::core::log;
-use ct_lib::core::platform::*;
-use ct_lib::game::{FingerPlatformId, GameInput, GameMemory, GameStateInterface, SystemCommand};
+use ct_lib_core::log;
+use ct_lib_core::platform::*;
+use ct_lib_game::{FingerPlatformId, GameInput, GameMemory, GameStateInterface, SystemCommand};
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;

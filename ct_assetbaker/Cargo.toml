@@ -9,7 +9,12 @@ path = "src/main_assetbaker.rs"
 name = "ct_assetbaker"
 
 [dependencies]
-ct_lib = { path = "../ct_lib" }
+ct_lib_game = { path = "../ct_lib_game" }
+ct_lib_image = { path = "../ct_lib_image" }
+ct_lib_draw = { path = "../ct_lib_draw" }
+ct_lib_audio = { path = "../ct_lib_audio" }
+ct_lib_core = { path = "../ct_lib_core" }
+ct_lib_math = { path = "../ct_lib_math" }
 
 rayon = "1.5.0"
 ico = "0.1.0"

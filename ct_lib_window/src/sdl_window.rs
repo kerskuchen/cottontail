@@ -1,6 +1,5 @@
-use super::renderer_opengl::Renderer;
-
-use ct_lib::core::log;
+use crate::core::log;
+use crate::renderer_opengl::Renderer;
 
 use std::collections::HashMap;
 

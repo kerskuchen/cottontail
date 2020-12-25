@@ -1,17 +1,11 @@
-pub mod bitmap;
-pub mod color;
 pub mod draw;
-pub mod font;
-pub mod grid;
 pub mod sprite;
 
-pub use bitmap::*;
-pub use color::*;
 pub use draw::*;
-pub use font::*;
 pub use sprite::*;
 
 use ct_lib_core as core;
+use ct_lib_image as image;
 use ct_lib_math as math;
 
 use math::*;

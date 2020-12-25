@@ -1,4 +1,5 @@
-use super::bitmap::*;
+use super::image::bitmap::*;
+use super::image::font::*;
 use super::*;
 
 use super::core::serde_derive::{Deserialize, Serialize};
@@ -195,5 +196,89 @@ impl SpriteAtlas {
         );
 
         result_bitmap
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// SpriteFont
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct SpriteGlyph {
+    pub horizontal_advance: i32,
+    pub sprite: Sprite,
+
+    /// This is mainly used for text dimension calculations
+    pub sprite_dimensions: Vec2i,
+    /// This is mainly used for text dimension calculations
+    pub sprite_draw_offset: Vec2i,
+}
+
+impl Glyph for SpriteGlyph {
+    fn get_bitmap_rect(&self) -> Recti {
+        Recti::from_pos_dim(self.sprite_draw_offset, self.sprite_dimensions)
+    }
+
+    fn horizontal_advance(&self) -> i32 {
+        self.horizontal_advance
+    }
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct SpriteFont {
+    pub name: String,
+
+    pub baseline: i32,
+    pub vertical_advance: i32,
+    pub horizontal_advance_max: i32,
+    pub font_height_in_pixels: i32,
+
+    /// Fastpath glyphs for quick access (mainly latin glyphs)
+    pub ascii_glyphs: Vec<SpriteGlyph>,
+    /// Non-fastpath unicode glyphs for codepoints > FONT_MAX_NUM_FASTPATH_CODEPOINTS
+    pub unicode_glyphs: HashMap<Codepoint, SpriteGlyph>,
+}
+
+impl Font<SpriteGlyph> for SpriteFont {
+    fn baseline(&self) -> i32 {
+        self.baseline
+    }
+    fn vertical_advance(&self) -> i32 {
+        self.vertical_advance
+    }
+    fn horizontal_advance_max(&self) -> i32 {
+        self.horizontal_advance_max
+    }
+    fn font_height_in_pixels(&self) -> i32 {
+        self.font_height_in_pixels
+    }
+    fn get_glyph_for_codepoint_copy(&self, codepoint: Codepoint) -> SpriteGlyph {
+        if codepoint < FONT_MAX_NUM_FASTPATH_CODEPOINTS as i32 {
+            self.ascii_glyphs[codepoint as usize].clone()
+        } else {
+            let result = self
+                .unicode_glyphs
+                .get(&codepoint)
+                .unwrap_or(&self.ascii_glyphs[0usize]);
+            if result.sprite.name != "" {
+                result.clone()
+            } else {
+                self.ascii_glyphs['?' as usize].clone()
+            }
+        }
+    }
+    fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> &SpriteGlyph {
+        if codepoint < FONT_MAX_NUM_FASTPATH_CODEPOINTS as i32 {
+            &self.ascii_glyphs[codepoint as usize]
+        } else {
+            let result = self
+                .unicode_glyphs
+                .get(&codepoint)
+                .unwrap_or(&self.ascii_glyphs[0usize]);
+            if result.sprite.name != "" {
+                result
+            } else {
+                &self.ascii_glyphs['?' as usize]
+            }
+        }
     }
 }

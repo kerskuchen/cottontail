@@ -1,5 +1,5 @@
-use ct_lib::audio::{AudioChunkStereo, AudioFrame, Audiostate, AUDIO_CHUNKSIZE_IN_FRAMES};
-use ct_lib::core::log;
+use ct_lib_audio::{AudioChunkStereo, AudioFrame, Audiostate, AUDIO_CHUNKSIZE_IN_FRAMES};
+use ct_lib_core::log;
 
 use std::{cell::RefCell, rc::Rc};
 

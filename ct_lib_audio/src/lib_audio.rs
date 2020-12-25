@@ -1,7 +1,7 @@
-use ct_lib_math as math;
-
 pub mod audio;
 pub use audio::*;
+
+use ct_lib_math as math;
 
 #[inline]
 fn convert_u8_sample_to_f32(sample: u8) -> f32 {

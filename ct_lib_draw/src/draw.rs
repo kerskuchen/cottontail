@@ -1,5 +1,5 @@
-use super::color::*;
-use super::font::*;
+use super::image::bitmap::*;
+use super::image::font::*;
 use super::sprite::*;
 use super::*;
 
