@@ -1,28 +1,24 @@
 # DONE:
 
-- splitting up some cottontail lib 
-- updating dependencies
-- replace rand with oorandom
-- fixes audio bug in example scene
-- adds audio debug visualization to example scene
-- sdl layer now pauses on focus lost
 - split audio out of ct lib
 - replaces audrey crate with wav crate
-- split input out of ct lib into platform
- 
+- split up draw into draw and image crate
+- WONTFIX Unify platform layers a bit to allow feature sharing (tried it and there very little in 
+  common to the cost)
+
 # CURRENT
 
+- split input out of ct lib into platform
+
+# NEXT:
+
+## better platform layer
 - let app use platform (reverse controlflow)
 - if we can make opengl layer a dependency of draw we can put vertices and traits into 
   opengl layer and maybe make vertexbuffers typesafe again because we won't need to create
   drawcommands anymore and can just pass the vertices and indices out of the vertexbuffers in 
   a function call to the opengl layer?
 - rename ctlib to app
-
-# NEXT:
-
-## better platform layer
-- Unify platform layers a bit to allow feature sharing 
 - keep same loop functions and objects, just call functions from different modules?
 - pause on focus lost in sdl2
 - input processing
@@ -175,3 +171,9 @@
   (see sokol_gfx appendbuffer mechanism)
 - make vertexbuffers more save (disallow use of different vertex types) 
 - pushing of drawables is now slightly faster ~10% -> ~4%
+- splitting up some cottontail lib 
+- updating dependencies
+- replace rand with oorandom
+- fixes audio bug in example scene
+- adds audio debug visualization to example scene
+- sdl layer now pauses on focus lost

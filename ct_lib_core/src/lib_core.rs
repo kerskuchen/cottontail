@@ -10,11 +10,13 @@ pub use serde_json;
 
 #[cfg(not(target_arch = "wasm32"))]
 #[path = "platform_desktop.rs"]
-pub mod platform;
+mod platform;
 
 #[cfg(target_arch = "wasm32")]
 #[path = "platform_wasm.rs"]
-pub mod platform;
+mod platform;
+
+pub use platform::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Debugging and performance
@@ -27,6 +29,30 @@ macro_rules! dformat {
     };
 }
 
+pub struct TimerScoped {
+    log_message: String,
+    creation_time: f64,
+}
+
+impl Drop for TimerScoped {
+    fn drop(&mut self) {
+        let duration_since_creation = platform::timer_current_time_seconds() - self.creation_time;
+        log::debug!(
+            "{}: {:.3}ms",
+            self.log_message,
+            duration_since_creation * 1000.0
+        );
+    }
+}
+
+impl TimerScoped {
+    pub fn new_scoped(output_text: &str, _use_logger: bool) -> TimerScoped {
+        TimerScoped {
+            log_message: output_text.to_owned(),
+            creation_time: platform::timer_current_time_seconds(),
+        }
+    }
+}
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Convenience Serialization / Deserialization
 

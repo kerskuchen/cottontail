@@ -4,7 +4,7 @@ mod wasm_input;
 use super::renderer_opengl::Renderer;
 
 use ct_lib_core::log;
-use ct_lib_core::platform::*;
+use ct_lib_core::*;
 use ct_lib_game::{FingerPlatformId, GameInput, GameMemory, GameStateInterface, SystemCommand};
 
 use wasm_bindgen::prelude::*;
@@ -211,7 +211,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     init_logging("", log::Level::Trace).unwrap();
     log::info!("Starting up...");
 
-    let launcher_start_time = current_time_seconds();
+    timer_initialize();
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // AUDIO
@@ -241,10 +241,9 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
 
     let mut systemcommands: Vec<SystemCommand> = Vec::new();
 
-    let game_start_time = current_time_seconds();
+    let game_start_time = timer_current_time_seconds();
     let mut frame_start_time = game_start_time;
-    let duration_startup = game_start_time - launcher_start_time;
-    log::debug!("Startup took {:.3}ms", duration_startup * 1000.0,);
+    log::debug!("Startup took {:.3}ms", game_start_time * 1000.0,);
 
     let mut current_tick = 0;
 
@@ -552,7 +551,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     let g = f.clone();
 
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-        let pre_input_time = current_time_seconds();
+        let pre_input_time = timer_current_time_seconds();
 
         current_tick += 1;
 
@@ -594,7 +593,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             input.mouse.delta_y = input.mouse.pos_y - mouse_pos_previous_y;
         }
 
-        let post_input_time = current_time_seconds();
+        let post_input_time = timer_current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Timings, update and drawing
@@ -608,7 +607,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             let mut input = input.borrow_mut();
             input.deltatime = duration_frame as f32;
             input.target_deltatime = f32::min(duration_frame as f32, 1.0 / 30.0);
-            input.real_world_uptime = frame_start_time - launcher_start_time;
+            input.real_world_uptime = frame_start_time;
             input.audio_playback_rate_hz = audio_output.audio_playback_rate_hz;
         }
         {
@@ -643,7 +642,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             }
         }
 
-        let post_update_time = current_time_seconds();
+        let post_update_time = timer_current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Sound output
@@ -661,7 +660,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             }
         }
 
-        let post_sound_time = current_time_seconds();
+        let post_sound_time = timer_current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Drawcommands
@@ -682,7 +681,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             );
         }
 
-        let post_render_time = current_time_seconds();
+        let post_render_time = timer_current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // System commands

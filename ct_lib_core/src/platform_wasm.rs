@@ -1,37 +1,21 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Debugging and performance
 
-pub fn current_time_seconds() -> f64 {
-    web_sys::window()
-        .expect("Cannot find global object `window`")
-        .performance()
-        .expect("Cannot find global object `performance`")
-        .now()
-        / 1000.0
-}
-
-pub struct TimerScoped {
-    log_message: String,
-    creation_time: f64,
-}
-
-impl Drop for TimerScoped {
-    fn drop(&mut self) {
-        let duration_since_creation = current_time_seconds() - self.creation_time;
-        log::debug!(
-            "{}: {:.3}ms",
-            self.log_message,
-            duration_since_creation * 1000.0
-        );
+static mut TIMER_WINDOW: Option<web_sys::Window> = None;
+pub fn timer_initialize() {
+    unsafe {
+        TIMER_WINDOW = Some(web_sys::window().expect("Cannot find global object `window`"));
     }
 }
-
-impl TimerScoped {
-    pub fn new_scoped(output_text: &str, _use_logger: bool) -> TimerScoped {
-        TimerScoped {
-            log_message: output_text.to_owned(),
-            creation_time: current_time_seconds(),
-        }
+pub fn timer_current_time_seconds() -> f64 {
+    unsafe {
+        TIMER_WINDOW
+            .as_mut()
+            .expect("Timer needs to be initialized before use")
+            .performance()
+            .expect("Cannot find global object `performance`")
+            .now()
+            / 1000.0
     }
 }
 

@@ -6,40 +6,19 @@ pub use easy_process;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Debugging and performance
 
-pub struct TimerScoped {
-    use_logger: bool,
-    log_message: String,
-    creation_time: std::time::Instant,
-}
-
-impl Drop for TimerScoped {
-    fn drop(&mut self) {
-        let duration_since_creation = std::time::Instant::now()
-            .duration_since(self.creation_time)
-            .as_secs_f32();
-        if self.use_logger {
-            log::debug!(
-                "{}: {:.3}ms",
-                self.log_message,
-                duration_since_creation * 1000.0
-            );
-        } else {
-            println!(
-                "{}: {:.3}ms",
-                self.log_message,
-                duration_since_creation * 1000.0
-            );
-        }
+static mut TIMER_STARTING_INSTANT: Option<std::time::Instant> = None;
+pub fn timer_initialize() {
+    unsafe {
+        TIMER_STARTING_INSTANT = Some(std::time::Instant::now());
     }
 }
-
-impl TimerScoped {
-    pub fn new_scoped(output_text: &str, use_logger: bool) -> TimerScoped {
-        TimerScoped {
-            use_logger,
-            log_message: output_text.to_owned(),
-            creation_time: std::time::Instant::now(),
-        }
+pub fn timer_current_time_seconds() -> f64 {
+    unsafe {
+        std::time::Instant::now()
+            .duration_since(
+                TIMER_STARTING_INSTANT.expect("Timer needs to be initialized before use"),
+            )
+            .as_secs_f64()
     }
 }
 

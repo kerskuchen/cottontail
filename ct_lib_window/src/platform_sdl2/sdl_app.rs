@@ -3,8 +3,8 @@ mod sdl_input;
 mod sdl_window;
 
 use super::core::log;
-use super::core::platform;
 use super::core::serde_derive::{Deserialize, Serialize};
+use super::core::*;
 use super::core::{deserialize_from_json_file, serialize_to_json_file};
 use super::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand};
 
@@ -112,13 +112,13 @@ impl<GameStateType: GameStateInterface + Clone> InputRecorder<GameStateType> {
 // Main event loop
 
 fn log_frametimes(
-    _duration_frame: f32,
-    _duration_input: f32,
-    _duration_update: f32,
-    _duration_sound: f32,
-    _duration_render: f32,
-    _duration_swap: f32,
-    _duration_wait: f32,
+    _duration_frame: f64,
+    _duration_input: f64,
+    _duration_update: f64,
+    _duration_sound: f64,
+    _duration_render: f64,
+    _duration_swap: f64,
+    _duration_wait: f64,
 ) {
     if ENABLE_FRAMETIME_LOGGING {
         log::trace!(
@@ -135,9 +135,9 @@ fn log_frametimes(
 }
 
 pub fn run_main<GameStateType: GameStateInterface + Clone>() {
-    let launcher_start_time = std::time::Instant::now();
+    timer_initialize();
     let game_config = GameStateType::get_game_config();
-    let savedata_dir = platform::get_savegame_dir(
+    let savedata_dir = get_savegame_dir(
         &game_config.game_company_name,
         &game_config.game_save_folder_name,
         true,
@@ -153,8 +153,8 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     // ---------------------------------------------------------------------------------------------
     // Logging and error handling
 
-    let logfile_path = platform::path_join(&savedata_dir, "logging.txt");
-    if let Err(error) = platform::init_logging(&logfile_path, log::Level::Trace) {
+    let logfile_path = path_join(&savedata_dir, "logging.txt");
+    if let Err(error) = init_logging(&logfile_path, log::Level::Trace) {
         sdl_window::Window::show_error_messagebox(&format!(
             "Could not initialize logger at '{}' : {}",
             &logfile_path, error,
@@ -166,7 +166,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
 
         if ENABLE_PANIC_MESSAGES {
             let logfile_path_canonicalized =
-                platform::path_canonicalize(&logfile_path).unwrap_or(logfile_path.to_string());
+                path_canonicalize(&logfile_path).unwrap_or(logfile_path.to_string());
             let messagebox_text = format!(
                 "A Fatal error has occured:\n{}\nLogfile written to '{}'",
                 &panic_info, &logfile_path_canonicalized,
@@ -180,8 +180,8 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
 
     // Get launcher config
     let launcher_config: LauncherConfig = {
-        let config_filepath = platform::path_join(&savedata_dir, "launcher_config.json");
-        if platform::path_exists(&config_filepath) {
+        let config_filepath = path_join(&savedata_dir, "launcher_config.json");
+        if path_exists(&config_filepath) {
             deserialize_from_json_file(&config_filepath)
         } else {
             let config = LauncherConfig {
@@ -223,16 +223,15 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     let vsync_test_framecount = 4;
     let vsync_test_duration_target = target_seconds_per_frame * vsync_test_framecount as f32;
     let vsync_test_duration = {
-        let vsync_test_start_time = std::time::Instant::now();
+        let vsync_test_start_time = timer_current_time_seconds();
 
         for _ in 0..vsync_test_framecount {
             renderer.clear_screen();
             window.sdl_window.gl_swap_window();
         }
-        std::time::Instant::now()
-            .duration_since(vsync_test_start_time)
-            .as_secs_f32()
-    };
+
+        timer_current_time_seconds() - vsync_test_start_time
+    } as f32;
     let ratio = vsync_test_duration / vsync_test_duration_target;
     let vsync_enabled = ratio > 0.5;
     log::debug!(
@@ -257,7 +256,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     // Input
 
     let mut gamepad_subsystem = {
-        let savedata_mappings_path = platform::path_join(&savedata_dir, "gamecontrollerdb.txt");
+        let savedata_mappings_path = path_join(&savedata_dir, "gamecontrollerdb.txt");
         let gamedata_mappings_path = "resources/gamecontrollerdb.txt".to_string();
         let gamepad_mappings = std::fs::read_to_string(&savedata_mappings_path)
             .or_else(|_error| {
@@ -326,13 +325,10 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     let mut systemcommands: Vec<SystemCommand> = Vec::new();
     let mut event_pump = sdl_context.event_pump().unwrap();
 
-    let game_start_time = std::time::Instant::now();
+    let game_start_time = timer_current_time_seconds();
     let mut frame_start_time = game_start_time;
     let mut post_wait_time = game_start_time;
-    let duration_startup = game_start_time
-        .duration_since(launcher_start_time)
-        .as_secs_f32();
-    log::debug!("Startup took {:.3}ms", duration_startup * 1000.0,);
+    log::debug!("Startup took {:.3}ms", game_start_time * 1000.0,);
 
     let mut mouse_pos_previous_x = input.mouse.pos_x;
     let mut mouse_pos_previous_y = input.mouse.pos_y;
@@ -344,7 +340,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     // Begin Mainloop
 
     while is_running {
-        let pre_input_time = std::time::Instant::now();
+        let pre_input_time = timer_current_time_seconds();
 
         current_tick += 1;
 
@@ -746,23 +742,19 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             *input.keyboard.keys.get_mut(&Scancode::P).unwrap() = previous_playback_key_state;
         }
 
-        let post_input_time = std::time::Instant::now();
+        let post_input_time = timer_current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Timings, update and drawing
 
         let pre_update_time = post_input_time;
 
-        let duration_frame = pre_update_time
-            .duration_since(frame_start_time)
-            .as_secs_f32();
+        let duration_frame = pre_update_time - frame_start_time;
         frame_start_time = pre_update_time;
 
-        input.deltatime = duration_frame;
+        input.deltatime = duration_frame as f32;
         input.target_deltatime = target_seconds_per_frame;
-        input.real_world_uptime = frame_start_time
-            .duration_since(launcher_start_time)
-            .as_secs_f64();
+        input.real_world_uptime = frame_start_time;
         input.audio_playback_rate_hz = audio_output.audio_playback_rate_hz;
 
         if input.has_focus {
@@ -792,7 +784,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             input.textinput.composition_text.clear();
         }
 
-        let post_update_time = std::time::Instant::now();
+        let post_update_time = timer_current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Sound output
@@ -810,7 +802,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             }
         }
 
-        let post_sound_time = std::time::Instant::now();
+        let post_sound_time = timer_current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Drawcommands
@@ -830,7 +822,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             );
         }
 
-        let post_render_time = std::time::Instant::now();
+        let post_render_time = timer_current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Swap framebuffers
@@ -839,7 +831,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
 
         window.sdl_window.gl_swap_window();
 
-        let post_swap_time = std::time::Instant::now();
+        let post_swap_time = timer_current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Wait for target frame time
@@ -850,9 +842,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             // NOTE: We need to manually wait to reach target frame rate
             loop {
                 let time_left_till_flip = target_seconds_per_frame
-                    - std::time::Instant::now()
-                        .duration_since(post_wait_time)
-                        .as_secs_f32();
+                    - (timer_current_time_seconds() - post_wait_time) as f32;
 
                 if time_left_till_flip > 0.002 {
                     std::thread::sleep(std::time::Duration::from_millis(1));
@@ -866,21 +856,17 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             }
         }
 
-        post_wait_time = std::time::Instant::now();
+        post_wait_time = timer_current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Debug timing output
 
-        let duration_input = post_input_time.duration_since(pre_input_time).as_secs_f32();
-        let duration_update = post_update_time
-            .duration_since(pre_update_time)
-            .as_secs_f32();
-        let duration_sound = post_sound_time.duration_since(pre_sound_time).as_secs_f32();
-        let duration_render = post_render_time
-            .duration_since(pre_render_time)
-            .as_secs_f32();
-        let duration_swap = post_swap_time.duration_since(pre_swap_time).as_secs_f32();
-        let duration_wait = post_wait_time.duration_since(pre_wait_time).as_secs_f32();
+        let duration_input = post_input_time - pre_input_time;
+        let duration_update = post_update_time - pre_update_time;
+        let duration_sound = post_sound_time - pre_sound_time;
+        let duration_render = post_render_time - pre_render_time;
+        let duration_swap = post_swap_time - pre_swap_time;
+        let duration_wait = post_wait_time - pre_wait_time;
 
         log_frametimes(
             duration_frame,
@@ -896,9 +882,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     //--------------------------------------------------------------------------------------
     // Mainloop stopped
 
-    let duration_gameplay = std::time::Instant::now()
-        .duration_since(game_start_time)
-        .as_secs_f64();
+    let duration_gameplay = timer_current_time_seconds() - game_start_time;
     log::debug!("Playtime: {:.3}s", duration_gameplay);
 
     // Make sure our sound output has time to wind down

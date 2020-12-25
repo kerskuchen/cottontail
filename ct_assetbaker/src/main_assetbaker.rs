@@ -7,13 +7,10 @@ use ct_lib_game as game;
 use ct_lib_image as image;
 use ct_lib_math as math;
 
-use crate::core::bincode;
 use crate::core::indexmap::indexmap;
 use crate::core::indexmap::IndexMap;
-use crate::core::log;
-use crate::core::platform;
 use crate::core::serde_derive::{Deserialize, Serialize};
-use crate::core::serde_json;
+use crate::core::*;
 
 use audio::*;
 use draw::*;
@@ -136,18 +133,14 @@ fn bake_graphics_resources() {
     // Convert png and aseprite files to png sheets and move to them to `target/assets_temp`
     let sprite_sheets: Vec<GraphicsSheet> = {
         let mut imagepaths = vec![];
-        imagepaths.append(&mut platform::collect_files_by_extension_recursive(
-            "assets", ".ase",
-        ));
-        imagepaths.append(&mut platform::collect_files_by_extension_recursive(
-            "assets", ".png",
-        ));
+        imagepaths.append(&mut collect_files_by_extension_recursive("assets", ".ase"));
+        imagepaths.append(&mut collect_files_by_extension_recursive("assets", ".png"));
         imagepaths
             .par_iter()
             .map(|imagepath| {
-                let sheet_name = platform::path_without_extension(imagepath).replace("assets/", "");
-                let output_path_without_extension = platform::path_without_extension(imagepath)
-                    .replace("assets", "target/assets_temp");
+                let sheet_name = path_without_extension(imagepath).replace("assets/", "");
+                let output_path_without_extension =
+                    path_without_extension(imagepath).replace("assets", "target/assets_temp");
                 aseprite::create_sheet(imagepath, &sheet_name, &output_path_without_extension)
             })
             .collect()
@@ -160,17 +153,17 @@ fn bake_graphics_resources() {
 }
 
 fn bake_audio_resources() {
-    let ogg_paths = platform::collect_files_by_extension_recursive("assets", ".ogg");
+    let ogg_paths = collect_files_by_extension_recursive("assets", ".ogg");
     for ogg_path_source in &ogg_paths {
         let ogg_path_dest = ogg_path_source.replace("assets", "resources");
-        std::fs::create_dir_all(platform::path_without_filename(&ogg_path_dest)).unwrap();
+        std::fs::create_dir_all(path_without_filename(&ogg_path_dest)).unwrap();
         std::fs::copy(ogg_path_source, ogg_path_dest).unwrap();
     }
 
-    let wav_paths = platform::collect_files_by_extension_recursive("assets", ".wav");
+    let wav_paths = collect_files_by_extension_recursive("assets", ".wav");
     for wav_path_source in &wav_paths {
         let wav_path_dest = wav_path_source.replace("assets", "resources");
-        std::fs::create_dir_all(platform::path_without_filename(&wav_path_dest)).unwrap();
+        std::fs::create_dir_all(path_without_filename(&wav_path_dest)).unwrap();
         std::fs::copy(wav_path_source, wav_path_dest).unwrap();
     }
 }
@@ -200,10 +193,10 @@ pub struct BitmapFontProperties {
 fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
     let mut result_properties = IndexMap::new();
 
-    let font_filepaths = platform::collect_files_by_extension_recursive("assets/fonts", ".ttf");
+    let font_filepaths = collect_files_by_extension_recursive("assets/fonts", ".ttf");
     for font_filepath in font_filepaths {
-        let font_name = platform::path_to_filename_without_extension(&font_filepath);
-        let renderparams_filepath = platform::path_with_extension(&font_filepath, "json");
+        let font_name = path_to_filename_without_extension(&font_filepath);
+        let renderparams_filepath = path_with_extension(&font_filepath, "json");
         let ttf_data_bytes = std::fs::read(&font_filepath)
             .expect(&format!("Cannot read fontdata '{}'", &font_filepath));
 
@@ -225,7 +218,7 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
                 },
             );
         } else {
-            let test_png_filepath = platform::path_join(
+            let test_png_filepath = path_join(
                 "target/assets_temp",
                 &(font_name.clone() + "_fontsize_test.png"),
             );
@@ -234,7 +227,7 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
                 &font_filepath,
                 &test_png_filepath
             );
-            let test_png_filepath = platform::path_join(
+            let test_png_filepath = path_join(
                 "target/assets_temp",
                 &(font_name.clone() + "_fontsize_test_offset_-0.5.png"),
             );
@@ -246,7 +239,7 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
                 32,
                 &test_png_filepath,
             );
-            let test_png_filepath = platform::path_join(
+            let test_png_filepath = path_join(
                 "target/assets_temp",
                 &(font_name.clone() + "_fontsize_test_offset_0.0.png"),
             );
@@ -258,7 +251,7 @@ fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
                 32,
                 &test_png_filepath,
             );
-            let test_png_filepath = platform::path_join(
+            let test_png_filepath = path_join(
                 "target/assets_temp",
                 &(font_name.clone() + "_fontsize_test_offset_0.5.png"),
             );
@@ -404,7 +397,7 @@ fn create_sheet_from_ttf(
 ) -> GraphicsSheet {
     let font_name = font_name.to_owned() + if draw_border { "_bordered" } else { "" };
 
-    let output_filepath_without_extension = platform::path_join(output_dir, &font_name);
+    let output_filepath_without_extension = path_join(output_dir, &font_name);
     let output_filepath_png = output_filepath_without_extension.to_owned() + ".png";
 
     let border_thickness = if draw_border { 1 } else { 0 };
@@ -483,7 +476,7 @@ pub fn atlas_create_from_images(
 
     // Write textures to disk
     let result_texture_imagepaths = {
-        let atlas_path_without_extension = platform::path_join(output_dir, "atlas");
+        let atlas_path_without_extension = path_join(output_dir, "atlas");
         let mut texture_imagepaths = Vec::new();
         for (index, atlas_texture) in atlas_textures.iter().enumerate() {
             let texture_path = format!("{}-{}.png", atlas_path_without_extension, index);
@@ -748,10 +741,10 @@ fn serialize_atlas(atlas: &AssetAtlas) {
 
 fn load_existing_launcher_icon_images(search_dir: &str) -> HashMap<i32, Bitmap> {
     let mut result = HashMap::new();
-    let image_paths = platform::collect_files_by_extension_recursive(search_dir, ".png");
+    let image_paths = collect_files_by_extension_recursive(search_dir, ".png");
     for image_path in &image_paths {
         let image = Bitmap::from_png_file_or_panic(image_path);
-        let size = platform::path_to_filename_without_extension(image_path)
+        let size = path_to_filename_without_extension(image_path)
             .parse()
             .expect(&format!(
                 "Launcher icon name '{}' invalid, see README_ICONS.md",
@@ -838,7 +831,7 @@ fn create_credits_file(
 
     let mut license_files = Vec::new();
     for searchdir in license_searchdirs {
-        license_files.append(&mut platform::collect_files_by_extension_recursive(
+        license_files.append(&mut collect_files_by_extension_recursive(
             searchdir, ".license",
         ));
     }
@@ -859,9 +852,9 @@ fn create_credits_file(
 }
 
 fn recreate_directory(path: &str) {
-    if platform::path_exists(path) {
+    if path_exists(path) {
         loop {
-            let dir_content = platform::collect_files_recursive(path);
+            let dir_content = collect_files_recursive(path);
 
             let mut has_error = false;
             for path_to_delete in dir_content {
@@ -900,8 +893,7 @@ fn recreate_directory(path: &str) {
 fn main() {
     let start_time = std::time::Instant::now();
 
-    platform::init_logging("target/assetbaker_log.txt", log::Level::Trace)
-        .expect("Unable to init logging");
+    init_logging("target/assetbaker_log.txt", log::Level::Trace).expect("Unable to init logging");
     std::panic::set_hook(Box::new(|panic_info| {
         let (message, location) = core::panic_message_split_to_message_and_location(panic_info);
         let final_message = format!("{}\n\nError occured at: {}", message, location);
@@ -915,8 +907,8 @@ fn main() {
     recreate_directory("resources");
     recreate_directory("resources_executable");
 
-    if platform::path_exists("assets") && !platform::path_dir_empty("assets") {
-        if platform::path_exists("assets/credits.txt") {
+    if path_exists("assets") && !path_dir_empty("assets") {
+        if path_exists("assets/credits.txt") {
             create_credits_file(
                 "assets/credits.txt",
                 &["assets", "assets_copy", "assets_executable", "cottontail"],
@@ -930,20 +922,19 @@ fn main() {
         bake_audio_resources();
     }
 
-    if platform::path_exists("assets_copy") {
-        platform::path_copy_directory_contents_recursive("assets_copy", "resources");
+    if path_exists("assets_copy") {
+        path_copy_directory_contents_recursive("assets_copy", "resources");
         // Delete license files that got accidentally copied over to output path.
         // NOTE: We don't need those because we will create a credits file containing all licenses
-        for license_path in platform::collect_files_by_extension_recursive("resources", ".license")
-        {
+        for license_path in collect_files_by_extension_recursive("resources", ".license") {
             std::fs::remove_file(&license_path)
                 .expect(&format!("Cannot delete '{}'", &license_path));
         }
     }
 
-    if platform::path_exists("assets_executable") {
+    if path_exists("assets_executable") {
         // Copy version info
-        if platform::path_exists("assets_executable/versioninfo.rc") {
+        if path_exists("assets_executable/versioninfo.rc") {
             std::fs::copy(
                 "assets_executable/versioninfo.rc",
                 "resources_executable/versioninfo.rc",
@@ -954,7 +945,7 @@ fn main() {
         }
 
         // Create launcher icon
-        if platform::path_exists("assets_executable/launcher_icon") {
+        if path_exists("assets_executable/launcher_icon") {
             let existing_launcher_icons =
                 load_existing_launcher_icon_images("assets_executable/launcher_icon");
             let windows_icon_images = create_windows_launcher_icon_images(&existing_launcher_icons);
@@ -970,7 +961,7 @@ fn main() {
 
     // Write indexfile
     let mut filelist_content = String::new();
-    let filelist = platform::collect_files_recursive("resources");
+    let filelist = collect_files_recursive("resources");
     for filepath in &filelist {
         filelist_content += &format!("{}\n", filepath);
     }

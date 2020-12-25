@@ -4,8 +4,8 @@ pub use super::grid::GluePosition;
 pub use super::math::{AlignmentHorizontal, AlignmentVertical, Vec2i};
 
 use super::core::indexmap::IndexMap;
-use super::core::platform;
 use super::core::serde_derive::Serialize;
+use super::core::*;
 use super::math;
 
 use rect_packer;
@@ -116,7 +116,7 @@ impl Bitmap {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn from_png_file(png_filepath: &str) -> Result<Bitmap, String> {
-        let file_content = platform::read_file_whole(png_filepath)
+        let file_content = read_file_whole(png_filepath)
             .map_err(|error| format!("Could not open png file '{}': {}", png_filepath, error))?;
         Bitmap::from_png_data(&file_content)
     }
@@ -145,9 +145,7 @@ impl Bitmap {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn write_to_png_file(bitmap: &Bitmap, png_filepath: &str) {
-        use super::core::transmute_slice_to_byte_slice;
-
-        std::fs::create_dir_all(platform::path_without_filename(png_filepath)).expect(&format!(
+        std::fs::create_dir_all(path_without_filename(png_filepath)).expect(&format!(
             "Could not create necessary directories to write to '{}'",
             png_filepath
         ));

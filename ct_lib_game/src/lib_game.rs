@@ -16,9 +16,8 @@ use image::*;
 use math::*;
 
 use crate::core::dformat;
-use crate::core::platform;
-use crate::core::platform::TimerScoped;
 use crate::core::serde_derive::{Deserialize, Serialize};
+use crate::core::*;
 
 use std::collections::{HashMap, VecDeque};
 
