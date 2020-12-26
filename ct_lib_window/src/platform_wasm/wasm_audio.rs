@@ -9,7 +9,8 @@ use std::{cell::RefCell, rc::Rc};
 use wasm_bindgen::{prelude::*, JsCast};
 
 const AUDIO_SAMPLE_RATE: usize = 44100;
-const AUDIO_BUFFER_FRAME_COUNT: usize = 4 * AUDIO_CHUNKSIZE_IN_FRAMES;
+const AUDIO_BUFFER_FRAMECOUNT: usize = 2 * AUDIO_CHUNKSIZE_IN_FRAMES;
+const AUDIO_QUEUE_FRAMECOUNT: usize = 2 * AUDIO_BUFFER_FRAMECOUNT;
 const AUDIO_NUM_CHANNELS: usize = 2;
 const AUDIO_CHANNEL_LEFT: usize = 0;
 const AUDIO_CHANNEL_RIGHT: usize = 1;
@@ -58,22 +59,22 @@ impl AudioOutput {
             web_sys::AudioContext::new_with_context_options(&audio_options)
                 .expect("WebAudio not available"),
         ));
-        let audio_processor = audio_context.borrow().create_script_processor_with_buffer_size_and_number_of_input_channels_and_number_of_output_channels(AUDIO_BUFFER_FRAME_COUNT as u32, 0, AUDIO_NUM_CHANNELS as u32)
+        let audio_processor = audio_context.borrow().create_script_processor_with_buffer_size_and_number_of_input_channels_and_number_of_output_channels(AUDIO_BUFFER_FRAMECOUNT as u32, 0, AUDIO_NUM_CHANNELS as u32)
         .expect("Could not create AudioProcessor node");
 
         let audio_ringbuffer = ringbuf::RingBuffer::new(AUDIO_SAMPLE_RATE);
         let (audio_ringbuffer_producer, audio_ringbuffer_consumer) = audio_ringbuffer.split();
         {
             let mut audio_callback_context = WASMAudioCallback::new(audio_ringbuffer_consumer);
-            let mut channel_output_left = vec![0f32; AUDIO_BUFFER_FRAME_COUNT];
-            let mut channel_output_right = vec![0f32; AUDIO_BUFFER_FRAME_COUNT];
+            let mut channel_output_left = vec![0f32; AUDIO_BUFFER_FRAMECOUNT];
+            let mut channel_output_right = vec![0f32; AUDIO_BUFFER_FRAMECOUNT];
 
             let audio_callback =
                 Closure::wrap(Box::new(move |event: web_sys::AudioProcessingEvent| {
                     let output_buffer = event.output_buffer().unwrap();
                     let num_frames = output_buffer.length() as usize;
                     let num_channels = output_buffer.number_of_channels() as usize;
-                    assert!(num_frames == AUDIO_BUFFER_FRAME_COUNT);
+                    assert!(num_frames == AUDIO_BUFFER_FRAMECOUNT);
                     assert!(num_channels == AUDIO_NUM_CHANNELS);
 
                     // Deinterleave and write output frames
@@ -217,8 +218,8 @@ impl AudioOutput {
     pub fn get_num_chunks_to_submit(&self) -> usize {
         let framecount_to_render = {
             let framecount_queued = self.frame_queue.len();
-            if framecount_queued < AUDIO_BUFFER_FRAME_COUNT {
-                AUDIO_BUFFER_FRAME_COUNT - framecount_queued
+            if framecount_queued < AUDIO_QUEUE_FRAMECOUNT {
+                AUDIO_QUEUE_FRAMECOUNT - framecount_queued
             } else {
                 0
             }
@@ -227,7 +228,7 @@ impl AudioOutput {
     }
 
     pub fn submit_chunk(&mut self, audio_chunk: &AudioChunkStereo) {
-        for frame in audio_chunk.iter() {
+        for frame in audio_chunk {
             if let Err(_) = self.frame_queue.push(*frame) {
                 log::warn!("Audiobuffer: Could not push frame to queue - queue full?");
             }

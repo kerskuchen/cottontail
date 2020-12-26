@@ -5,7 +5,8 @@ use ct_lib_audio::{
 };
 
 const AUDIO_SAMPLE_RATE: usize = 44100;
-const AUDIO_BUFFER_FRAME_COUNT: usize = 4 * AUDIO_CHUNKSIZE_IN_FRAMES;
+const AUDIO_BUFFER_FRAMECOUNT: usize = 2 * AUDIO_CHUNKSIZE_IN_FRAMES;
+const AUDIO_QUEUE_FRAMECOUNT: usize = 2 * AUDIO_BUFFER_FRAMECOUNT;
 const AUDIO_NUM_CHANNELS: usize = 2;
 
 #[derive(Eq, PartialEq)]
@@ -83,7 +84,7 @@ impl AudioOutput {
             freq: Some(AUDIO_SAMPLE_RATE as i32),
             channels: Some(AUDIO_NUM_CHANNELS as u8),
             // IMPORTANT: `samples` is a misnomer - it is actually the frames
-            samples: Some(AUDIO_BUFFER_FRAME_COUNT as u16),
+            samples: Some(AUDIO_BUFFER_FRAMECOUNT as u16),
         };
 
         let audio_ringbuffer = ringbuf::RingBuffer::new(AUDIO_SAMPLE_RATE);
@@ -105,9 +106,9 @@ impl AudioOutput {
                     AUDIO_NUM_CHANNELS
                 );
                 assert!(
-                    spec.samples == AUDIO_BUFFER_FRAME_COUNT as u16,
+                    spec.samples == AUDIO_BUFFER_FRAMECOUNT as u16,
                     "Cannot initialize audio output audiobuffersize {}",
-                    AUDIO_BUFFER_FRAME_COUNT
+                    AUDIO_BUFFER_FRAMECOUNT
                 );
 
                 SDLAudioCallback::new(audio_ringbuffer_consumer)
@@ -135,8 +136,9 @@ impl AudioOutput {
     pub fn get_num_chunks_to_submit(&self) -> usize {
         let framecount_to_render = {
             let framecount_queued = self.frames_queue.len();
-            if framecount_queued < AUDIO_BUFFER_FRAME_COUNT {
-                AUDIO_BUFFER_FRAME_COUNT - framecount_queued
+            dbg!(framecount_queued);
+            if framecount_queued < AUDIO_QUEUE_FRAMECOUNT {
+                AUDIO_QUEUE_FRAMECOUNT - framecount_queued
             } else {
                 0
             }
@@ -145,7 +147,7 @@ impl AudioOutput {
     }
 
     pub fn submit_chunk(&mut self, audio_chunk: &AudioChunkStereo) {
-        for frame in audio_chunk.iter() {
+        for frame in audio_chunk {
             if let Err(_) = self.frames_queue.push(*frame) {
                 log::warn!("Audiobuffer: Could not push frame to queue - queue full?");
             }

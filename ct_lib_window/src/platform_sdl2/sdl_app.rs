@@ -18,7 +18,7 @@ use std::{collections::VecDeque, time::Duration};
 // Configuration
 
 const ENABLE_PANIC_MESSAGES: bool = false;
-const ENABLE_FRAMETIME_LOGGING: bool = true;
+const ENABLE_FRAMETIME_LOGGING: bool = false;
 
 #[derive(Serialize, Deserialize)]
 struct LauncherConfig {
@@ -30,10 +30,9 @@ struct LauncherConfig {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Live looped input playback and recording
 
-const todo: &str = "reactivate input recording";
-/*
-struct InputRecorder<GameStateType: GameStateInterface + Clone> {
-    game_memory: GameMemory<GameStateType>,
+#[derive(Default)]
+struct InputRecorder<AppContextType: AppContextInterface> {
+    app_context: Option<AppContextType>,
 
     is_recording: bool,
     is_playing_back: bool,
@@ -41,27 +40,24 @@ struct InputRecorder<GameStateType: GameStateInterface + Clone> {
     queue_recording: VecDeque<GameInput>,
 }
 
-impl<GameStateType: GameStateInterface + Clone> Default for InputRecorder<GameStateType> {
-    fn default() -> Self {
+impl<AppContextType: AppContextInterface> InputRecorder<AppContextType> {
+    fn new() -> InputRecorder<AppContextType> {
         InputRecorder {
-            game_memory: GameMemory::default(),
-
+            app_context: None,
             is_recording: false,
             is_playing_back: false,
             queue_playback: VecDeque::new(),
             queue_recording: VecDeque::new(),
         }
     }
-}
 
-impl<GameStateType: GameStateInterface + Clone> InputRecorder<GameStateType> {
-    fn start_recording(&mut self, game_memory: &GameMemory<GameStateType>) {
+    fn start_recording(&mut self, app_context: &AppContextType) {
         assert!(!self.is_recording);
         assert!(!self.is_playing_back);
 
         self.is_recording = true;
         self.queue_recording.clear();
-        self.game_memory = game_memory.clone();
+        self.app_context = Some(app_context.clone());
     }
 
     fn stop_recording(&mut self) {
@@ -71,13 +67,17 @@ impl<GameStateType: GameStateInterface + Clone> InputRecorder<GameStateType> {
         self.is_recording = false;
     }
 
-    fn start_playback(&mut self, game_memory: &mut GameMemory<GameStateType>) {
+    fn start_playback(&mut self, app_context: &mut AppContextType) {
         assert!(!self.is_recording);
         assert!(!self.is_playing_back);
 
         self.is_playing_back = true;
         self.queue_playback = self.queue_recording.clone();
-        *game_memory = self.game_memory.clone();
+        *app_context = self
+            .app_context
+            .as_ref()
+            .expect("Recording is missing app context")
+            .clone();
 
         assert!(!self.queue_playback.is_empty());
     }
@@ -97,7 +97,7 @@ impl<GameStateType: GameStateInterface + Clone> InputRecorder<GameStateType> {
         self.queue_recording.push_back(input.clone());
     }
 
-    fn playback_input(&mut self, game_memory: &mut GameMemory<GameStateType>) -> GameInput {
+    fn playback_input(&mut self, app_context: &mut AppContextType) -> GameInput {
         assert!(!self.is_recording);
         assert!(self.is_playing_back);
 
@@ -106,14 +106,13 @@ impl<GameStateType: GameStateInterface + Clone> InputRecorder<GameStateType> {
         } else {
             // We hit the end of the stream -> go back to the beginning
             self.stop_playback();
-            self.start_playback(game_memory);
+            self.start_playback(app_context);
 
             // As we could not read the input before we try again
             self.queue_playback.pop_front().unwrap()
         }
     }
 }
-*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main event loop
@@ -282,8 +281,7 @@ pub fn run_main<AppContextType: AppContextInterface>() {
     // ---------------------------------------------------------------------------------------------
     // Mainloop setup
 
-    let TODO = "input recording";
-    // let mut input_recorder = InputRecorder::default();
+    let mut input_recorder = InputRecorder::new();
 
     let mut appcommands: Vec<AppCommand> = Vec::new();
     let mut event_pump = sdl_context.event_pump().unwrap();
@@ -602,8 +600,6 @@ pub fn run_main<AppContextType: AppContextInterface>() {
         //--------------------------------------------------------------------------------------
         // Start/stop input-recording/-playback
 
-        let TODO = "reactivate this";
-        /*
         if input.keyboard.recently_released(Scancode::O) {
             if !input_recorder.is_playing_back {
                 if input_recorder.is_recording {
@@ -648,8 +644,6 @@ pub fn run_main<AppContextType: AppContextInterface>() {
             input = input_recorder.playback_input(&mut app_context);
             *input.keyboard.keys.get_mut(&Scancode::P).unwrap() = previous_playback_key_state;
         }
-
-        */
 
         let post_input_time = timer_current_time_seconds();
 
@@ -782,5 +776,5 @@ pub fn run_main<AppContextType: AppContextInterface>() {
 
     // Make sure our sound output has time to wind down
     let TODO = "sleep duration based on audiobuffersize + buffers in queue";
-    std::thread::sleep(Duration::from_secs_f32(0.3));
+    std::thread::sleep(Duration::from_secs_f32(0.1));
 }
