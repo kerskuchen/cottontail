@@ -6,18 +6,59 @@ pub mod platform;
 #[path = "platform_sdl2/sdl_app.rs"]
 pub mod platform;
 
+pub mod input;
 pub mod renderer_opengl;
 
-use ct_lib_audio as audio;
 use ct_lib_core as core;
 use ct_lib_draw as draw;
-use ct_lib_game as game;
 use ct_lib_image as image;
 use ct_lib_math as math;
-use game::GameStateInterface;
 
-pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() {
-    platform::run_main::<GameStateType>();
+use input::GameInput;
+use platform::audio::AudioOutput;
+use renderer_opengl::Renderer;
+
+pub struct AppInfo {
+    pub window_title: String,
+    pub save_folder_name: String,
+    pub company_name: String,
+}
+pub enum AppCommand {
+    FullscreenToggle,
+    TextinputStart {
+        inputrect_x: i32,
+        inputrect_y: i32,
+        inputrect_width: u32,
+        inputrect_height: u32,
+    },
+    TextinputStop,
+    ScreenSetGrabInput(bool),
+    WindowedModeAllowResizing(bool),
+    WindowedModeAllow(bool),
+    WindowedModeSetSize {
+        width: u32,
+        height: u32,
+        minimum_width: u32,
+        minimum_height: u32,
+    },
+    Shutdown,
+    Restart,
+}
+pub trait AppContextInterface: Clone {
+    fn get_app_info() -> AppInfo;
+    fn new(renderer: &mut Renderer, input: &GameInput, audio: &mut AudioOutput) -> Self;
+    fn reset(&mut self);
+    fn run_tick(
+        &mut self,
+        renderer: &mut Renderer,
+        input: &GameInput,
+        audio: &mut AudioOutput,
+        out_systemcommands: &mut Vec<AppCommand>,
+    );
+}
+
+pub fn run_main<AppContextType: 'static + AppContextInterface>() {
+    platform::run_main::<AppContextType>();
 }
 
 fn snap_deltatime_to_nearest_common_refresh_rate(deltatime: f32) -> f32 {

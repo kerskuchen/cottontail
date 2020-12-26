@@ -13,5 +13,6 @@ ct_lib_math = { path = "../ct_lib_math"}
 ct_lib_draw = { path = "../ct_lib_draw"}
 ct_lib_image = { path = "../ct_lib_image"}
 ct_lib_audio = { path = "../ct_lib_audio"}
+ct_lib_window = { path = "../ct_lib_window"}
 
 serde = "1.0.118"

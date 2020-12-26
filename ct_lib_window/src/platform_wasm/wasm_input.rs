@@ -1,7 +1,7 @@
+use crate::input::{Keycode, Scancode};
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Platform specific input
-
-use ct_lib_game::{Keycode, Scancode};
 
 pub fn scancode_to_our_scancode(scancode: &str) -> Scancode {
     match scancode {

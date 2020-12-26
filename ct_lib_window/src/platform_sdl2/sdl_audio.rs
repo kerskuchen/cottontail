@@ -1,5 +1,12 @@
-use crate::audio::{AudioChunkStereo, AudioFrame, Audiostate, AUDIO_CHUNKSIZE_IN_FRAMES};
 use crate::core::log;
+use ct_lib_audio::{
+    audio::{AudioChunkStereo, AUDIO_CHUNKSIZE_IN_FRAMES},
+    AudioFrame,
+};
+
+const AUDIO_SAMPLE_RATE: usize = 44100;
+const AUDIO_BUFFER_FRAME_COUNT: usize = 4 * AUDIO_CHUNKSIZE_IN_FRAMES;
+const AUDIO_NUM_CHANNELS: usize = 2;
 
 #[derive(Eq, PartialEq)]
 enum AudioFadeState {
@@ -9,29 +16,27 @@ enum AudioFadeState {
 }
 
 struct SDLAudioCallback {
-    input_ringbuffer: ringbuf::Consumer<(i16, i16)>,
+    input_ringbuffer: ringbuf::Consumer<AudioFrame>,
 
     // This is used fade in / out the volume when we drop frames to reduce clicking
     fadestate: AudioFadeState,
     fader_current: f32,
-    last_frame_written: (i16, i16),
+    last_frame_written: AudioFrame,
 }
 impl SDLAudioCallback {
-    fn new(audio_buffer_consumer: ringbuf::Consumer<(i16, i16)>) -> SDLAudioCallback {
+    fn new(audio_buffer_consumer: ringbuf::Consumer<AudioFrame>) -> SDLAudioCallback {
         SDLAudioCallback {
             input_ringbuffer: audio_buffer_consumer,
             fader_current: 0.0,
-            last_frame_written: (0, 0),
+            last_frame_written: AudioFrame::silence(),
             fadestate: AudioFadeState::FadedOut,
         }
     }
 }
 impl sdl2::audio::AudioCallback for SDLAudioCallback {
-    type Channel = i16;
+    type Channel = f32;
 
-    fn callback(&mut self, out_samples_stereo: &mut [i16]) {
-        debug_assert!(out_samples_stereo.len() % 2 == 0);
-
+    fn callback(&mut self, out_samples_stereo: &mut [f32]) {
         for frame_out in out_samples_stereo.chunks_exact_mut(2) {
             match self.fadestate {
                 AudioFadeState::FadingOut => {
@@ -52,38 +57,36 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
                     self.fadestate = AudioFadeState::FadingIn;
                 }
                 if self.fadestate == AudioFadeState::FadingOut {
-                    frame_out[0] = (self.fader_current * self.last_frame_written.0 as f32) as i16;
-                    frame_out[1] = (self.fader_current * self.last_frame_written.1 as f32) as i16;
+                    frame_out[0] = self.fader_current * self.last_frame_written.left;
+                    frame_out[1] = self.fader_current * self.last_frame_written.right;
                 } else {
                     self.last_frame_written = frame;
-                    frame_out[0] = (self.fader_current * frame.0 as f32) as i16;
-                    frame_out[1] = (self.fader_current * frame.1 as f32) as i16;
+                    frame_out[0] = self.fader_current * frame.left;
+                    frame_out[1] = self.fader_current * frame.right;
                 }
             } else {
                 self.fadestate = AudioFadeState::FadingOut;
-                frame_out[0] = (self.fader_current * self.last_frame_written.0 as f32) as i16;
-                frame_out[1] = (self.fader_current * self.last_frame_written.1 as f32) as i16;
+                frame_out[0] = self.fader_current * self.last_frame_written.left;
+                frame_out[1] = self.fader_current * self.last_frame_written.right;
             }
         }
     }
 }
 pub struct AudioOutput {
     pub audio_playback_rate_hz: usize,
-    samples_queue: ringbuf::Producer<(i16, i16)>,
+    frames_queue: ringbuf::Producer<AudioFrame>,
     _sdl_audio_device: sdl2::audio::AudioDevice<SDLAudioCallback>,
 }
 impl AudioOutput {
     pub fn new(sdl_context: &sdl2::Sdl) -> AudioOutput {
-        let audio_playback_rate_hz = 48000;
-        let audio_channelcount = 2;
         let audio_format_desired = sdl2::audio::AudioSpecDesired {
-            freq: Some(audio_playback_rate_hz as i32),
-            channels: Some(audio_channelcount as u8),
+            freq: Some(AUDIO_SAMPLE_RATE as i32),
+            channels: Some(AUDIO_NUM_CHANNELS as u8),
             // IMPORTANT: `samples` is a misnomer - it is actually the frames
-            samples: Some(256 as u16),
+            samples: Some(AUDIO_BUFFER_FRAME_COUNT as u16),
         };
 
-        let audio_ringbuffer = ringbuf::RingBuffer::new(4 * audio_playback_rate_hz);
+        let audio_ringbuffer = ringbuf::RingBuffer::new(AUDIO_SAMPLE_RATE);
         let (audio_ringbuffer_producer, audio_ringbuffer_consumer) = audio_ringbuffer.split();
 
         let sdl_audio = sdl_context
@@ -92,19 +95,19 @@ impl AudioOutput {
         let audio_device = sdl_audio
             .open_playback(None, &audio_format_desired, |spec| {
                 assert!(
-                    spec.freq == audio_playback_rate_hz as i32,
+                    spec.freq == AUDIO_SAMPLE_RATE as i32,
                     "Cannot initialize audio output with frequency {}",
-                    audio_playback_rate_hz
+                    AUDIO_SAMPLE_RATE
                 );
                 assert!(
-                    spec.channels == audio_channelcount as u8,
+                    spec.channels == AUDIO_NUM_CHANNELS as u8,
                     "Cannot initialize audio output with channel count {}",
-                    audio_channelcount
+                    AUDIO_NUM_CHANNELS
                 );
                 assert!(
-                    spec.samples == 256 as u16,
+                    spec.samples == AUDIO_BUFFER_FRAME_COUNT as u16,
                     "Cannot initialize audio output audiobuffersize {}",
-                    256
+                    AUDIO_BUFFER_FRAME_COUNT
                 );
 
                 SDLAudioCallback::new(audio_ringbuffer_consumer)
@@ -114,47 +117,38 @@ impl AudioOutput {
 
         log::info!(
             "Opened audio channel on default output device: (frequency: {}, channelcount: {})",
-            audio_playback_rate_hz,
-            audio_channelcount,
+            AUDIO_SAMPLE_RATE,
+            AUDIO_NUM_CHANNELS,
         );
 
         AudioOutput {
             _sdl_audio_device: audio_device,
-            audio_playback_rate_hz,
-            samples_queue: audio_ringbuffer_producer,
+            audio_playback_rate_hz: AUDIO_SAMPLE_RATE,
+            frames_queue: audio_ringbuffer_producer,
         }
     }
 
-    fn submit_rendered_chunk(&mut self, chunk: &AudioChunkStereo) {
-        for frame in chunk.iter() {
-            if let Err(_) = self.samples_queue.push((
-                (frame.left * std::i16::MAX as f32) as i16,
-                (frame.right * std::i16::MAX as f32) as i16,
-            )) {
+    pub fn reset(&mut self) {
+        // Do nothing here
+    }
+
+    pub fn get_num_chunks_to_submit(&self) -> usize {
+        let framecount_to_render = {
+            let framecount_queued = self.frames_queue.len();
+            if framecount_queued < AUDIO_BUFFER_FRAME_COUNT {
+                AUDIO_BUFFER_FRAME_COUNT - framecount_queued
+            } else {
+                0
+            }
+        };
+        framecount_to_render / AUDIO_CHUNKSIZE_IN_FRAMES
+    }
+
+    pub fn submit_chunk(&mut self, audio_chunk: &AudioChunkStereo) {
+        for frame in audio_chunk.iter() {
+            if let Err(_) = self.frames_queue.push(*frame) {
                 log::warn!("Audiobuffer: Could not push frame to queue - queue full?");
             }
-        }
-    }
-
-    pub fn render_frames(&mut self, audio: &mut Audiostate, minimum_seconds_to_buffer: f32) {
-        let chunkcount_to_render = {
-            let minimum_buffer_size =
-                (self.audio_playback_rate_hz as f32 * minimum_seconds_to_buffer) as usize;
-            let framecount_to_render = {
-                let framecount_queued = self.samples_queue.len() / 2;
-                if framecount_queued < minimum_buffer_size {
-                    minimum_buffer_size - framecount_queued
-                } else {
-                    0
-                }
-            };
-            (framecount_to_render as f32 / AUDIO_CHUNKSIZE_IN_FRAMES as f32).ceil() as usize
-        };
-
-        for _ in 0..chunkcount_to_render {
-            let mut out_chunk = [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES];
-            audio.render_audio_chunk(&mut out_chunk);
-            self.submit_rendered_chunk(&out_chunk);
         }
     }
 }

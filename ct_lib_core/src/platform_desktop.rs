@@ -315,14 +315,14 @@ pub fn run_systemcommand_fail_on_error(command: &str, print_command: bool) -> ea
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Appdata
 
-pub fn get_home_dir() -> Result<String, String> {
+fn get_home_dir() -> Result<String, String> {
     directories::UserDirs::new()
         .ok_or("Could not find home directory".to_string())?
         .home_dir()
         .to_string_owned()
 }
 
-pub fn get_appdata_dir(company_name: &str, application_name: &str) -> Result<String, String> {
+fn get_appdata_dir(company_name: &str, application_name: &str) -> Result<String, String> {
     let project_dirs = directories::ProjectDirs::from("", company_name, application_name)
         .ok_or("Could not get appdata dir - home directory not found".to_string())?;
 
@@ -343,19 +343,16 @@ pub fn get_appdata_dir(company_name: &str, application_name: &str) -> Result<Str
 }
 
 #[cfg(target_os = "windows")]
-pub fn get_savegame_dir(
-    company_name: &str,
-    application_name: &str,
-    prefer_working_dir: bool,
-) -> Result<String, String> {
+pub fn get_user_savedata_dir(company_name: &str, application_name: &str) -> Result<String, String> {
+    let TODO = "use a `internal_mode` feature here";
+    /*
     // Try working dir first: Write test file to see if we even have writing permissions for './'
-    if prefer_working_dir {
         if std::fs::write("test.txt", "test").is_ok() {
             if std::fs::remove_file("test.txt").is_ok() {
                 return Ok("".to_owned());
             }
         }
-    }
+    */
 
     // Check canonical savegame dir
     if let Ok(user_home_path) = get_home_dir() {
@@ -376,20 +373,16 @@ pub fn get_savegame_dir(
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn get_savegame_dir(
-    company_name: &str,
-    application_name: &str,
-    prefer_working_dir: bool,
-) -> Result<String, String> {
+pub fn get_user_savedata_dir(company_name: &str, application_name: &str) -> Result<String, String> {
+    let TODO = "use a `internal_mode` feature here";
+    /*
     // Try working dir first: Write test file to see if we even have writing permissions for './'
-    if prefer_working_dir {
         if std::fs::write("test.txt", "test").is_ok() {
             if std::fs::remove_file("test.txt").is_ok() {
                 return Ok("".to_owned());
             }
         }
-    }
+    */
 
-    // We don't have a standardized savegame directory
     get_appdata_dir(company_name, application_name)
 }

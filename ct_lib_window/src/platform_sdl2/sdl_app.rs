@@ -1,12 +1,16 @@
-mod sdl_audio;
+pub mod sdl_audio;
 mod sdl_input;
 mod sdl_window;
+
+pub use sdl_audio as audio;
+
+use crate::{AppCommand, AppContextInterface};
 
 use super::core::log;
 use super::core::serde_derive::{Deserialize, Serialize};
 use super::core::*;
 use super::core::{deserialize_from_json_file, serialize_to_json_file};
-use super::game::{GameInput, GameMemory, GameStateInterface, Scancode, SystemCommand};
+use super::input::{GameInput, Scancode};
 
 use std::{collections::VecDeque, time::Duration};
 
@@ -26,6 +30,8 @@ struct LauncherConfig {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Live looped input playback and recording
 
+const todo: &str = "reactivate input recording";
+/*
 struct InputRecorder<GameStateType: GameStateInterface + Clone> {
     game_memory: GameMemory<GameStateType>,
 
@@ -107,6 +113,7 @@ impl<GameStateType: GameStateInterface + Clone> InputRecorder<GameStateType> {
         }
     }
 }
+*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main event loop
@@ -115,40 +122,31 @@ fn log_frametimes(
     _duration_frame: f64,
     _duration_input: f64,
     _duration_update: f64,
-    _duration_sound: f64,
-    _duration_render: f64,
     _duration_swap: f64,
-    _duration_wait: f64,
 ) {
     if ENABLE_FRAMETIME_LOGGING {
         log::trace!(
-        "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  sound: {:.3}ms  render: {:.3}ms  swap: {:.3}ms  idle: {:.3}ms",
-        _duration_frame * 1000.0,
-        _duration_input * 1000.0,
-        _duration_update * 1000.0,
-        _duration_sound * 1000.0,
-        _duration_render * 1000.0,
-        _duration_swap * 1000.0,
-        _duration_wait * 1000.0
-    );
+            "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  swap: {:.3}ms",
+            _duration_frame * 1000.0,
+            _duration_input * 1000.0,
+            _duration_update * 1000.0,
+            _duration_swap * 1000.0,
+        );
     }
 }
 
-pub fn run_main<GameStateType: GameStateInterface + Clone>() {
+pub fn run_main<AppContextType: AppContextInterface>() {
     timer_initialize();
-    let game_config = GameStateType::get_game_config();
-    let savedata_dir = get_savegame_dir(
-        &game_config.game_company_name,
-        &game_config.game_save_folder_name,
-        true,
-    )
-    .unwrap_or_else(|error| {
-        sdl_window::Window::show_error_messagebox(&format!(
-            "Could not get savegame location: {}",
-            error,
-        ));
-        panic!()
-    });
+    let app_config = AppContextType::get_app_info();
+    let savedata_dir =
+        get_user_savedata_dir(&app_config.company_name, &app_config.save_folder_name)
+            .unwrap_or_else(|error| {
+                sdl_window::Window::show_error_messagebox(&format!(
+                    "Could not get location for saving userdata: {}",
+                    error,
+                ));
+                panic!()
+            });
 
     // ---------------------------------------------------------------------------------------------
     // Logging and error handling
@@ -208,49 +206,14 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     let mut window = sdl_window::Window::new(
         sdl_video.clone(),
         launcher_config.display_index_to_use,
-        &game_config.game_window_title,
+        &app_config.window_title,
     );
     let mut renderer = window.create_renderer();
-
-    let target_updates_per_second = window.refresh_rate();
-    let target_seconds_per_frame = 1.0 / target_updates_per_second as f32;
-
-    let (screen_width, screen_height) = window.dimensions();
-
-    // Check if vsync is enabled
-    // ---------------------------------------------------------------------------------------------
-
-    let vsync_test_framecount = 4;
-    let vsync_test_duration_target = target_seconds_per_frame * vsync_test_framecount as f32;
-    let vsync_test_duration = {
-        let vsync_test_start_time = timer_current_time_seconds();
-
-        for _ in 0..vsync_test_framecount {
-            renderer.clear_screen();
-            window.sdl_window.gl_swap_window();
-        }
-
-        timer_current_time_seconds() - vsync_test_start_time
-    } as f32;
-    let ratio = vsync_test_duration / vsync_test_duration_target;
-    let vsync_enabled = ratio > 0.5;
-    log::debug!(
-        "VSYNC test took {:.3}ms - it should take >{:.3}ms with VSYNC enabled -> \
-         VSYNC seems to be {}",
-        vsync_test_duration * 1000.0,
-        (vsync_test_duration_target * 1000.0) / 2.0,
-        if vsync_enabled { "enabled" } else { "disabled" }
-    );
-
-    log::info!(
-        "Running with vsync {}",
-        if vsync_enabled { "enabled" } else { "disabled" }
-    );
 
     // ---------------------------------------------------------------------------------------------
     // Sound
 
-    let mut audio_output = sdl_audio::AudioOutput::new(&sdl_context);
+    let mut audio = sdl_audio::AudioOutput::new(&sdl_context);
 
     // ---------------------------------------------------------------------------------------------
     // Input
@@ -305,36 +268,37 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Game memory and input
+    // Input
 
     let mut input = GameInput::new();
+    let (screen_width, screen_height) = window.dimensions();
     input.screen_framebuffer_width = screen_width;
     input.screen_framebuffer_height = screen_height;
     input.screen_framebuffer_dimensions_changed = true;
 
-    let mut game_memory = GameMemory::<GameStateType>::default();
+    let text_input = sdl_video.text_input();
+    text_input.stop();
 
     // ---------------------------------------------------------------------------------------------
     // Mainloop setup
 
-    let text_input = sdl_video.text_input();
-    text_input.stop();
+    let TODO = "input recording";
+    // let mut input_recorder = InputRecorder::default();
 
-    let mut input_recorder = InputRecorder::default();
-
-    let mut systemcommands: Vec<SystemCommand> = Vec::new();
+    let mut appcommands: Vec<AppCommand> = Vec::new();
     let mut event_pump = sdl_context.event_pump().unwrap();
 
-    let game_start_time = timer_current_time_seconds();
-    let mut frame_start_time = game_start_time;
-    let mut post_wait_time = game_start_time;
-    log::debug!("Startup took {:.3}ms", game_start_time * 1000.0,);
+    let app_start_time = timer_current_time_seconds();
+    let mut frame_start_time = app_start_time;
+    log::debug!("Startup took {:.3}ms", app_start_time * 1000.0,);
 
     let mut mouse_pos_previous_x = input.mouse.pos_x;
     let mut mouse_pos_previous_y = input.mouse.pos_y;
 
     let mut current_tick = 0;
     let mut is_running = true;
+
+    let mut app_context = AppContextType::new(&mut renderer, &input, &mut audio);
 
     // ---------------------------------------------------------------------------------------------
     // Begin Mainloop
@@ -343,65 +307,6 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         let pre_input_time = timer_current_time_seconds();
 
         current_tick += 1;
-
-        //--------------------------------------------------------------------------------------
-        // System commands
-
-        for command in &systemcommands {
-            match command {
-                SystemCommand::FullscreenToggle => window.toggle_fullscreen(),
-                SystemCommand::TextinputStart {
-                    inputrect_x,
-                    inputrect_y,
-                    inputrect_width,
-                    inputrect_height,
-                } => {
-                    log::trace!("Textinput mode enabled");
-                    input.textinput.is_textinput_enabled = true;
-                    text_input.start();
-
-                    let text_input_rect = sdl2::rect::Rect::new(
-                        *inputrect_x,
-                        *inputrect_y,
-                        *inputrect_width,
-                        *inputrect_height,
-                    );
-                    text_input.set_rect(text_input_rect);
-                }
-                SystemCommand::TextinputStop => {
-                    log::trace!("Textinput mode disabled");
-                    input.textinput.is_textinput_enabled = false;
-                    text_input.stop();
-                }
-                SystemCommand::WindowedModeAllowResizing(allowed) => {
-                    window.windowed_mode_set_resizable(*allowed);
-                }
-                SystemCommand::WindowedModeAllow(allowed) => {
-                    window.set_windowed_mode_allowed(*allowed);
-                }
-                SystemCommand::WindowedModeSetSize {
-                    width,
-                    height,
-                    minimum_width,
-                    minimum_height,
-                } => {
-                    window.set_windowed_mode_size(*width, *height, *minimum_width, *minimum_height);
-                }
-                SystemCommand::ScreenSetGrabInput(grab_input) => {
-                    window.set_input_grabbed(*grab_input);
-                }
-                SystemCommand::Shutdown => {
-                    log::info!("Received shutdown signal");
-                    is_running = false;
-                }
-                SystemCommand::Restart => {
-                    log::info!("Received restart signal");
-                    game_memory = GameMemory::default();
-                    renderer.reset();
-                }
-            }
-        }
-        systemcommands.clear();
 
         //--------------------------------------------------------------------------------------
         // Event loop
@@ -697,6 +602,8 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         //--------------------------------------------------------------------------------------
         // Start/stop input-recording/-playback
 
+        let TODO = "reactivate this";
+        /*
         if input.keyboard.recently_released(Scancode::O) {
             if !input_recorder.is_playing_back {
                 if input_recorder.is_recording {
@@ -707,7 +614,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
                     // Clear keyboard input so that we won't get the the `O` Scancode at the
                     // beginning of the recording
                     input.keyboard.clear_transitions();
-                    input_recorder.start_recording(&game_memory);
+                    input_recorder.start_recording(&app_context);
                 }
             }
         } else if input.keyboard.recently_released(Scancode::P) {
@@ -718,7 +625,7 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
                     input.keyboard.clear_state_and_transitions();
                 } else {
                     log::info!("Starting input playback");
-                    input_recorder.start_playback(&mut game_memory);
+                    input_recorder.start_playback(&mut app_context);
                 }
             }
         }
@@ -738,9 +645,11 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             //       already released (due to the overwrite) but will get an additional release
             //       event (which is not good)
             let previous_playback_key_state = input.keyboard.keys[&Scancode::P].clone();
-            input = input_recorder.playback_input(&mut game_memory);
+            input = input_recorder.playback_input(&mut app_context);
             *input.keyboard.keys.get_mut(&Scancode::P).unwrap() = previous_playback_key_state;
         }
+
+        */
 
         let post_input_time = timer_current_time_seconds();
 
@@ -755,14 +664,9 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         input.deltatime =
             super::snap_deltatime_to_nearest_common_refresh_rate(duration_frame as f32);
         input.real_world_uptime = frame_start_time;
-        input.audio_playback_rate_hz = audio_output.audio_playback_rate_hz;
+        input.audio_playback_rate_hz = audio.audio_playback_rate_hz;
 
-        if input.has_focus {
-            game_memory.update(&input, &mut systemcommands);
-        } else {
-            let TODO = "just repeat the drawcommands from last time - but without the 
-                update/create texture commands or other expensive/complex commands";
-        }
+        app_context.run_tick(&mut renderer, &input, &mut audio, &mut appcommands);
 
         // Clear input state
         input.screen_framebuffer_dimensions_changed = false;
@@ -784,107 +688,99 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
             input.textinput.composition_text.clear();
         }
 
-        let post_update_time = timer_current_time_seconds();
-
         //--------------------------------------------------------------------------------------
-        // Sound output
+        // System commands
 
-        let pre_sound_time = post_update_time;
+        for command in &appcommands {
+            match command {
+                AppCommand::FullscreenToggle => window.toggle_fullscreen(),
+                AppCommand::TextinputStart {
+                    inputrect_x,
+                    inputrect_y,
+                    inputrect_width,
+                    inputrect_height,
+                } => {
+                    log::trace!("Textinput mode enabled");
+                    input.textinput.is_textinput_enabled = true;
+                    text_input.start();
 
-        let TODO = "make it so that audio is always there and can handle loading its sounds later";
-        if game_memory.audio.is_some() {
-            if input.has_focus {
-                let audio = game_memory
-                    .audio
-                    .as_mut()
-                    .expect("No audiostate initialized");
-                audio_output.render_frames(audio, 2.0 * target_seconds_per_frame);
+                    let text_input_rect = sdl2::rect::Rect::new(
+                        *inputrect_x,
+                        *inputrect_y,
+                        *inputrect_width,
+                        *inputrect_height,
+                    );
+                    text_input.set_rect(text_input_rect);
+                }
+                AppCommand::TextinputStop => {
+                    log::trace!("Textinput mode disabled");
+                    input.textinput.is_textinput_enabled = false;
+                    text_input.stop();
+                }
+                AppCommand::WindowedModeAllowResizing(allowed) => {
+                    window.windowed_mode_set_resizable(*allowed);
+                }
+                AppCommand::WindowedModeAllow(allowed) => {
+                    window.set_windowed_mode_allowed(*allowed);
+                }
+                AppCommand::WindowedModeSetSize {
+                    width,
+                    height,
+                    minimum_width,
+                    minimum_height,
+                } => {
+                    window.set_windowed_mode_size(*width, *height, *minimum_width, *minimum_height);
+                }
+                AppCommand::ScreenSetGrabInput(grab_input) => {
+                    window.set_input_grabbed(*grab_input);
+                }
+                AppCommand::Shutdown => {
+                    log::info!("Received shutdown signal");
+                    is_running = false;
+                }
+                AppCommand::Restart => {
+                    log::info!("Received restart signal");
+                    app_context.reset();
+                    renderer.reset();
+                    audio.reset();
+                }
             }
         }
+        appcommands.clear();
 
-        let post_sound_time = timer_current_time_seconds();
-
-        //--------------------------------------------------------------------------------------
-        // Drawcommands
-
-        let pre_render_time = post_sound_time;
-
-        let TODO = "make it so that draw is always there and can handle loading its sounds later";
-        if game_memory.draw.is_some() {
-            renderer.process_drawcommands(
-                input.screen_framebuffer_width,
-                input.screen_framebuffer_height,
-                &game_memory
-                    .draw
-                    .as_ref()
-                    .expect("No drawstate initialized")
-                    .drawcommands,
-            );
-        }
-
-        let post_render_time = timer_current_time_seconds();
+        let post_update_time = timer_current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Swap framebuffers
 
-        let pre_swap_time = post_render_time;
+        let pre_swap_time = post_update_time;
 
         window.sdl_window.gl_swap_window();
 
         let post_swap_time = timer_current_time_seconds();
 
         //--------------------------------------------------------------------------------------
-        // Wait for target frame time
-
-        let pre_wait_time = post_swap_time;
-
-        if !vsync_enabled {
-            // NOTE: We need to manually wait to reach target frame rate
-            loop {
-                let time_left_till_flip = target_seconds_per_frame
-                    - (timer_current_time_seconds() - post_wait_time) as f32;
-
-                if time_left_till_flip > 0.002 {
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                } else {
-                    // NOTE: Busywait for the remaining time
-                }
-
-                if time_left_till_flip <= 0.0 {
-                    break;
-                }
-            }
-        }
-
-        post_wait_time = timer_current_time_seconds();
-
-        //--------------------------------------------------------------------------------------
         // Debug timing output
 
         let duration_input = post_input_time - pre_input_time;
         let duration_update = post_update_time - pre_update_time;
-        let duration_sound = post_sound_time - pre_sound_time;
-        let duration_render = post_render_time - pre_render_time;
         let duration_swap = post_swap_time - pre_swap_time;
-        let duration_wait = post_wait_time - pre_wait_time;
 
         log_frametimes(
             duration_frame,
             duration_input,
             duration_update,
-            duration_sound,
-            duration_render,
             duration_swap,
-            duration_wait,
         );
     }
 
     //--------------------------------------------------------------------------------------
     // Mainloop stopped
 
-    let duration_gameplay = timer_current_time_seconds() - game_start_time;
-    log::debug!("Playtime: {:.3}s", duration_gameplay);
+    let app_uptime = timer_current_time_seconds() - app_start_time;
+    log::debug!("Application uptime: {:.3}s", app_uptime);
 
     // Make sure our sound output has time to wind down
-    std::thread::sleep(Duration::from_secs_f32(4.0 * target_seconds_per_frame))
+    let TODO = "sleep duration based on audiobuffersize + buffers in queue";
+    std::thread::sleep(Duration::from_secs_f32(0.3));
 }

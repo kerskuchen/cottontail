@@ -1,4 +1,7 @@
-use ct_lib_audio::{AudioChunkStereo, AudioFrame, Audiostate, AUDIO_CHUNKSIZE_IN_FRAMES};
+use ct_lib_audio::{
+    audio::{AudioChunkStereo, AUDIO_CHUNKSIZE_IN_FRAMES},
+    AudioFrame,
+};
 use ct_lib_core::log;
 
 use std::{cell::RefCell, rc::Rc};
@@ -6,7 +9,7 @@ use std::{cell::RefCell, rc::Rc};
 use wasm_bindgen::{prelude::*, JsCast};
 
 const AUDIO_SAMPLE_RATE: usize = 44100;
-const AUDIO_BUFFER_FRAME_COUNT: usize = 2048;
+const AUDIO_BUFFER_FRAME_COUNT: usize = 4 * AUDIO_CHUNKSIZE_IN_FRAMES;
 const AUDIO_NUM_CHANNELS: usize = 2;
 const AUDIO_CHANNEL_LEFT: usize = 0;
 const AUDIO_CHANNEL_RIGHT: usize = 1;
@@ -39,7 +42,7 @@ impl WASMAudioCallback {
 
 pub struct AudioOutput {
     pub audio_playback_rate_hz: usize,
-    samples_queue: ringbuf::Producer<AudioFrame>,
+    frame_queue: ringbuf::Producer<AudioFrame>,
     _audio_context: Rc<RefCell<web_sys::AudioContext>>,
     _audio_processor: web_sys::ScriptProcessorNode,
 
@@ -204,40 +207,30 @@ impl AudioOutput {
 
         AudioOutput {
             audio_playback_rate_hz: AUDIO_SAMPLE_RATE,
-            samples_queue: audio_ringbuffer_producer,
+            frame_queue: audio_ringbuffer_producer,
             _audio_context: audio_context,
             _audio_processor: audio_processor,
             out_chunk: [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES],
         }
     }
 
-    fn submit_rendered_chunk(&mut self) {
-        for frame in self.out_chunk.iter() {
-            if let Err(_) = self.samples_queue.push(*frame) {
-                log::warn!("Audiobuffer: Could not push frame to queue - queue full?");
+    pub fn get_num_chunks_to_submit(&self) -> usize {
+        let framecount_to_render = {
+            let framecount_queued = self.frame_queue.len();
+            if framecount_queued < AUDIO_BUFFER_FRAME_COUNT {
+                AUDIO_BUFFER_FRAME_COUNT - framecount_queued
+            } else {
+                0
             }
-        }
+        };
+        framecount_to_render / AUDIO_CHUNKSIZE_IN_FRAMES
     }
 
-    pub fn render_frames(&mut self, audio: &mut Audiostate) {
-        let chunkcount_to_render = {
-            let framecount_to_render = {
-                let framecount_queued = self.samples_queue.len() / 2;
-                if framecount_queued < AUDIO_BUFFER_FRAME_COUNT {
-                    AUDIO_BUFFER_FRAME_COUNT - framecount_queued
-                } else {
-                    0
-                }
-            };
-            (framecount_to_render as f32 / AUDIO_CHUNKSIZE_IN_FRAMES as f32).ceil() as usize
-        };
-
-        for _ in 0..chunkcount_to_render {
-            for frame in &mut self.out_chunk {
-                *frame = AudioFrame::silence();
+    pub fn submit_chunk(&mut self, audio_chunk: &AudioChunkStereo) {
+        for frame in audio_chunk.iter() {
+            if let Err(_) = self.frame_queue.push(*frame) {
+                log::warn!("Audiobuffer: Could not push frame to queue - queue full?");
             }
-            audio.render_audio_chunk(&mut self.out_chunk);
-            self.submit_rendered_chunk();
         }
     }
 }

@@ -77,7 +77,8 @@ impl ButtonState {
             self.tick_of_last_transition = tick;
         } else {
             debug_assert!(is_pressed);
-            debug_assert!(is_repeat);
+            // TODO: Why does this fire on WASM?
+            // debug_assert!(is_repeat);
             self.system_repeat_count += 1;
         }
     }

@@ -8,7 +8,6 @@ edition = "2018"
 path = "src/lib_window.rs"
 
 [dependencies]
-ct_lib_game = { path = "../ct_lib_game"}
 ct_lib_core = { path = "../ct_lib_core"}
 ct_lib_math = { path = "../ct_lib_math"}
 ct_lib_draw = { path = "../ct_lib_draw"}

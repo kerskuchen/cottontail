@@ -1,11 +1,17 @@
-mod wasm_audio;
+pub mod wasm_audio;
 mod wasm_input;
+
+pub use wasm_audio as audio;
+
+use crate::{
+    input::{FingerPlatformId, GameInput},
+    AppCommand, AppContextInterface,
+};
 
 use super::renderer_opengl::Renderer;
 
 use ct_lib_core::log;
 use ct_lib_core::*;
-use ct_lib_game::{FingerPlatformId, GameInput, GameMemory, GameStateInterface, SystemCommand};
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -188,26 +194,18 @@ impl FullscreenHandler {
     }
 }
 
-fn log_frametimes(
-    _duration_frame: f64,
-    _duration_input: f64,
-    _duration_update: f64,
-    _duration_sound: f64,
-    _duration_render: f64,
-) {
+fn log_frametimes(_duration_frame: f64, _duration_input: f64, _duration_update: f64) {
     if ENABLE_FRAMETIME_LOGGING {
         log::trace!(
-            "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  sound: {:.3}ms  render: {:.3}ms",
+            "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms",
             _duration_frame * 1000.0,
             _duration_input * 1000.0,
             _duration_update * 1000.0,
-            _duration_sound * 1000.0,
-            _duration_render * 1000.0,
         );
     }
 }
 
-pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result<(), JsValue> {
+pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), JsValue> {
     init_logging("", log::Level::Trace).unwrap();
     log::info!("Starting up...");
 
@@ -216,7 +214,7 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // AUDIO
 
-    let mut audio_output = wasm_audio::AudioOutput::new();
+    let mut audio = wasm_audio::AudioOutput::new();
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // WEBGL
@@ -232,15 +230,9 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     // MAINLOOP
 
     // ---------------------------------------------------------------------------------------------
-    // Game memory and input
-
-    let mut game_memory = GameMemory::<GameStateType>::default();
-
-    // ---------------------------------------------------------------------------------------------
     // Mainloop setup
 
-    let mut systemcommands: Vec<SystemCommand> = Vec::new();
-
+    let mut appcommands: Vec<AppCommand> = Vec::new();
     let game_start_time = timer_current_time_seconds();
     let mut frame_start_time = game_start_time;
     log::debug!("Startup took {:.3}ms", game_start_time * 1000.0,);
@@ -534,6 +526,8 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
     let mut fullscreen_handler =
         FullscreenHandler::new(Some(web_sys::OrientationLockType::Landscape));
 
+    let mut app_context = AppContextType::new(&mut renderer, &input.borrow(), &mut audio);
+
     // Here we want to call `requestAnimationFrame` in a loop, but only a fixed
     // number of times. After it's done we want all our resources cleaned up. To
     // achieve this we're using an `Rc`. The `Rc` will eventually store the
@@ -608,17 +602,9 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             input.deltatime =
                 super::snap_deltatime_to_nearest_common_refresh_rate(duration_frame as f32);
             input.real_world_uptime = frame_start_time;
-            input.audio_playback_rate_hz = audio_output.audio_playback_rate_hz;
+            input.audio_playback_rate_hz = audio.audio_playback_rate_hz;
         }
-        {
-            let input = input.borrow();
-            if input.has_focus {
-                game_memory.update(&input, &mut systemcommands);
-            } else {
-                let TODO = "just repeat the drawcommands from last time - but without the 
-                update/create texture commands or other expensive/complex commands";
-            }
-        }
+        app_context.run_tick(&mut renderer, &input.borrow(), &mut audio, &mut appcommands);
         {
             let mut input = input.borrow_mut();
             // Clear input state
@@ -642,56 +628,15 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
             }
         }
 
-        let post_update_time = timer_current_time_seconds();
-
-        //--------------------------------------------------------------------------------------
-        // Sound output
-
-        let pre_sound_time = post_update_time;
-
-        if game_memory.audio.is_some() {
-            let input = input.borrow();
-            if input.has_focus {
-                let audio = game_memory
-                    .audio
-                    .as_mut()
-                    .expect("No audiostate initialized");
-                audio_output.render_frames(audio);
-            }
-        }
-
-        let post_sound_time = timer_current_time_seconds();
-
-        //--------------------------------------------------------------------------------------
-        // Drawcommands
-
-        let pre_render_time = post_sound_time;
-
-        let TODO = "make it so that draw is always there and can handle loading its sounds later";
-        if game_memory.draw.is_some() {
-            let input = input.borrow();
-            renderer.process_drawcommands(
-                input.screen_framebuffer_width,
-                input.screen_framebuffer_height,
-                &game_memory
-                    .draw
-                    .as_ref()
-                    .expect("No drawstate initialized")
-                    .drawcommands,
-            );
-        }
-
-        let post_render_time = timer_current_time_seconds();
-
         //--------------------------------------------------------------------------------------
         // System commands
 
-        for command in &systemcommands {
+        for command in &appcommands {
             match command {
-                SystemCommand::FullscreenToggle => {
+                AppCommand::FullscreenToggle => {
                     fullscreen_handler.toggle_fullscreen();
                 }
-                SystemCommand::TextinputStart {
+                AppCommand::TextinputStart {
                     inputrect_x,
                     inputrect_y,
                     inputrect_width,
@@ -699,16 +644,16 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
                 } => {
                     todo!();
                 }
-                SystemCommand::TextinputStop => {
+                AppCommand::TextinputStop => {
                     todo!();
                 }
-                SystemCommand::WindowedModeAllowResizing(allowed) => {
+                AppCommand::WindowedModeAllowResizing(allowed) => {
                     log::trace!("`WindowedModeAllowResizing` Not available on this platform");
                 }
-                SystemCommand::WindowedModeAllow(allowed) => {
+                AppCommand::WindowedModeAllow(allowed) => {
                     log::trace!("`WindowedModeAllow` Not available on this platform");
                 }
-                SystemCommand::WindowedModeSetSize {
+                AppCommand::WindowedModeSetSize {
                     width,
                     height,
                     minimum_width,
@@ -716,34 +661,28 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
                 } => {
                     log::trace!("`WindowedModeSetSize` Not available on this platform");
                 }
-                SystemCommand::ScreenSetGrabInput(grab_input) => {
+                AppCommand::ScreenSetGrabInput(grab_input) => {
                     let TODO = true;
                 }
-                SystemCommand::Shutdown => {
+                AppCommand::Shutdown => {
                     log::trace!("`Shutdown` Not available on this platform");
                 }
-                SystemCommand::Restart => {
+                AppCommand::Restart => {
                     log::trace!("`Restart` Not available on this platform");
                 }
             }
         }
-        systemcommands.clear();
+        appcommands.clear();
+
+        let post_update_time = timer_current_time_seconds();
 
         //--------------------------------------------------------------------------------------
         // Debug timing output
 
         let duration_input = post_input_time - pre_input_time;
         let duration_update = post_update_time - pre_update_time;
-        let duration_sound = post_sound_time - pre_sound_time;
-        let duration_render = post_render_time - pre_render_time;
 
-        log_frametimes(
-            duration_frame,
-            duration_input,
-            duration_update,
-            duration_sound,
-            duration_render,
-        );
+        log_frametimes(duration_frame, duration_input, duration_update);
         // Schedule ourself for another requestAnimationFrame callback.
         html_request_animation_frame(f.borrow().as_ref().unwrap());
     }) as Box<dyn FnMut()>));

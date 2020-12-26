@@ -8,14 +8,16 @@
 - move debugscene out of game lib and temporarily into launcher (later we want to make it a 
   standalone example)
 - remove scenes concept and all its boilerplate
+- removes target frametime concept, snaps deltatimes to nearest refresh rates
+- let game use platform (reverse controlflow)
 
 # CURRENT
 
+- fix audio stuttering introduced earlier
 
 # NEXT:
 
 ## better platform layer
-- let app use platform (reverse controlflow)
 - split input out of ct lib into platform
 - if we can make opengl layer a dependency of draw we can put vertices and traits into 
   opengl layer and maybe make vertexbuffers typesafe again because we won't need to create
@@ -27,7 +29,6 @@
   - input processing
   - system event processing
   - also do we need resize callbacks at all? (also in sdl2)?
-- we need a sane way to determine refresh rate and calculate target_update_rate
 - fix mouseup/touchup events that happen outside of browser window (i.e. affects leaving fullscreen)
   we may need https://developer.mozilla.org/en-US/docs/Web/API/Element/setPointerCapture
 - if the user pressed f11 on desktop browser disable the "exit fullscreen" button because it does 
@@ -40,6 +41,8 @@
 - Find out why gamepad shoulder trigger axes does not work. Directly accessing the state 
   with `Gamepad::axis_or_btn_name()` or iterating axis does not let us find any state. We know that 
   it should work because it does so in the control panel
+- make refresh rate snapping more smart (especially for deltatimes without vsync which is currently 
+  wrong). (ie. we could use the values of the last ten frames as basis for snapping)
 
 ## writing games easier
 - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
@@ -94,6 +97,12 @@
 - refactor gamememory/audio/draw/asset initialization to 
   - allow hotloading of assets
   - improve wasm startup speed
+
+## audio system
+- use global playback speed factor in a final output interplator not
+- refactor audio system to use non interleaved buffers to comform more to WebAudio API
+- find a way to make pulling buffers more convenient, performant and generic (i.e. linear 
+  interpolators use `next()` on their interal source to get the next sample)
 - Support ogg audio and differentiate between mono/stereo recordings
 - streaming long audio (music)
 
