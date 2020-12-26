@@ -11,5 +11,5 @@ path = "src/lib_audio.rs"
 ct_lib_core = { path = "../ct_lib_core"}
 ct_lib_math = { path = "../ct_lib_math"}
 
-wav = "0.5.0"
+hound = "3.4.0"
 serde = "1.0.118"

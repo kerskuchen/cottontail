@@ -19,7 +19,7 @@ enum AudioFadeState {
 struct SDLAudioCallback {
     input_ringbuffer: ringbuf::Consumer<AudioFrame>,
 
-    // This is used fade in / out the volume when we drop frames to reduce clicking
+    // This is used to fade in / out the volume when we drop frames to reduce clicking
     fadestate: AudioFadeState,
     fader_current: f32,
     last_frame_written: AudioFrame,
@@ -136,7 +136,6 @@ impl AudioOutput {
     pub fn get_num_chunks_to_submit(&self) -> usize {
         let framecount_to_render = {
             let framecount_queued = self.frames_queue.len();
-            dbg!(framecount_queued);
             if framecount_queued < AUDIO_QUEUE_FRAMECOUNT {
                 AUDIO_QUEUE_FRAMECOUNT - framecount_queued
             } else {

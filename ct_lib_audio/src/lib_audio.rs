@@ -19,29 +19,63 @@ fn convert_i32_sample_to_f32(sample: i32) -> f32 {
 /// IMPORTANT: This Assumes mono
 /// Returns samplerate and a vector of samples
 pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, Vec<AudioSample>), String> {
-    let (header, data) = wav::read(&mut std::io::Cursor::new(wav_data))
+    let reader = hound::WavReader::new(std::io::Cursor::new(wav_data))
         .map_err(|error| format!("Could not decode wav audio data: {}", error))?;
-
-    if header.channel_count != 1 {
+    if reader.len() == 0 {
+        return Err("Wav data is empty".to_owned());
+    }
+    let header = reader.spec();
+    if header.channels != 1 {
         return Err("Stereo wav data not supported".to_owned());
     }
-    let sample_rate_hz = header.sampling_rate as usize;
-    let samples: Vec<AudioSample> = match data {
-        wav::BitDepth::Eight(samples_u8) => samples_u8
-            .into_iter()
-            .map(convert_u8_sample_to_f32)
-            .collect(),
-        wav::BitDepth::Sixteen(samples_i16) => samples_i16
-            .into_iter()
-            .map(convert_i16_sample_to_f32)
-            .collect(),
-        wav::BitDepth::TwentyFour(samples_i32) => samples_i32
-            .into_iter()
-            .map(convert_i32_sample_to_f32)
-            .collect(),
-        wav::BitDepth::Empty => return Err("Wav data is empty".to_owned()),
+    let sample_rate_hz = header.sample_rate as usize;
+    let samples = {
+        let samples: Result<Vec<AudioSample>, _> = match header.sample_format {
+            hound::SampleFormat::Float => reader.into_samples::<AudioSample>().collect(),
+            hound::SampleFormat::Int => match header.bits_per_sample {
+                16 => reader
+                    .into_samples::<i16>()
+                    .map(|sample| sample.map(convert_i16_sample_to_f32))
+                    .collect(),
+                32 => reader
+                    .into_samples::<i32>()
+                    .map(|sample| sample.map(convert_i32_sample_to_f32))
+                    .collect(),
+                _ => {
+                    return Err(format!(
+                        "{} Bit PCM wav data not supported",
+                        header.bits_per_sample
+                    ))
+                }
+            },
+        };
+        samples.map_err(|error| format!("Cannot decode samples: {}", error))?
     };
+
     Ok((sample_rate_hz, samples))
+}
+
+/// IMPORTANT: This Assumes mono
+/// Returns samplerate and a vector of samples
+#[cfg(not(target_arch = "wasm32"))]
+pub fn write_audio_samples_to_wav_file(filepath: &str, frames: &[AudioFrame], samplerate: usize) {
+    let header = hound::WavSpec {
+        channels: 2,
+        sample_rate: samplerate as u32,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    };
+    let mut writer = hound::WavWriter::create(filepath, header).expect(&format!(
+        "Could not open '{}' for writing wav data",
+        filepath
+    ));
+    for frame in frames {
+        writer.write_sample(frame.left).unwrap();
+        writer.write_sample(frame.right).unwrap();
+    }
+    writer
+        .finalize()
+        .expect(&format!("Could not finalize wav file '{}'", filepath));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

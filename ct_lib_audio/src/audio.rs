@@ -933,7 +933,10 @@ impl Audiostate {
         let start_delay_framecount = self.start_delay_framecount_for_time(schedule_time_seconds);
         let stream = if recording_name == "sine" {
             Box::new(AudioStreamStereo::new(
-                Box::new(AudioSourceSine::new(440.0, 44100)),
+                Box::new(AudioSourceSine::new(
+                    440.0,
+                    self.output_render_params.audio_sample_rate_hz,
+                )),
                 start_delay_framecount,
                 playback_speed,
                 volume,
