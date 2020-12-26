@@ -23,11 +23,7 @@ pub struct GameInput {
 
     pub gamepad: GamepadState,
 
-    /// Measured time since last frame
     pub deltatime: f32,
-    /// Optimal time a frame should take at our current refresh rate
-    /// NOTE: target_deltatime = 1 / monitor_refresh_rate_hz
-    pub target_deltatime: f32,
     pub real_world_uptime: f64,
 
     pub audio_playback_rate_hz: usize,

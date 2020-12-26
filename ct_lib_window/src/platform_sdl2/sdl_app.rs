@@ -752,8 +752,8 @@ pub fn run_main<GameStateType: GameStateInterface + Clone>() {
         let duration_frame = pre_update_time - frame_start_time;
         frame_start_time = pre_update_time;
 
-        input.deltatime = duration_frame as f32;
-        input.target_deltatime = target_seconds_per_frame;
+        input.deltatime =
+            super::snap_deltatime_to_nearest_common_refresh_rate(duration_frame as f32);
         input.real_world_uptime = frame_start_time;
         input.audio_playback_rate_hz = audio_output.audio_playback_rate_hz;
 

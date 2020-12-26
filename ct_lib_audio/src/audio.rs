@@ -849,7 +849,7 @@ impl Audiostate {
         self.next_stream_id
     }
 
-    pub fn set_global_playback_speed(&mut self, global_playback_speed: f32) {
+    pub fn set_global_playback_speed_factor(&mut self, global_playback_speed: f32) {
         self.output_render_params.global_playback_speed = global_playback_speed;
     }
 

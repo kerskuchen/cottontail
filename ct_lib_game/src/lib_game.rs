@@ -216,12 +216,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
             input.screen_framebuffer_width,
             input.screen_framebuffer_height,
         ));
-        match splashscreen.update_and_draw(
-            draw,
-            input.target_deltatime,
-            canvas_width,
-            canvas_height,
-        ) {
+        match splashscreen.update_and_draw(draw, input.deltatime, canvas_width, canvas_height) {
             SplashscreenState::StartedFadingIn => {}
             SplashscreenState::IsFadingIn => {}
             SplashscreenState::FinishedFadingIn => {
@@ -271,6 +266,7 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
                         canvas_width: window_config.canvas_width as f32,
                         canvas_height: window_config.canvas_height as f32,
                     };
+
                     self.game = Some(GameStateType::new(
                         draw,
                         audio,
@@ -304,16 +300,16 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
 
             // DEBUG GAMESPEED MANIPULATION
             //
-            if !is_effectively_zero(globals.debug_deltatime_speed_factor - 1.0) {
-                draw.debug_log(format!(
-                    "Timefactor: {:.1}",
-                    globals.debug_deltatime_speed_factor
-                ));
-            }
-            if input.keyboard.recently_pressed(Scancode::NumpadAdd) {
+            if input
+                .keyboard
+                .recently_pressed_or_repeated(Scancode::NumpadAdd)
+            {
                 globals.debug_deltatime_speed_factor += 0.1;
             }
-            if input.keyboard.recently_pressed(Scancode::NumpadSubtract) {
+            if input
+                .keyboard
+                .recently_pressed_or_repeated(Scancode::NumpadSubtract)
+            {
                 globals.debug_deltatime_speed_factor -= 0.1;
                 if globals.debug_deltatime_speed_factor < 0.1 {
                     globals.debug_deltatime_speed_factor = 0.1;
@@ -322,15 +318,32 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
             if input.keyboard.recently_pressed(Scancode::Space) {
                 globals.is_paused = !globals.is_paused;
             }
-            let mut deltatime = input.target_deltatime * globals.debug_deltatime_speed_factor;
-            if globals.is_paused {
+            let deltatime_speed_factor =
+                globals.deltatime_speed_factor * globals.debug_deltatime_speed_factor;
+            let deltatime = if globals.is_paused {
                 if input.keyboard.recently_pressed_or_repeated(Scancode::N) {
-                    deltatime = input.target_deltatime * globals.debug_deltatime_speed_factor;
+                    input.deltatime * deltatime_speed_factor
                 } else {
-                    deltatime = 0.0;
+                    0.0
                 }
+            } else {
+                input.deltatime * deltatime_speed_factor
+            };
+            globals.deltatime = deltatime;
+            audio.set_global_playback_speed_factor(deltatime_speed_factor);
+
+            if !is_effectively_zero(globals.debug_deltatime_speed_factor - 1.0) {
+                draw.debug_log(format!("Timefactor: {:.3}", globals.deltatime_speed_factor));
+                draw.debug_log(format!(
+                    "Debug Timefactor: {:.1}",
+                    globals.debug_deltatime_speed_factor
+                ));
+                draw.debug_log(format!(
+                    "Cumulative timefactor: {:.1}",
+                    deltatime_speed_factor
+                ));
             }
-            globals.deltatime = deltatime * globals.deltatime_speed_factor;
+            draw.debug_log(format!("Deltatime: {:.6}", globals.deltatime));
 
             game.update(draw, audio, assets, input, globals, out_systemcommands);
             game_handle_system_keys(&input.keyboard, out_systemcommands);

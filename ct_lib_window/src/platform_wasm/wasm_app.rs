@@ -605,8 +605,8 @@ pub fn run_main<GameStateType: 'static + GameStateInterface + Clone>() -> Result
 
         {
             let mut input = input.borrow_mut();
-            input.deltatime = duration_frame as f32;
-            input.target_deltatime = f32::min(duration_frame as f32, 1.0 / 30.0);
+            input.deltatime =
+                super::snap_deltatime_to_nearest_common_refresh_rate(duration_frame as f32);
             input.real_world_uptime = frame_start_time;
             input.audio_playback_rate_hz = audio_output.audio_playback_rate_hz;
         }
