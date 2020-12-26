@@ -43,3 +43,62 @@ pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, Vec<AudioSample>
     };
     Ok((sample_rate_hz, samples))
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Music
+
+#[derive(Debug, Clone, Copy)]
+pub enum MusicalInterval {
+    Measure {
+        beats_per_minute: usize,
+        beats_per_measure: usize,
+    },
+    Beat {
+        beats_per_minute: usize,
+    },
+    HalfBeat {
+        beats_per_minute: usize,
+    },
+    QuarterBeat {
+        beats_per_minute: usize,
+    },
+}
+impl MusicalInterval {
+    #[inline]
+    pub fn length_seconds(&self) -> f64 {
+        match self {
+            MusicalInterval::Measure {
+                beats_per_minute,
+                beats_per_measure,
+            } => music_measure_length_in_seconds(*beats_per_measure, *beats_per_minute),
+            MusicalInterval::Beat { beats_per_minute } => {
+                music_beat_length_in_seconds(*beats_per_minute)
+            }
+            MusicalInterval::HalfBeat {
+                ref beats_per_minute,
+            } => music_beat_length_in_seconds(*beats_per_minute) / 2.0,
+            MusicalInterval::QuarterBeat { beats_per_minute } => {
+                music_beat_length_in_seconds(*beats_per_minute) / 4.0
+            }
+        }
+    }
+}
+
+#[inline]
+pub fn music_beat_length_in_seconds(beats_per_minute: usize) -> f64 {
+    60.0 / (beats_per_minute as f64)
+}
+
+#[inline]
+pub fn music_measure_length_in_seconds(beats_per_measure: usize, beats_per_minute: usize) -> f64 {
+    beats_per_measure as f64 * music_beat_length_in_seconds(beats_per_minute)
+}
+
+#[inline]
+pub fn music_get_next_point_in_time(
+    current_time_seconds: f64,
+    interval_type: MusicalInterval,
+) -> f64 {
+    let segment_length_seconds = interval_type.length_seconds();
+    f64::ceil(current_time_seconds / segment_length_seconds) * segment_length_seconds
+}

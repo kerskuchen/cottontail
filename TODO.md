@@ -4,26 +4,29 @@
 - replaces audrey crate with wav crate
 - split up draw into draw and image crate
 - WONTFIX Unify platform layers a bit to allow feature sharing (tried it and there very little in 
-  common to the cost)
+  common to justify the cost)
+- move debugscene out of game lib and temporarily into launcher (later we want to make it a 
+  standalone example)
+- remove scenes concept and all its boilerplate
 
 # CURRENT
 
-- split input out of ct lib into platform
 
 # NEXT:
 
 ## better platform layer
 - let app use platform (reverse controlflow)
+- split input out of ct lib into platform
 - if we can make opengl layer a dependency of draw we can put vertices and traits into 
   opengl layer and maybe make vertexbuffers typesafe again because we won't need to create
   drawcommands anymore and can just pass the vertices and indices out of the vertexbuffers in 
   a function call to the opengl layer?
 - rename ctlib to app
 - keep same loop functions and objects, just call functions from different modules?
-- pause on focus lost in sdl2
-- input processing
-- system event processing
-- also do we need resize callbacks at all? (also in sdl2)?
+  - pause on focus lost in sdl2
+  - input processing
+  - system event processing
+  - also do we need resize callbacks at all? (also in sdl2)?
 - we need a sane way to determine refresh rate and calculate target_update_rate
 - fix mouseup/touchup events that happen outside of browser window (i.e. affects leaving fullscreen)
   we may need https://developer.mozilla.org/en-US/docs/Web/API/Element/setPointerCapture

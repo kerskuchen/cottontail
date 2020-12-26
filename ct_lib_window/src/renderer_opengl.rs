@@ -1,10 +1,13 @@
-use super::core::*;
-use super::draw::draw::*;
-use super::draw::*;
-use super::image::*;
-use super::math::*;
+use super::core::transmute_slice_to_byte_slice;
+use super::draw::draw::{
+    Drawcommand, FramebufferTarget, TextureInfo, VertexBlit, VertexIndex, Vertexbuffer,
+    DEFAULT_WORLD_ZFAR, DEFAULT_WORLD_ZNEAR,
+};
+use super::draw::BlitRect;
+use super::image::PixelRGBA;
+use super::math::Mat4;
 
-use glow::*;
+use glow::HasContext;
 
 use std::{collections::HashMap, rc::Rc};
 
@@ -471,7 +474,7 @@ impl Texture {
                 region_height as i32,
                 glow::RGBA,
                 glow::UNSIGNED_BYTE,
-                PixelUnpackData::Slice(transmute_slice_to_byte_slice(pixels)),
+                glow::PixelUnpackData::Slice(transmute_slice_to_byte_slice(pixels)),
             );
 
             gl.bind_texture(glow::TEXTURE_2D, None);

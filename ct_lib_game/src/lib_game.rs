@@ -15,11 +15,10 @@ use draw::*;
 use image::*;
 use math::*;
 
-use crate::core::dformat;
 use crate::core::serde_derive::{Deserialize, Serialize};
 use crate::core::*;
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 pub const DEPTH_DEBUG: Depth = 90.0;
 pub const DEPTH_DEVELOP_OVERLAY: Depth = 80.0;
@@ -51,6 +50,21 @@ pub enum SystemCommand {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Gamestate
 
+#[derive(Clone)]
+pub struct Globals {
+    pub random: Random,
+    pub camera: GameCamera,
+    pub cursors: Cursors,
+
+    pub debug_deltatime_speed_factor: f32,
+    pub deltatime_speed_factor: f32,
+    pub deltatime: f32,
+    pub is_paused: bool,
+
+    pub canvas_width: f32,
+    pub canvas_height: f32,
+}
+
 pub struct GameInfo {
     pub game_window_title: String,
     pub game_save_folder_name: String,
@@ -65,6 +79,7 @@ pub trait GameStateInterface {
         audio: &mut Audiostate,
         assets: &mut GameAssets,
         input: &GameInput,
+        globals: &mut Globals,
     ) -> Self;
     fn update(
         &mut self,
@@ -72,6 +87,7 @@ pub trait GameStateInterface {
         audio: &mut Audiostate,
         assets: &mut GameAssets,
         input: &GameInput,
+        globals: &mut Globals,
         out_systemcommands: &mut Vec<SystemCommand>,
     );
 }
@@ -87,6 +103,7 @@ pub struct GameMemory<GameStateType: GameStateInterface> {
     pub audio: Option<Audiostate>,
     pub assets: Option<GameAssets>,
     pub splashscreen: Option<SplashScreen>,
+    pub globals: Option<Globals>,
 }
 
 impl<GameStateType: GameStateInterface> Default for GameMemory<GameStateType> {
@@ -97,6 +114,7 @@ impl<GameStateType: GameStateInterface> Default for GameMemory<GameStateType> {
             audio: None,
             assets: None,
             splashscreen: None,
+            globals: None,
         }
     }
 }
@@ -220,7 +238,47 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
                         TimerScoped::new_scoped("Gamestate setup time", true);
 
                     assert!(self.game.is_none());
-                    self.game = Some(GameStateType::new(draw, audio, assets, &input));
+                    assert!(self.globals.is_none());
+
+                    let window_config = GameStateType::get_window_config();
+                    let random = Random::new_from_seed((input.deltatime * 1000000.0) as u64);
+                    let camera = GameCamera::new(
+                        Vec2::zero(),
+                        window_config.canvas_width,
+                        window_config.canvas_height,
+                        false,
+                    );
+                    let cursors = Cursors::new(
+                        &camera.cam,
+                        &input.mouse,
+                        &input.touch,
+                        input.screen_framebuffer_width,
+                        input.screen_framebuffer_height,
+                        window_config.canvas_width,
+                        window_config.canvas_height,
+                    );
+
+                    let mut globals = Globals {
+                        random,
+                        camera,
+                        cursors,
+
+                        debug_deltatime_speed_factor: 1.0,
+                        deltatime_speed_factor: 1.0,
+                        deltatime: input.deltatime,
+                        is_paused: false,
+
+                        canvas_width: window_config.canvas_width as f32,
+                        canvas_height: window_config.canvas_height as f32,
+                    };
+                    self.game = Some(GameStateType::new(
+                        draw,
+                        audio,
+                        assets,
+                        &input,
+                        &mut globals,
+                    ));
+                    self.globals = Some(globals);
                 }
             }
 
@@ -232,8 +290,69 @@ impl<GameStateType: GameStateInterface> GameMemory<GameStateType> {
         }
 
         if let Some(game) = self.game.as_mut() {
-            game.update(draw, audio, assets, input, out_systemcommands);
+            let window_config = GameStateType::get_window_config();
+            let globals = self.globals.as_mut().unwrap();
+            globals.cursors = Cursors::new(
+                &globals.camera.cam,
+                &input.mouse,
+                &input.touch,
+                input.screen_framebuffer_width,
+                input.screen_framebuffer_height,
+                window_config.canvas_width,
+                window_config.canvas_height,
+            );
+
+            // DEBUG GAMESPEED MANIPULATION
+            //
+            if !is_effectively_zero(globals.debug_deltatime_speed_factor - 1.0) {
+                draw.debug_log(format!(
+                    "Timefactor: {:.1}",
+                    globals.debug_deltatime_speed_factor
+                ));
+            }
+            if input.keyboard.recently_pressed(Scancode::NumpadAdd) {
+                globals.debug_deltatime_speed_factor += 0.1;
+            }
+            if input.keyboard.recently_pressed(Scancode::NumpadSubtract) {
+                globals.debug_deltatime_speed_factor -= 0.1;
+                if globals.debug_deltatime_speed_factor < 0.1 {
+                    globals.debug_deltatime_speed_factor = 0.1;
+                }
+            }
+            if input.keyboard.recently_pressed(Scancode::Space) {
+                globals.is_paused = !globals.is_paused;
+            }
+            let mut deltatime = input.target_deltatime * globals.debug_deltatime_speed_factor;
+            if globals.is_paused {
+                if input.keyboard.recently_pressed_or_repeated(Scancode::N) {
+                    deltatime = input.target_deltatime * globals.debug_deltatime_speed_factor;
+                } else {
+                    deltatime = 0.0;
+                }
+            }
+            globals.deltatime = deltatime * globals.deltatime_speed_factor;
+
+            game.update(draw, audio, assets, input, globals, out_systemcommands);
             game_handle_system_keys(&input.keyboard, out_systemcommands);
+
+            globals.camera.update(globals.deltatime);
+            draw.set_shaderparams_simple(
+                Color::white(),
+                globals.camera.proj_view_matrix(),
+                Mat4::ortho_origin_left_top(
+                    window_config.canvas_width as f32,
+                    window_config.canvas_height as f32,
+                    DEFAULT_WORLD_ZNEAR,
+                    DEFAULT_WORLD_ZFAR,
+                ),
+                Mat4::ortho_origin_left_top(
+                    input.screen_framebuffer_width as f32,
+                    input.screen_framebuffer_height as f32,
+                    DEFAULT_WORLD_ZNEAR,
+                    DEFAULT_WORLD_ZFAR,
+                ),
+                globals.camera.canvas_blit_offset(),
+            );
         }
 
         draw.finish_frame(
@@ -457,12 +576,12 @@ pub struct GameCamera {
 }
 
 impl GameCamera {
-    pub fn new(pos: Vec2, canvas_width: f32, canvas_height: f32, is_centered: bool) -> GameCamera {
+    pub fn new(pos: Vec2, canvas_width: u32, canvas_height: u32, is_centered: bool) -> GameCamera {
         let cam = Camera::new(
             pos,
             1.0,
-            canvas_width as u32,
-            canvas_height as u32,
+            canvas_width,
+            canvas_height,
             DEFAULT_WORLD_ZNEAR,
             DEFAULT_WORLD_ZFAR,
             is_centered,
@@ -1994,861 +2113,4 @@ impl Afterimage {
             }
         }
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Music
-
-#[derive(Debug, Clone, Copy)]
-pub enum MusicalInterval {
-    Measure {
-        beats_per_minute: usize,
-        beats_per_measure: usize,
-    },
-    Beat {
-        beats_per_minute: usize,
-    },
-    HalfBeat {
-        beats_per_minute: usize,
-    },
-    QuarterBeat {
-        beats_per_minute: usize,
-    },
-}
-impl MusicalInterval {
-    #[inline]
-    pub fn length_seconds(&self) -> f64 {
-        match self {
-            MusicalInterval::Measure {
-                beats_per_minute,
-                beats_per_measure,
-            } => music_measure_length_in_seconds(*beats_per_measure, *beats_per_minute),
-            MusicalInterval::Beat { beats_per_minute } => {
-                music_beat_length_in_seconds(*beats_per_minute)
-            }
-            MusicalInterval::HalfBeat {
-                ref beats_per_minute,
-            } => music_beat_length_in_seconds(*beats_per_minute) / 2.0,
-            MusicalInterval::QuarterBeat { beats_per_minute } => {
-                music_beat_length_in_seconds(*beats_per_minute) / 4.0
-            }
-        }
-    }
-}
-
-#[inline]
-pub fn music_beat_length_in_seconds(beats_per_minute: usize) -> f64 {
-    60.0 / (beats_per_minute as f64)
-}
-
-#[inline]
-pub fn music_measure_length_in_seconds(beats_per_measure: usize, beats_per_minute: usize) -> f64 {
-    beats_per_measure as f64 * music_beat_length_in_seconds(beats_per_minute)
-}
-
-#[inline]
-pub fn music_get_next_point_in_time(
-    current_time_seconds: f64,
-    interval_type: MusicalInterval,
-) -> f64 {
-    let segment_length_seconds = interval_type.length_seconds();
-    f64::ceil(current_time_seconds / segment_length_seconds) * segment_length_seconds
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Scene Management
-
-pub enum GameEvent {
-    SwitchToScene { scene_name: String },
-    ToggleFullscreen,
-}
-
-#[derive(Clone)]
-pub struct Globals {
-    pub random: Random,
-    pub camera: GameCamera,
-    pub cursors: Cursors,
-
-    pub deltatime_speed_factor: f32,
-    pub deltatime: f32,
-    pub is_paused: bool,
-
-    pub canvas_width: f32,
-    pub canvas_height: f32,
-}
-
-pub trait Scene: Clone {
-    fn update_and_draw(
-        &mut self,
-        draw: &mut Drawstate,
-        audio: &mut Audiostate,
-        assets: &mut GameAssets,
-        input: &GameInput,
-        globals: &mut Globals,
-        out_game_events: &mut Vec<GameEvent>,
-    );
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Debug Scene
-
-#[derive(Clone)]
-pub struct SceneDebug {
-    glitter: ParticleSystem,
-    music_stream_id: AudioStreamId,
-
-    measure_completion_ratio_values: Vec<f32>,
-    last_measure_completion_ratio: f32,
-
-    choreographer_randoms: Choreographer,
-    choreographer_tween: Choreographer,
-    choreographer_conversation: Choreographer,
-    choreographer_rectangles: Choreographer,
-    choreographer_hp_front: Choreographer,
-    choreographer_hp_back: Choreographer,
-    choreographer_hp_refill: Choreographer,
-
-    loaded_font_name: String,
-
-    hp: f32,
-    hp_previous: f32,
-
-    circle_radius: f32,
-
-    current_measure: usize,
-
-    drumtimes: VecDeque<f64>,
-}
-
-impl SceneDebug {
-    pub fn new(
-        _draw: &mut Drawstate,
-        _audio: &mut Audiostate,
-        _assets: &mut GameAssets,
-        _input: &GameInput,
-        loaded_font_name: &str,
-    ) -> SceneDebug {
-        let glitter_params = ParticleSystemParams {
-            gravity: Vec2::new(0.0, -15.0),
-            vel_start: Vec2::new(1.0, 0.0),
-            vel_max: 10000.0,
-            scale_start: 1.0,
-            scale_end: 1.0,
-            spawn_radius: 15.0,
-            lifetime: 1.0,
-            additivity_start: ADDITIVITY_MAX,
-            additivity_end: ADDITIVITY_NONE,
-            color_start: Color::white(),
-            color_end: 0.0 * Color::white(),
-        };
-
-        SceneDebug {
-            glitter: ParticleSystem::new(glitter_params, 30, Vec2::zero()),
-
-            music_stream_id: 0,
-
-            measure_completion_ratio_values: Vec::new(),
-            last_measure_completion_ratio: 0.0,
-
-            choreographer_randoms: Choreographer::new(),
-            choreographer_tween: Choreographer::new(),
-            choreographer_conversation: Choreographer::new(),
-            choreographer_rectangles: Choreographer::new(),
-            choreographer_hp_front: Choreographer::new(),
-            choreographer_hp_back: Choreographer::new(),
-            choreographer_hp_refill: Choreographer::new(),
-
-            loaded_font_name: loaded_font_name.to_owned(),
-
-            hp: 1.0,
-            hp_previous: 1.0,
-
-            circle_radius: 50.0,
-
-            current_measure: 0,
-
-            drumtimes: VecDeque::new(),
-        }
-    }
-}
-
-impl Scene for SceneDebug {
-    fn update_and_draw(
-        &mut self,
-        draw: &mut Drawstate,
-        audio: &mut Audiostate,
-        assets: &mut GameAssets,
-        input: &GameInput,
-        globals: &mut Globals,
-        out_game_events: &mut Vec<GameEvent>,
-    ) {
-        const DEPTH_DRAW: Depth = 20.0;
-
-        let deltatime = globals.deltatime;
-
-        if self.music_stream_id == 0 {
-            self.music_stream_id = audio.play(
-                "loop_bell",
-                music_get_next_point_in_time(
-                    audio.current_time_seconds(),
-                    MusicalInterval::Measure {
-                        beats_per_minute: 120,
-                        beats_per_measure: 4,
-                    },
-                ),
-                true,
-                0.1,
-                1.0,
-                0.0,
-            );
-        }
-
-        draw.draw_rect(
-            Rect::from_width_height(globals.canvas_width, globals.canvas_height),
-            true,
-            DEPTH_DRAW,
-            Color::greyscale(0.5),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-
-        let center = Vec2::new(globals.canvas_width, globals.canvas_height) / 2.0;
-
-        // CONVERSATION
-        //
-        self.choreographer_conversation.update(deltatime);
-        (|| {
-            // Based on https://github.com/RandyGaul/cute_headers/blob/master/cute_coroutine.h
-            let colors = [Color::green(), Color::yellow()];
-            let names = ["Bob", "Alice"];
-            let messages = [
-                "Yo Alice. I heard you like mudkips.",
-                "No Bob. Not me. Who told you such a thing?",
-                "Alice please, don't lie to me. We've known each other a long time.",
-                "We have grown apart. I barely know myself.",
-                "OK.",
-                "Good bye Bob. I wish you the best.",
-                "But do you like mudkips?",
-                "<has left>",
-                "Well, I like mudkips :)",
-            ];
-
-            for ((message, name), color) in messages
-                .iter()
-                .zip(names.iter().cycle())
-                .zip(colors.iter().cycle())
-            {
-                if !self.choreographer_conversation.wait(1.0) {
-                    return;
-                }
-
-                let (line, finished) = collect_line(
-                    &mut self.choreographer_conversation,
-                    &mut globals.random,
-                    name,
-                    message,
-                );
-                draw.debug_log_color(*color, line);
-
-                if !finished {
-                    return;
-                }
-            }
-        })();
-
-        let (button_fullscreen_text, button_fullscreen_color) = if input.screen_is_fullscreen {
-            ("exit fullscreen", Color::red())
-        } else {
-            ("enter fullscreen", Color::green())
-        };
-        let button_fullscreen_rect = Rect::from_bounds_left_top_right_bottom(
-            input.screen_framebuffer_width as f32 - 300.0,
-            0.0,
-            input.screen_framebuffer_width as f32,
-            60.0,
-        );
-        draw.draw_rect(
-            button_fullscreen_rect,
-            true,
-            DEPTH_MAX,
-            button_fullscreen_color,
-            ADDITIVITY_NONE,
-            DrawSpace::Screen,
-        );
-        let TODO = "simplify text api and text alignment";
-        let test_font = assets.get_font(&self.loaded_font_name);
-        draw.draw_text(
-            button_fullscreen_text,
-            &test_font,
-            3.0,
-            button_fullscreen_rect.center(),
-            Vec2::zero(),
-            Some(TextAlignment {
-                horizontal: AlignmentHorizontal::Center,
-                vertical: AlignmentVertical::Center,
-                origin_is_baseline: false,
-                ignore_whitespace: false,
-            }),
-            None,
-            DEPTH_MAX,
-            Color::white(),
-            ADDITIVITY_NONE,
-            DrawSpace::Screen,
-        );
-        let TODO = "simplify touch input query";
-        if globals
-            .cursors
-            .mouse
-            .pos_screen
-            .intersects_rect(button_fullscreen_rect)
-            && input.mouse.button_left.recently_pressed()
-        {
-            out_game_events.push(GameEvent::ToggleFullscreen);
-        } else if let Some(finger) = globals.cursors.finger_primary {
-            if finger.pos_screen.intersects_rect(button_fullscreen_rect) {
-                if let Some(finger) = input.touch.fingers.get(&0) {
-                    if finger.state.recently_pressed() {
-                        out_game_events.push(GameEvent::ToggleFullscreen);
-                    }
-                }
-            }
-        } else if let Some(finger) = globals.cursors.finger_secondary {
-            if finger.pos_screen.intersects_rect(button_fullscreen_rect) {
-                if let Some(finger) = input.touch.fingers.get(&1) {
-                    if finger.state.recently_pressed() {
-                        out_game_events.push(GameEvent::ToggleFullscreen);
-                    }
-                }
-            }
-        }
-
-        draw.debug_log(format!("mousedown: {}", input.mouse.button_left.is_pressed));
-        draw.debug_log(format!(
-            "intersects: {}",
-            globals
-                .cursors
-                .mouse
-                .pos_screen
-                .intersects_rect(button_fullscreen_rect)
-        ));
-
-        draw.debug_log(format!(
-            "screen: {}x{}",
-            input.screen_framebuffer_width, input.screen_framebuffer_height,
-        ));
-        draw.debug_log(format!(
-            "canvas: {}x{}",
-            globals.canvas_width, globals.canvas_height
-        ));
-        draw.debug_log(format!(
-            "mworld: {}x{}",
-            globals.cursors.mouse.pos_world.x, globals.cursors.mouse.pos_world.y,
-        ));
-        draw.debug_log(format!(
-            "mscreen: {}x{}",
-            globals.cursors.mouse.pos_screen.x, globals.cursors.mouse.pos_screen.y,
-        ));
-        draw.debug_log(format!(
-            "mcanvas: {}x{}",
-            globals.cursors.mouse.pos_canvas.x, globals.cursors.mouse.pos_canvas.y,
-        ));
-        draw.debug_log(format!(
-            "fpworld: {:?}",
-            globals
-                .cursors
-                .finger_primary
-                .map(|coords| coords.pos_world)
-        ));
-        draw.debug_log(format!(
-            "fpscreen: {:?}",
-            globals
-                .cursors
-                .finger_primary
-                .map(|coords| coords.pos_screen)
-        ));
-        draw.debug_log(format!(
-            "fpcanvas: {:?}",
-            globals
-                .cursors
-                .finger_primary
-                .map(|coords| coords.pos_canvas)
-        ));
-        draw.debug_log(format!(
-            "fsworld: {:?}",
-            globals
-                .cursors
-                .finger_secondary
-                .map(|coords| coords.pos_world)
-        ));
-        draw.debug_log(format!(
-            "fsscreen: {:?}",
-            globals
-                .cursors
-                .finger_secondary
-                .map(|coords| coords.pos_screen)
-        ));
-        draw.debug_log(format!(
-            "fscanvas: {:?}",
-            globals
-                .cursors
-                .finger_secondary
-                .map(|coords| coords.pos_canvas)
-        ));
-        if let Some(pos) = globals
-            .cursors
-            .finger_primary
-            .map(|coords| coords.pos_canvas)
-        {
-            draw.draw_circle_filled(
-                pos,
-                20.0,
-                DEPTH_DEBUG,
-                Color::red(),
-                ADDITIVITY_NONE,
-                DrawSpace::Canvas,
-            )
-        }
-        if let Some(pos) = globals
-            .cursors
-            .finger_secondary
-            .map(|coords| coords.pos_canvas)
-        {
-            draw.draw_circle_filled(
-                pos,
-                20.0,
-                DEPTH_DEBUG,
-                Color::yellow(),
-                ADDITIVITY_NONE,
-                DrawSpace::Canvas,
-            )
-        }
-
-        // CIRCLES
-        self.choreographer_tween.update(input.deltatime);
-        (|| {
-            let (percentage, finished) = self.choreographer_tween.tween(1.0);
-            self.circle_radius = lerp(20.0, 50.0, easing::cubic_inout(percentage));
-            if !finished {
-                return;
-            }
-
-            let (percentage, finished) = self.choreographer_tween.tween(1.0);
-            self.circle_radius = lerp(50.0, 20.0, easing::cubic_inout(percentage));
-            if !finished {
-                return;
-            }
-
-            self.choreographer_tween.restart();
-        })();
-
-        let circle_pos = Vec2::new(globals.canvas_width, globals.canvas_height);
-        draw.draw_circle_filled(
-            circle_pos - Vec2::filled(100.0),
-            self.circle_radius,
-            DEPTH_DRAW,
-            Color::white(),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-
-        draw.draw_ring(
-            circle_pos - Vec2::filled(100.0),
-            60.0,
-            10.0,
-            DEPTH_DRAW,
-            Color::white(),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-
-        // CROSS
-        //
-        let rect1_initial = Rect::from_xy_width_height(
-            block_centered_in_point(50.0, center.x),
-            block_centered_in_point(200.0, center.y),
-            50.0,
-            200.0,
-        );
-        let rect2_initial = Rect::from_xy_width_height(
-            block_centered_in_point(200.0, center.x),
-            block_centered_in_point(50.0, center.y),
-            200.0,
-            50.0,
-        );
-
-        let mut rect1_width = rect1_initial.width();
-        let mut rect2_height = rect2_initial.height();
-        self.choreographer_rectangles.update(input.deltatime);
-        (|| {
-            if !self.choreographer_rectangles.wait(1.0) {
-                return;
-            }
-
-            let (percentage, finished) = self.choreographer_rectangles.tween(1.0);
-            let percentage = easing::cubic_inout(percentage);
-            rect1_width = rect1_initial.width() * (1.0 - percentage);
-            if !finished {
-                return;
-            }
-
-            let (percentage, finished) = self.choreographer_rectangles.tween(1.0);
-            let percentage = easing::cubic_inout(percentage);
-            rect2_height = rect2_initial.height() * (1.0 - percentage);
-            if !finished {
-                return;
-            }
-
-            let (percentage, finished) = self.choreographer_rectangles.tween(1.0);
-            let percentage = easing::cubic_inout(percentage);
-            rect1_width = rect1_initial.width() * percentage;
-            rect2_height = rect2_initial.height() * percentage;
-            if !finished {
-                return;
-            }
-
-            self.choreographer_rectangles.restart();
-        })();
-        let rect1 = rect1_initial.with_new_width(rect1_width, AlignmentHorizontal::Center);
-        let rect2 = rect2_initial.with_new_height(rect2_height, AlignmentVertical::Center);
-        draw.draw_rect(
-            rect1,
-            true,
-            DEPTH_DRAW,
-            Color::white(),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-        draw.draw_rect(
-            rect2,
-            true,
-            DEPTH_DRAW,
-            Color::white(),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-
-        // Drummydrumms
-        let measure_length = MusicalInterval::Measure {
-            beats_per_minute: 120,
-            beats_per_measure: 4,
-        }
-        .length_seconds();
-        let halfbeat_length = MusicalInterval::HalfBeat {
-            beats_per_minute: 120,
-        }
-        .length_seconds();
-        if self.current_measure < (audio.current_time_seconds() / measure_length) as usize {
-            self.current_measure += 1;
-            let halfbeats_per_measure = (measure_length / halfbeat_length).round() as usize;
-            for index in 0..halfbeats_per_measure {
-                let drumtime = (self.current_measure + 1) as f64 * measure_length
-                    + index as f64 * halfbeat_length;
-                audio.play_oneshot("drum", drumtime, 0.3, 1.0, 0.0);
-                self.drumtimes.push_back(drumtime);
-            }
-        }
-        draw.debug_log(dformat!(self.current_measure));
-
-        let measure_size_pixels = globals.canvas_width / 2.0;
-        let beat_size_pixels = measure_size_pixels / 2.0;
-        for index in 0..8 {
-            let pos_x = index as f32 * beat_size_pixels;
-            draw.draw_rect(
-                Rect::from_xy_width_height(pos_x, globals.canvas_height - 20.0, 2.0, 10.0),
-                true,
-                DEPTH_DEBUG,
-                Color::greyscale(0.8),
-                ADDITIVITY_NONE,
-                DrawSpace::Canvas,
-            )
-        }
-        for index in 0..2 {
-            let pos_x = index as f32 * measure_size_pixels;
-            draw.draw_rect(
-                Rect::from_xy_width_height(pos_x, globals.canvas_height - 20.0, 2.0, 10.0),
-                true,
-                DEPTH_DEBUG,
-                Color::greyscale(0.2),
-                ADDITIVITY_NONE,
-                DrawSpace::Canvas,
-            )
-        }
-        for time in &self.drumtimes {
-            let pos_x =
-                (time - audio.current_time_seconds()) / measure_length * measure_size_pixels as f64;
-            draw.draw_rect(
-                Rect::from_xy_width_height(pos_x as f32, globals.canvas_height - 20.0, 2.0, 10.0),
-                true,
-                DEPTH_DEBUG,
-                Color::red() * 0.5,
-                0.5,
-                DrawSpace::Canvas,
-            )
-        }
-        self.drumtimes
-            .retain(|&time| time >= audio.current_time_seconds());
-
-        // HP BAR
-        //
-        if input.keyboard.recently_pressed(Scancode::D) {
-            audio.play_oneshot(
-                "drum",
-                music_get_next_point_in_time(
-                    audio.current_time_seconds(),
-                    MusicalInterval::QuarterBeat {
-                        beats_per_minute: 120,
-                    },
-                ),
-                0.7,
-                1.0,
-                0.0,
-            );
-
-            self.hp_previous = self.hp;
-            self.hp -= globals.random.f32_in_range(0.15, 0.3);
-            if self.hp <= 0.01 {
-                self.hp = 0.01;
-            }
-            self.choreographer_hp_back.restart();
-            self.choreographer_hp_front.restart();
-            self.choreographer_hp_refill.restart();
-        }
-        let hp_rect_initial =
-            Rect::from_xy_width_height(globals.canvas_width - 200.0, 50.0, 100.0, 30.0);
-        let mut hp_front_value = self.hp;
-        let mut hp_back_value = self.hp;
-
-        self.choreographer_hp_refill.update(input.deltatime);
-        (|| {
-            if !self.choreographer_hp_refill.wait(1.0) {
-                return;
-            }
-
-            let (percentage, finished) = self.choreographer_hp_refill.tween(2.0);
-            let percentage = easing::cubic_inout(percentage);
-            self.hp_previous = self.hp;
-            self.hp = lerp(self.hp, 1.0, percentage);
-            if !finished {
-                return;
-            }
-        })();
-
-        self.choreographer_hp_front.update(input.deltatime);
-        (|| {
-            let (percentage, finished) = self.choreographer_hp_front.tween(0.3);
-            let percentage = easing::cubic_inout(percentage);
-            hp_front_value = lerp(self.hp_previous, self.hp, percentage);
-            if !finished {
-                return;
-            }
-        })();
-        self.choreographer_hp_back.update(input.deltatime);
-        (|| {
-            let (percentage, finished) = self.choreographer_hp_back.tween(1.0);
-            let percentage = easing::cubic_inout(percentage);
-            hp_back_value = lerp(self.hp_previous, self.hp, percentage);
-            if !finished {
-                return;
-            }
-        })();
-
-        let hp_front_rect = hp_rect_initial.with_new_width(
-            hp_front_value * hp_rect_initial.width(),
-            AlignmentHorizontal::Left,
-        );
-        let hp_back_rect = hp_rect_initial.with_new_width(
-            hp_back_value * hp_rect_initial.width(),
-            AlignmentHorizontal::Left,
-        );
-
-        draw.draw_text(
-            "Press 'D'",
-            &assets.get_font(FONT_DEFAULT_TINY_NAME),
-            1.0,
-            hp_rect_initial.pos,
-            Vec2::filled_y(-5.0),
-            Some(TextAlignment {
-                horizontal: AlignmentHorizontal::Left,
-                vertical: AlignmentVertical::Top,
-                origin_is_baseline: true,
-                ignore_whitespace: false,
-            }),
-            None,
-            DEPTH_DRAW,
-            Color::white(),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-        draw.draw_rect(
-            hp_back_rect,
-            true,
-            DEPTH_DRAW,
-            Color::from_hex_rgba(0x884242ff),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-        draw.draw_rect(
-            hp_front_rect,
-            true,
-            DEPTH_DRAW,
-            Color::from_hex_rgba(0xf06969ff),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-
-        // PRINTING RANDOM NUMBERS
-        //
-        self.choreographer_randoms.update(input.deltatime);
-        (|| {
-            for index in 0..10 {
-                if !self.choreographer_randoms.wait(0.5) {
-                    return;
-                }
-
-                if self.choreographer_randoms.once() {
-                    println!("Random number {}: {}", index, globals.random.u32());
-                }
-            }
-        })();
-
-        let measure_completion_ratio = audio
-            .stream_completion_ratio(self.music_stream_id)
-            .unwrap_or(0.0);
-        let beat_completion_ratio = (4.0 * measure_completion_ratio) % 1.0;
-
-        draw.draw_pixel(
-            globals.cursors.mouse.pos_world,
-            DEPTH_DEBUG,
-            Color::magenta(),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-
-        self.glitter.move_to(globals.cursors.mouse.pos_world);
-        self.glitter.update_and_draw(
-            draw,
-            &mut globals.random,
-            deltatime,
-            DEPTH_DRAW,
-            DrawSpace::World,
-        );
-
-        draw.draw_rect(
-            Rect::from_xy_width_height(5.0, 210.0, beat_completion_ratio * 30.0, 5.0),
-            true,
-            DEPTH_DEBUG,
-            Color::magenta(),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-        draw.draw_rect(
-            Rect::from_xy_width_height(5.0, 215.0, measure_completion_ratio * 30.0, 5.0),
-            true,
-            DEPTH_DEBUG,
-            Color::blue(),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-
-        draw.draw_rect(
-            Rect::from_xy_width_height(
-                0.0,
-                globals.canvas_height - 10.0,
-                measure_completion_ratio * globals.canvas_width,
-                10.0,
-            ),
-            true,
-            DEPTH_DEBUG,
-            Color::blue(),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-
-        // Text drawing test
-        let test_font = assets.get_font(&self.loaded_font_name);
-        let text = "Loaded font test gorgeous!|\u{08A8}";
-        let text_width = test_font.get_text_bounding_rect(text, 1, false).dim.x;
-        // Draw origin is top-left
-        let draw_pos = Vec2::new(5.0, globals.canvas_height - 50.0);
-        draw.draw_text(
-            text,
-            &test_font,
-            1.0,
-            draw_pos,
-            Vec2::zero(),
-            None,
-            None,
-            20.0,
-            Color::magenta(),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-        draw.draw_line_bresenham(
-            draw_pos + Vec2::new(0.0, test_font.baseline as f32),
-            draw_pos + Vec2::new(text_width as f32, test_font.baseline as f32),
-            false,
-            20.0,
-            0.3 * Color::yellow(),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-        // Draw origin is baseline
-        let draw_pos = Vec2::new(5.0, globals.canvas_height - 25.0);
-        draw.draw_text(
-            text,
-            &test_font,
-            1.0,
-            draw_pos,
-            Vec2::zero(),
-            Some(TextAlignment {
-                horizontal: AlignmentHorizontal::Left,
-                vertical: AlignmentVertical::Top,
-                origin_is_baseline: true,
-                ignore_whitespace: false,
-            }),
-            None,
-            20.0,
-            Color::magenta(),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-        draw.draw_line_bresenham(
-            draw_pos,
-            draw_pos + Vec2::new(text_width as f32, 0.0),
-            false,
-            20.0,
-            0.3 * Color::yellow(),
-            ADDITIVITY_NONE,
-            DrawSpace::World,
-        );
-    }
-}
-
-// Based on https://github.com/RandyGaul/cute_headers/blob/master/cute_coroutine.h
-fn collect_line(
-    choreo: &mut Choreographer,
-    random: &mut Random,
-    name: &str,
-    text: &str,
-) -> (String, bool) {
-    let mut line_accumulator = name.to_owned() + ": ";
-
-    if !choreo.wait(0.750) {
-        return (line_accumulator, false);
-    }
-
-    for letter in text.chars() {
-        line_accumulator.push(letter);
-        let pause_time = if letter == '.' || letter == ',' || letter == '?' {
-            0.250
-        } else {
-            random.f32_in_range(0.03, 0.05)
-        };
-
-        if !choreo.wait(pause_time) {
-            return (line_accumulator, false);
-        }
-    }
-
-    (line_accumulator, true)
 }
