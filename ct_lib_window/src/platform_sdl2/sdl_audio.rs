@@ -1,11 +1,7 @@
 use crate::core::log;
-use ct_lib_audio::{
-    audio::{AudioChunkStereo, AUDIO_CHUNKSIZE_IN_FRAMES},
-    AudioFrame,
-};
 
 const AUDIO_SAMPLE_RATE: usize = 44100;
-const AUDIO_BUFFER_FRAMECOUNT: usize = 2 * AUDIO_CHUNKSIZE_IN_FRAMES;
+const AUDIO_BUFFER_FRAMECOUNT: usize = 1024;
 const AUDIO_QUEUE_FRAMECOUNT: usize = 2 * AUDIO_BUFFER_FRAMECOUNT;
 const AUDIO_NUM_CHANNELS: usize = 2;
 
@@ -17,19 +13,19 @@ enum AudioFadeState {
 }
 
 struct SDLAudioCallback {
-    input_ringbuffer: ringbuf::Consumer<AudioFrame>,
+    input_ringbuffer: ringbuf::Consumer<(f32, f32)>,
 
     // This is used to fade in / out the volume when we drop frames to reduce clicking
     fadestate: AudioFadeState,
     fader_current: f32,
-    last_frame_written: AudioFrame,
+    last_frame_written: (f32, f32),
 }
 impl SDLAudioCallback {
-    fn new(audio_buffer_consumer: ringbuf::Consumer<AudioFrame>) -> SDLAudioCallback {
+    fn new(audio_buffer_consumer: ringbuf::Consumer<(f32, f32)>) -> SDLAudioCallback {
         SDLAudioCallback {
             input_ringbuffer: audio_buffer_consumer,
             fader_current: 0.0,
-            last_frame_written: AudioFrame::silence(),
+            last_frame_written: (0.0, 0.0),
             fadestate: AudioFadeState::FadedOut,
         }
     }
@@ -58,24 +54,24 @@ impl sdl2::audio::AudioCallback for SDLAudioCallback {
                     self.fadestate = AudioFadeState::FadingIn;
                 }
                 if self.fadestate == AudioFadeState::FadingOut {
-                    frame_out[0] = self.fader_current * self.last_frame_written.left;
-                    frame_out[1] = self.fader_current * self.last_frame_written.right;
+                    frame_out[0] = self.fader_current * self.last_frame_written.0;
+                    frame_out[1] = self.fader_current * self.last_frame_written.1;
                 } else {
                     self.last_frame_written = frame;
-                    frame_out[0] = self.fader_current * frame.left;
-                    frame_out[1] = self.fader_current * frame.right;
+                    frame_out[0] = self.fader_current * frame.0;
+                    frame_out[1] = self.fader_current * frame.1;
                 }
             } else {
                 self.fadestate = AudioFadeState::FadingOut;
-                frame_out[0] = self.fader_current * self.last_frame_written.left;
-                frame_out[1] = self.fader_current * self.last_frame_written.right;
+                frame_out[0] = self.fader_current * self.last_frame_written.0;
+                frame_out[1] = self.fader_current * self.last_frame_written.1;
             }
         }
     }
 }
 pub struct AudioOutput {
     pub audio_playback_rate_hz: usize,
-    frames_queue: ringbuf::Producer<AudioFrame>,
+    frames_queue: ringbuf::Producer<(f32, f32)>,
     _sdl_audio_device: sdl2::audio::AudioDevice<SDLAudioCallback>,
 }
 impl AudioOutput {
@@ -133,19 +129,16 @@ impl AudioOutput {
         // Do nothing here
     }
 
-    pub fn get_num_chunks_to_submit(&self) -> usize {
-        let framecount_to_render = {
-            let framecount_queued = self.frames_queue.len();
-            if framecount_queued < AUDIO_QUEUE_FRAMECOUNT {
-                AUDIO_QUEUE_FRAMECOUNT - framecount_queued
-            } else {
-                0
-            }
-        };
-        framecount_to_render / AUDIO_CHUNKSIZE_IN_FRAMES
+    pub fn get_num_frames_to_submit(&self) -> usize {
+        let framecount_queued = self.frames_queue.len();
+        if framecount_queued < AUDIO_QUEUE_FRAMECOUNT {
+            AUDIO_QUEUE_FRAMECOUNT - framecount_queued
+        } else {
+            0
+        }
     }
 
-    pub fn submit_chunk(&mut self, audio_chunk: &AudioChunkStereo) {
+    pub fn submit_frames(&mut self, audio_chunk: &[(f32, f32)]) {
         for frame in audio_chunk {
             if let Err(_) = self.frames_queue.push(*frame) {
                 log::warn!("Audiobuffer: Could not push frame to queue - queue full?");

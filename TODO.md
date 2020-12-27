@@ -1,9 +1,11 @@
 # DONE:
 
 - fix audio stuttering introduced earlier
+- made window crate independant of audio crate
 
 # CURRENT
 
+- make window crate independant of draw crate
 
 # NEXT:
 
@@ -88,10 +90,11 @@
   - improve wasm startup speed
 
 ## audio system
-- use global playback speed factor in a final output interplator not
+- don't process streams if we know that they are empty
 - refactor audio system to use non interleaved buffers to comform more to WebAudio API
 - find a way to make pulling buffers more convenient, performant and generic (i.e. linear 
   interpolators use `next()` on their interal source to get the next sample)
+- use global playback speed factor in a final output interplator not
 - Support ogg audio and differentiate between mono/stereo recordings
 - streaming long audio (music)
 
