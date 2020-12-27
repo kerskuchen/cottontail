@@ -6,7 +6,7 @@ pub use sdl_audio as audio;
 
 use crate::{AppCommand, AppContextInterface};
 
-use super::input::{GameInput, Scancode};
+use super::input::{InputState, Scancode};
 use ct_lib_core::log;
 use ct_lib_core::serde_derive::{Deserialize, Serialize};
 use ct_lib_core::*;
@@ -36,8 +36,8 @@ struct InputRecorder<AppContextType: AppContextInterface> {
 
     is_recording: bool,
     is_playing_back: bool,
-    queue_playback: VecDeque<GameInput>,
-    queue_recording: VecDeque<GameInput>,
+    queue_playback: VecDeque<InputState>,
+    queue_recording: VecDeque<InputState>,
 }
 
 impl<AppContextType: AppContextInterface> InputRecorder<AppContextType> {
@@ -90,14 +90,14 @@ impl<AppContextType: AppContextInterface> InputRecorder<AppContextType> {
         self.queue_playback.clear();
     }
 
-    fn record_input(&mut self, input: &GameInput) {
+    fn record_input(&mut self, input: &InputState) {
         assert!(self.is_recording);
         assert!(!self.is_playing_back);
 
         self.queue_recording.push_back(input.clone());
     }
 
-    fn playback_input(&mut self, app_context: &mut AppContextType) -> GameInput {
+    fn playback_input(&mut self, app_context: &mut AppContextType) -> InputState {
         assert!(!self.is_recording);
         assert!(self.is_playing_back);
 
@@ -269,7 +269,7 @@ pub fn run_main<AppContextType: AppContextInterface>() {
     // ---------------------------------------------------------------------------------------------
     // Input
 
-    let mut input = GameInput::new();
+    let mut input = InputState::new();
     let (screen_width, screen_height) = window.dimensions();
     input.screen_framebuffer_width = screen_width;
     input.screen_framebuffer_height = screen_height;

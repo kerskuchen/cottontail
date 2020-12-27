@@ -4,7 +4,7 @@ mod wasm_input;
 pub use wasm_audio as audio;
 
 use crate::{
-    input::{FingerPlatformId, GameInput},
+    input::{FingerPlatformId, InputState},
     AppCommand, AppContextInterface,
 };
 
@@ -233,9 +233,9 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     // Mainloop setup
 
     let mut appcommands: Vec<AppCommand> = Vec::new();
-    let game_start_time = timer_current_time_seconds();
-    let mut frame_start_time = game_start_time;
-    log::debug!("Startup took {:.3}ms", game_start_time * 1000.0,);
+    let app_start_time = timer_current_time_seconds();
+    let mut frame_start_time = app_start_time;
+    log::debug!("Startup took {:.3}ms", app_start_time * 1000.0,);
 
     let mut current_tick = 0;
 
@@ -246,7 +246,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
         web_sys::OrientationLockType::Landscape;
 
     let dpr = html_get_window().device_pixel_ratio();
-    let input = Rc::new(RefCell::new(GameInput::new()));
+    let input = Rc::new(RefCell::new(InputState::new()));
     let mut mouse_pos_previous_x = 0;
     let mut mouse_pos_previous_y = 0;
 

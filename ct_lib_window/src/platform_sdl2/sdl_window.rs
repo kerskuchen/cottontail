@@ -103,10 +103,6 @@ impl Window {
         self.sdl_window.drawable_size()
     }
 
-    pub fn refresh_rate(&self) -> u32 {
-        self.get_display_info_for_current_display().refresh_rate
-    }
-
     pub fn enable_fullscreen(&mut self) {
         assert!(!self.fullscreen_active);
 

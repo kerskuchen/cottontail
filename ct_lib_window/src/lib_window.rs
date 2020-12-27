@@ -9,7 +9,7 @@ pub mod platform;
 pub mod input;
 pub mod renderer_opengl;
 
-use input::GameInput;
+use input::InputState;
 use platform::audio::AudioOutput;
 use renderer_opengl::Renderer;
 
@@ -41,12 +41,12 @@ pub enum AppCommand {
 }
 pub trait AppContextInterface: Clone {
     fn get_app_info() -> AppInfo;
-    fn new(renderer: &mut Renderer, input: &GameInput, audio: &mut AudioOutput) -> Self;
+    fn new(renderer: &mut Renderer, input: &InputState, audio: &mut AudioOutput) -> Self;
     fn reset(&mut self);
     fn run_tick(
         &mut self,
         renderer: &mut Renderer,
-        input: &GameInput,
+        input: &InputState,
         audio: &mut AudioOutput,
         out_systemcommands: &mut Vec<AppCommand>,
     );

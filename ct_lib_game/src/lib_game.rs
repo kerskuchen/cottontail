@@ -59,7 +59,7 @@ pub trait GameStateInterface: Clone {
         draw: &mut Drawstate,
         audio: &mut Audiostate,
         assets: &GameAssets,
-        input: &GameInput,
+        input: &InputState,
         globals: &mut Globals,
     ) -> Self;
     fn update(
@@ -67,7 +67,7 @@ pub trait GameStateInterface: Clone {
         draw: &mut Drawstate,
         audio: &mut Audiostate,
         assets: &GameAssets,
-        input: &GameInput,
+        input: &InputState,
         globals: &mut Globals,
         out_systemcommands: &mut Vec<AppCommand>,
     );
@@ -110,7 +110,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
         }
     }
 
-    fn new(renderer: &mut Renderer, input: &GameInput, audio: &mut AudioOutput) -> Self {
+    fn new(renderer: &mut Renderer, input: &InputState, audio: &mut AudioOutput) -> Self {
         let TODO = "we can get rid of all the optional fields here";
         Self::default()
     }
@@ -122,7 +122,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
     fn run_tick(
         &mut self,
         renderer: &mut Renderer,
-        input: &GameInput,
+        input: &InputState,
         audio_output: &mut AudioOutput,
         out_systemcommands: &mut Vec<AppCommand>,
     ) {

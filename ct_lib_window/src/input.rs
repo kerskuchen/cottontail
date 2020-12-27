@@ -1,12 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// GameInput
+// Inputstate
 
 use ct_lib_math::Vec2;
 
 use std::collections::HashMap;
 
 #[derive(Default, Clone)]
-pub struct GameInput {
+pub struct InputState {
     pub mouse: MouseState,
     pub touch: TouchState,
     pub keyboard: KeyboardState,
@@ -29,9 +29,9 @@ pub struct GameInput {
     pub audio_playback_rate_hz: usize,
 }
 
-impl GameInput {
-    pub fn new() -> GameInput {
-        GameInput::default()
+impl InputState {
+    pub fn new() -> InputState {
+        InputState::default()
     }
 }
 
