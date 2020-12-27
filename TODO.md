@@ -9,11 +9,14 @@
 
 # NEXT:
 
-## better platform layer
 - if we can make opengl layer a dependency of draw we can put vertices and traits into 
   opengl layer and maybe make vertexbuffers typesafe again because we won't need to create
   drawcommands anymore and can just pass the vertices and indices out of the vertexbuffers in 
   a function call to the opengl layer?
+- don't process streams if we know that they are empty
+- refactor audio system to use non interleaved buffers to comform more to WebAudio API
+
+## better platform layer
 - rename ctlib to app
 - keep same loop functions and objects, just call functions from different modules?
   - pause on focus lost in sdl2
@@ -90,8 +93,6 @@
   - improve wasm startup speed
 
 ## audio system
-- don't process streams if we know that they are empty
-- refactor audio system to use non interleaved buffers to comform more to WebAudio API
 - find a way to make pulling buffers more convenient, performant and generic (i.e. linear 
   interpolators use `next()` on their interal source to get the next sample)
 - use global playback speed factor in a final output interplator not

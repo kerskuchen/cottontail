@@ -6,11 +6,11 @@ pub use sdl_audio as audio;
 
 use crate::{AppCommand, AppContextInterface};
 
-use super::core::log;
-use super::core::serde_derive::{Deserialize, Serialize};
-use super::core::*;
-use super::core::{deserialize_from_json_file, serialize_to_json_file};
 use super::input::{GameInput, Scancode};
+use ct_lib_core::log;
+use ct_lib_core::serde_derive::{Deserialize, Serialize};
+use ct_lib_core::*;
+use ct_lib_core::{deserialize_from_json_file, serialize_to_json_file};
 
 use std::{collections::VecDeque, time::Duration};
 
@@ -596,6 +596,8 @@ pub fn run_main<AppContextType: AppContextInterface>() {
         input.mouse.delta_y = input.mouse.pos_y - mouse_pos_previous_y;
         input.touch.calculate_move_deltas();
         input.screen_is_fullscreen = window.fullscreen_active;
+
+        renderer.update_screen_dimensions(screen_width, screen_height);
 
         //--------------------------------------------------------------------------------------
         // Start/stop input-recording/-playback

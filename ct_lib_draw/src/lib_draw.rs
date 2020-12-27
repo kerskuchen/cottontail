@@ -132,6 +132,10 @@ impl BlitRect {
         }
     }
 
+    pub fn to_recti(self) -> Recti {
+        Recti::from_xy_width_height(self.offset_x, self.offset_y, self.width, self.height)
+    }
+
     /// Creates a canvas of fixed size that is stretched to the screen with aspect ratio correction
     #[inline]
     pub fn new_for_fixed_canvas_size(

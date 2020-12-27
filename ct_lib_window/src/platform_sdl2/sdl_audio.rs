@@ -1,4 +1,4 @@
-use crate::core::log;
+use ct_lib_core::log;
 
 const AUDIO_SAMPLE_RATE: usize = 44100;
 const AUDIO_BUFFER_FRAMECOUNT: usize = 1024;

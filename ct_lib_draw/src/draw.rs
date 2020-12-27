@@ -1,7 +1,12 @@
+use ct_lib_window::renderer_opengl::Renderer;
+
 use super::image::bitmap::*;
 use super::image::font::*;
 use super::sprite::*;
 use super::*;
+
+use ct_lib_core::{transmute_slice_to_byte_slice, transmute_to_slice};
+use std::{cell::RefCell, cmp::Ordering, rc::Rc};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Vertex format
@@ -317,7 +322,6 @@ pub struct Drawable {
     pub geometry: Geometry,
 }
 
-use std::{cell::RefCell, cmp::Ordering, rc::Rc};
 impl Drawable {
     #[inline]
     pub fn compare(a: &Drawable, b: &Drawable) -> Ordering {
@@ -360,40 +364,26 @@ impl Drawable {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Drawcommands
 
-pub trait UniformBlock {
-    fn as_vec(&self) -> Vec<f32>;
+pub trait UniformBlock: Sized {
+    fn as_slice(&self) -> &[f32] {
+        unsafe { transmute_to_slice(self) }
+    }
 }
 
+#[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ShaderParamsSimple {
     pub transform: Mat4,
     pub texture_color_modulate: Color,
 }
+impl UniformBlock for ShaderParamsSimple {}
 
-impl UniformBlock for ShaderParamsSimple {
-    fn as_vec(&self) -> Vec<f32> {
-        let mat = self.transform.into_column_array();
-        let col = self.texture_color_modulate.to_slice();
-        let mut result = Vec::new();
-        result.extend_from_slice(&mat);
-        result.extend_from_slice(&col);
-        result
-    }
-}
-
+#[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ShaderParamsBlit {
     pub transform: Mat4,
 }
-
-impl UniformBlock for ShaderParamsBlit {
-    fn as_vec(&self) -> Vec<f32> {
-        let mat = self.transform.into_column_array();
-        let mut result = Vec::new();
-        result.extend_from_slice(&mat);
-        result
-    }
-}
+impl UniformBlock for ShaderParamsBlit {}
 
 #[derive(Debug, Clone)]
 pub enum ShaderParams {
@@ -403,10 +393,9 @@ pub enum ShaderParams {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub struct FramebufferInfo {
-    pub index: FramebufferIndex,
+    pub name: String,
     pub width: u32,
     pub height: u32,
-    pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -545,11 +534,15 @@ struct Drawparams {
 }
 
 #[derive(Clone)]
+struct DrawBatch {
+    pub drawspace: DrawSpace,
+    pub texture_index: TextureIndex,
+    pub indices_start_offset: VertexIndex,
+    pub indices_count: usize,
+}
+
+#[derive(Clone)]
 pub struct Drawstate {
-    pub canvas_framebuffer_target: FramebufferTarget,
-
-    is_first_run: bool,
-
     textures: Vec<Bitmap>,
     textures_size: u32,
     textures_dirty: Vec<bool>,
@@ -564,12 +557,15 @@ pub struct Drawstate {
     simple_shaderparams_world: ShaderParamsSimple,
     simple_shaderparams_canvas: ShaderParamsSimple,
     simple_shaderparams_screen: ShaderParamsSimple,
+    simple_batches_world: Vec<DrawBatch>,
+    simple_batches_canvas: Vec<DrawBatch>,
+    simple_batches_screen: Vec<DrawBatch>,
     simple_drawables: Vec<Drawable>,
     simple_vertexbuffer: Rc<RefCell<Vertexbuffer>>,
+    simple_vertexbuffer_dirty: bool,
 
+    canvas_framebuffer: Option<FramebufferInfo>,
     canvas_blit_offset: Vec2,
-
-    pub drawcommands: Vec<Drawcommand>,
 
     debug_use_flat_color_mode: bool,
     debug_log_font: SpriteFont,
@@ -593,17 +589,6 @@ impl Drawstate {
             .expect("Drawstate: No Textures given")
             .width as u32;
 
-        // Allocate textures for atlas pages
-        let mut drawcommands = Vec::<Drawcommand>::new();
-        for page_index in 0..textures.len() {
-            let texture_info = Drawstate::textureinfo_for_page(
-                textures_size,
-                textures.len(),
-                page_index as TextureIndex,
-            );
-            drawcommands.push(Drawcommand::TextureCreate(texture_info));
-        }
-
         let textures_dirty = vec![true; textures.len()];
 
         // Reserves a white pixel for special usage on the first page
@@ -611,10 +596,6 @@ impl Drawstate {
         let untextured_uv_center_atlas_page = untextured_sprite.atlas_texture_index;
 
         Drawstate {
-            canvas_framebuffer_target: FramebufferTarget::Screen,
-
-            is_first_run: true,
-
             textures,
             textures_size,
             textures_dirty,
@@ -629,12 +610,16 @@ impl Drawstate {
             simple_shaderparams_world: ShaderParamsSimple::default(),
             simple_shaderparams_canvas: ShaderParamsSimple::default(),
             simple_shaderparams_screen: ShaderParamsSimple::default(),
+            simple_batches_world: Vec::new(),
+            simple_batches_canvas: Vec::new(),
+            simple_batches_screen: Vec::new(),
             simple_drawables: Vec::new(),
             simple_vertexbuffer: Rc::new(RefCell::new(Vertexbuffer::new::<VertexSimple>())),
+            simple_vertexbuffer_dirty: true,
 
+            canvas_framebuffer: None,
             canvas_blit_offset: Vec2::zero(),
 
-            drawcommands,
             debug_use_flat_color_mode: false,
             debug_log_font,
             debug_log_font_scale: 2.0,
@@ -644,18 +629,16 @@ impl Drawstate {
         }
     }
 
-    pub fn textureinfo_for_page(
+    pub fn texturename_for_atlaspage(
         textures_size: u32,
         textures_count: usize,
         page_index: TextureIndex,
-    ) -> TextureInfo {
+    ) -> String {
         assert!((page_index as usize) < textures_count);
-        TextureInfo {
-            name: format!("atlas_page_{}", page_index),
-            index: page_index,
-            width: textures_size,
-            height: textures_size,
-        }
+        format!(
+            "atlas_page_{}__{}x{}",
+            page_index, textures_size, textures_size
+        )
     }
 
     pub fn set_shaderparams_simple(
@@ -688,44 +671,21 @@ impl Drawstate {
     }
 
     pub fn get_canvas_dimensions(&self) -> Option<(u32, u32)> {
-        if let FramebufferTarget::Offscreen(canvas_frambuffer_info) =
-            &self.canvas_framebuffer_target
-        {
-            Some((canvas_frambuffer_info.width, canvas_frambuffer_info.height))
+        if let Some(canvas_framebuffer) = &self.canvas_framebuffer {
+            Some((canvas_framebuffer.width, canvas_framebuffer.height))
         } else {
             None
         }
     }
 
-    pub fn change_canvas_dimensions(&mut self, width: u32, height: u32) {
+    pub fn update_canvas_dimensions(&mut self, width: u32, height: u32) {
         assert!(width > 0);
         assert!(height > 0);
-
-        if let FramebufferTarget::Offscreen(canvas_framebuffer_info) =
-            &self.canvas_framebuffer_target
-        {
-            if canvas_framebuffer_info.width == width && canvas_framebuffer_info.height == height {
-                // Nothing changed
-                return;
-            } else {
-                // We already have a canvas set, so we delete it first
-                self.drawcommands.push(Drawcommand::FramebufferFree(
-                    canvas_framebuffer_info.clone(),
-                ));
-            }
-        }
-
-        let new_canvas_framebuffer_info = FramebufferInfo {
-            index: FRAMEBUFFER_INDEX_CANVAS,
+        self.canvas_framebuffer = Some(FramebufferInfo {
+            name: FRAMEBUFFER_NAME_CANVAS.to_owned(),
             width,
             height,
-            name: FRAMEBUFFER_NAME_CANVAS.to_owned(),
-        };
-
-        self.drawcommands.push(Drawcommand::FramebufferCreate(
-            new_canvas_framebuffer_info.clone(),
-        ));
-        self.canvas_framebuffer_target = FramebufferTarget::Offscreen(new_canvas_framebuffer_info);
+        });
     }
 
     pub fn debug_init_logging(&mut self, font: Option<SpriteFont>, origin: Vec2, depth: Depth) {
@@ -746,181 +706,188 @@ impl Drawstate {
 
 impl Drawstate {
     pub fn begin_frame(&mut self) {
-        if !self.is_first_run {
-            self.drawcommands.clear();
-            self.simple_drawables.clear();
-            self.simple_vertexbuffer.borrow_mut().clear();
-            self.debug_log_offset = Vec2::zero();
-        } else {
-            self.is_first_run = false;
+        self.simple_drawables.clear();
+        self.debug_log_offset = Vec2::zero();
+    }
+
+    pub fn finish_frame(&mut self) {
+        self.simple_batches_world.clear();
+        self.simple_batches_canvas.clear();
+        self.simple_batches_screen.clear();
+
+        self.simple_drawables.sort_by(Drawable::compare);
+        if self.simple_drawables.is_empty() {
+            return;
+        }
+
+        // Collect draw batches
+        self.simple_vertexbuffer_dirty = true;
+        let mut vertexbuffer = self.simple_vertexbuffer.borrow_mut();
+        let mut current_batch = DrawBatch {
+            drawspace: self.simple_drawables[0].drawspace,
+            texture_index: self.simple_drawables[0].texture_index,
+            indices_start_offset: 0,
+            indices_count: 0,
+        };
+
+        for drawable in self.simple_drawables.drain(..) {
+            if drawable.texture_index != current_batch.texture_index
+                || drawable.drawspace != current_batch.drawspace
+            {
+                match current_batch.drawspace {
+                    DrawSpace::World => self.simple_batches_world.push(current_batch),
+                    DrawSpace::Canvas => self.simple_batches_canvas.push(current_batch),
+                    DrawSpace::Screen => self.simple_batches_screen.push(current_batch),
+                }
+                current_batch = DrawBatch {
+                    drawspace: drawable.drawspace,
+                    texture_index: drawable.texture_index,
+                    indices_start_offset: vertexbuffer.current_offset(),
+                    indices_count: 0,
+                };
+            }
+
+            let (_indices_start_offset, indices_count) = vertexbuffer.push_drawable(drawable);
+            current_batch.indices_count += indices_count;
+        }
+
+        match current_batch.drawspace {
+            DrawSpace::World => self.simple_batches_world.push(current_batch),
+            DrawSpace::Canvas => self.simple_batches_canvas.push(current_batch),
+            DrawSpace::Screen => self.simple_batches_screen.push(current_batch),
         }
     }
 
-    pub fn finish_frame(&mut self, screen_framebuffer_width: u32, screen_framebuffer_height: u32) {
+    pub fn render_frame(&mut self, renderer: &mut Renderer) {
         // Re-upload modified atlas pages
         for atlas_page in 0..self.textures_dirty.len() {
             if self.textures_dirty[atlas_page] {
-                // An atlas page was modified, re-upload the whole page
+                let texture_name = Drawstate::texturename_for_atlaspage(
+                    self.textures_size,
+                    self.textures.len(),
+                    atlas_page as TextureIndex,
+                );
+                let atlas_page_bitmap = &self.textures[atlas_page];
+                renderer.texture_create_or_update_whole(
+                    &texture_name,
+                    atlas_page_bitmap.width as u32,
+                    atlas_page_bitmap.height as u32,
+                    &atlas_page_bitmap.as_bytes(),
+                );
                 self.textures_dirty[atlas_page] = false;
-
-                let atlas_page_bitmap = self.textures[atlas_page].clone();
-                self.drawcommands.push(Drawcommand::TextureUpdate {
-                    texture_info: Drawstate::textureinfo_for_page(
-                        self.textures_size,
-                        self.textures.len(),
-                        atlas_page as TextureIndex,
-                    ),
-                    offset_x: 0,
-                    offset_y: 0,
-                    bitmap: atlas_page_bitmap,
-                });
             }
         }
 
         // NOTE: Even if we have our own offscreen framebuffer that we want to draw to, we still
         //       need to clear the screen framebuffer
-        if let FramebufferTarget::Offscreen(_) = &self.canvas_framebuffer_target {
-            self.drawcommands.push(Drawcommand::FramebufferClear {
-                framebuffer_target: FramebufferTarget::Screen,
-                new_color: Some(self.current_letterbox_color),
-                new_depth: Some(DEPTH_CLEAR),
-            });
-        }
+        renderer.framebuffer_clear(
+            "screen",
+            Some(self.current_letterbox_color.to_slice()),
+            Some(DEPTH_CLEAR),
+        );
+
+        let canvas_framebuffer_name = if let Some(canvas_framebuffer) = &self.canvas_framebuffer {
+            renderer.framebuffer_create_or_update(
+                &canvas_framebuffer.name,
+                canvas_framebuffer.width,
+                canvas_framebuffer.height,
+            );
+            &canvas_framebuffer.name
+        } else {
+            "screen"
+        };
 
         // Clear canvas
-        self.drawcommands.push(Drawcommand::FramebufferClear {
-            framebuffer_target: self.canvas_framebuffer_target.clone(),
-            new_color: Some(self.current_clear_color),
-            new_depth: Some(self.current_clear_depth),
-        });
+        renderer.framebuffer_clear(
+            &canvas_framebuffer_name,
+            Some(self.current_clear_color.to_slice()),
+            Some(self.current_clear_depth),
+        );
 
-        // Collect draw batches
-        struct DrawBatch {
-            pub drawspace: DrawSpace,
-            pub texture_index: TextureIndex,
-            pub indices_start_offset: VertexIndex,
-            pub indices_count: usize,
-        };
-        self.simple_drawables.sort_by(Drawable::compare);
-        let mut batches_world = Vec::new();
-        let mut batches_canvas = Vec::new();
-        let mut batches_screen = Vec::new();
-        if !self.simple_drawables.is_empty() {
-            let mut vertexbuffer = self.simple_vertexbuffer.borrow_mut();
-            let mut current_batch = DrawBatch {
-                drawspace: self.simple_drawables[0].drawspace,
-                texture_index: self.simple_drawables[0].texture_index,
-                indices_start_offset: 0,
-                indices_count: 0,
-            };
-
-            for drawable in self.simple_drawables.drain(..) {
-                if drawable.texture_index != current_batch.texture_index
-                    || drawable.drawspace != current_batch.drawspace
-                {
-                    match current_batch.drawspace {
-                        DrawSpace::World => batches_world.push(current_batch),
-                        DrawSpace::Canvas => batches_canvas.push(current_batch),
-                        DrawSpace::Screen => batches_screen.push(current_batch),
-                    }
-                    current_batch = DrawBatch {
-                        drawspace: drawable.drawspace,
-                        texture_index: drawable.texture_index,
-                        indices_start_offset: vertexbuffer.current_offset(),
-                        indices_count: 0,
-                    };
-                }
-
-                let (_indices_start_offset, indices_count) = vertexbuffer.push_drawable(drawable);
-                current_batch.indices_count += indices_count;
-            }
-
-            match current_batch.drawspace {
-                DrawSpace::World => batches_world.push(current_batch),
-                DrawSpace::Canvas => batches_canvas.push(current_batch),
-                DrawSpace::Screen => batches_screen.push(current_batch),
+        // Upload vertexbuffers
+        if self.simple_vertexbuffer_dirty {
+            let simple_vertexbuffer = self.simple_vertexbuffer.borrow();
+            unsafe {
+                renderer.assign_buffers(
+                    "simple",
+                    &transmute_slice_to_byte_slice(&simple_vertexbuffer.vertices),
+                    &transmute_slice_to_byte_slice(&simple_vertexbuffer.indices),
+                );
             }
         }
 
-        self.drawcommands.push(Drawcommand::AssignDrawBuffers {
-            shader: "simple".to_owned(),
-            vertexbuffer: self.simple_vertexbuffer.clone(),
-        });
-
         // Draw world- and canvas-space batches
-        for world_batch in batches_world.into_iter() {
-            self.drawcommands.push(Drawcommand::Draw {
-                framebuffer_target: self.canvas_framebuffer_target.clone(),
-                texture_info: Drawstate::textureinfo_for_page(
+        for world_batch in &self.simple_batches_world {
+            renderer.draw(
+                "simple",
+                &self.simple_shaderparams_world.as_slice(),
+                &canvas_framebuffer_name,
+                &Drawstate::texturename_for_atlaspage(
                     self.textures_size,
                     self.textures.len(),
                     world_batch.texture_index,
                 ),
-                shader: "simple".to_owned(),
-                uniform_block: self.simple_shaderparams_world.as_vec(),
-                indices_start_offset: world_batch.indices_start_offset,
-                indices_count: world_batch.indices_count,
-            });
+                world_batch.indices_start_offset,
+                world_batch.indices_count,
+            );
         }
-        for canvas_batch in batches_canvas.into_iter() {
-            self.drawcommands.push(Drawcommand::Draw {
-                framebuffer_target: self.canvas_framebuffer_target.clone(),
-                texture_info: Drawstate::textureinfo_for_page(
+        for canvas_batch in &self.simple_batches_canvas {
+            renderer.draw(
+                "simple",
+                &self.simple_shaderparams_canvas.as_slice(),
+                &canvas_framebuffer_name,
+                &Drawstate::texturename_for_atlaspage(
                     self.textures_size,
                     self.textures.len(),
                     canvas_batch.texture_index,
                 ),
-                shader: "simple".to_owned(),
-                uniform_block: self.simple_shaderparams_canvas.as_vec(),
-                indices_start_offset: canvas_batch.indices_start_offset,
-                indices_count: canvas_batch.indices_count,
-            });
+                canvas_batch.indices_start_offset,
+                canvas_batch.indices_count,
+            );
         }
 
         // If we drew to an offscreen-canvas we must blit it back to the screen
-        if let FramebufferTarget::Offscreen(canvas_framebuffer_info) =
-            &self.canvas_framebuffer_target
-        {
-            let rect_canvas = BlitRect::new_from_dimensions(
-                canvas_framebuffer_info.width,
-                canvas_framebuffer_info.height,
-            );
+        if let Some(canvas_framebuffer) = &self.canvas_framebuffer {
+            let (screen_width, screen_height) = renderer.get_screen_dimensions();
+
+            let rect_canvas =
+                BlitRect::new_from_dimensions(canvas_framebuffer.width, canvas_framebuffer.height);
             let mut rect_screen = BlitRect::new_for_fixed_canvas_size(
-                screen_framebuffer_width,
-                screen_framebuffer_height,
-                canvas_framebuffer_info.width,
-                canvas_framebuffer_info.height,
+                screen_width,
+                screen_height,
+                canvas_framebuffer.width,
+                canvas_framebuffer.height,
             );
 
             rect_screen.offset_x -= (self.canvas_blit_offset.x
-                * (screen_framebuffer_width as f32 / canvas_framebuffer_info.width as f32))
+                * (screen_width as f32 / canvas_framebuffer.width as f32))
                 as i32;
             rect_screen.offset_y += (self.canvas_blit_offset.y
-                * (screen_framebuffer_width as f32 / canvas_framebuffer_info.width as f32))
+                * (screen_width as f32 / canvas_framebuffer.width as f32))
                 as i32;
 
-            self.drawcommands.push(Drawcommand::FramebufferBlit {
-                source_framebuffer_info: canvas_framebuffer_info.clone(),
-                source_rect: rect_canvas,
-                dest_framebuffer_target: FramebufferTarget::Screen,
-                dest_rect: rect_screen,
-            });
+            renderer.framebuffer_blit(
+                &canvas_framebuffer.name,
+                "screen",
+                rect_canvas.to_recti(),
+                rect_screen.to_recti(),
+            );
         }
 
         // Draw screenspace batches last so they won't get overdrawn by framebuffer blits
-        for screen_batch in batches_screen.into_iter() {
-            self.drawcommands.push(Drawcommand::Draw {
-                framebuffer_target: FramebufferTarget::Screen,
-                texture_info: Drawstate::textureinfo_for_page(
+        for screen_batch in &self.simple_batches_screen {
+            renderer.draw(
+                "simple",
+                &self.simple_shaderparams_screen.as_slice(),
+                "screen",
+                &Drawstate::texturename_for_atlaspage(
                     self.textures_size,
                     self.textures.len(),
                     screen_batch.texture_index,
                 ),
-                shader: "simple".to_owned(),
-                uniform_block: self.simple_shaderparams_screen.as_vec(),
-                indices_start_offset: screen_batch.indices_start_offset,
-                indices_count: screen_batch.indices_count,
-            });
+                screen_batch.indices_start_offset,
+                screen_batch.indices_count,
+            );
         }
     }
 }

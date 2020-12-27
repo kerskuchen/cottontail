@@ -1,5 +1,5 @@
-use crate::core::log;
 use crate::renderer_opengl::Renderer;
+use ct_lib_core::log;
 
 use std::collections::HashMap;
 

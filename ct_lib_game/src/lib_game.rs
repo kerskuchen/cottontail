@@ -372,18 +372,11 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 audio_output.submit_frames(&output_chunk);
             }
 
-            draw.finish_frame(
-                input.screen_framebuffer_width,
-                input.screen_framebuffer_height,
-            );
+            draw.finish_frame();
         }
 
-        if let Some(draw) = self.draw.as_ref() {
-            renderer.process_drawcommands(
-                input.screen_framebuffer_width,
-                input.screen_framebuffer_height,
-                &draw.drawcommands,
-            );
+        if let Some(draw) = self.draw.as_mut() {
+            draw.render_frame(renderer);
         }
     }
 }
@@ -959,7 +952,7 @@ pub fn game_setup_window(
     draw.set_clear_color_and_depth(config.color_clear, DEPTH_CLEAR);
 
     if config.has_canvas {
-        draw.change_canvas_dimensions(config.canvas_width, config.canvas_height);
+        draw.update_canvas_dimensions(config.canvas_width, config.canvas_height);
         draw.set_letterbox_color(config.canvas_color_letterbox);
 
         out_systemcommands.push(AppCommand::WindowedModeAllow(config.windowed_mode_allow));

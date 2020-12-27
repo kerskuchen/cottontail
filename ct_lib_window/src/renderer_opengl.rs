@@ -1,11 +1,6 @@
-use super::core::transmute_slice_to_byte_slice;
-use super::draw::draw::{
-    Drawcommand, FramebufferTarget, TextureInfo, VertexBlit, VertexIndex, Vertexbuffer,
-    DEFAULT_WORLD_ZFAR, DEFAULT_WORLD_ZNEAR,
-};
-use super::draw::BlitRect;
-use super::image::PixelRGBA;
-use super::math::Mat4;
+use ct_lib_core::transmute_slice_to_byte_slice;
+use ct_lib_math::Mat4;
+use ct_lib_math::Recti;
 
 use glow::HasContext;
 
@@ -18,6 +13,11 @@ type GlowRenderbufferId = <glow::Context as glow::HasContext>::Renderbuffer;
 type GlowUniformLocation = <glow::Context as glow::HasContext>::UniformLocation;
 type GlowVertexArray = <glow::Context as glow::HasContext>::VertexArray;
 type GlowBuffer = <glow::Context as glow::HasContext>::Buffer;
+
+// NOTE: This translates to the depth range [0, 100] from farthest to nearest (like a paperstack)
+//       For more information see: https://stackoverflow.com/a/36046924
+pub const DEFAULT_WORLD_ZNEAR: f32 = 0.0;
+pub const DEFAULT_WORLD_ZFAR: f32 = -100.0;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Error checking
@@ -132,7 +132,7 @@ impl Drop for Shader {
 impl Shader {
     pub fn new(
         gl: Rc<glow::Context>,
-        name: &str,
+        name: String,
         vertex_shader_source: &str,
         fragment_shader_source: &str,
     ) -> Result<Shader, String> {
@@ -168,7 +168,7 @@ impl Shader {
         })?;
 
         Ok(Shader {
-            name: name.to_owned(),
+            name,
             attributes,
             uniforms,
             gl,
@@ -381,7 +381,7 @@ impl Drop for Texture {
 }
 
 impl Texture {
-    fn new(gl: Rc<glow::Context>, name: &str, width: u32, height: u32) -> Texture {
+    fn new(gl: Rc<glow::Context>, name: String, width: u32, height: u32) -> Texture {
         let texture_id = unsafe {
             let texture = gl
                 .create_texture()
@@ -428,7 +428,7 @@ impl Texture {
             name
         ));
         Texture {
-            name: name.to_owned(),
+            name: name,
             width,
             height,
             gl,
@@ -460,7 +460,7 @@ impl Texture {
         offset_y: u32,
         region_width: u32,
         region_height: u32,
-        pixels: &[PixelRGBA],
+        pixels: &[u8],
     ) {
         let gl = &self.gl;
         unsafe {
@@ -474,7 +474,7 @@ impl Texture {
                 region_height as i32,
                 glow::RGBA,
                 glow::UNSIGNED_BYTE,
-                glow::PixelUnpackData::Slice(transmute_slice_to_byte_slice(pixels)),
+                glow::PixelUnpackData::Slice(pixels),
             );
 
             gl.bind_texture(glow::TEXTURE_2D, None);
@@ -510,7 +510,7 @@ impl Drop for Depthbuffer {
 }
 
 impl Depthbuffer {
-    fn new(gl: Rc<glow::Context>, name: &str, width: u32, height: u32) -> Depthbuffer {
+    fn new(gl: Rc<glow::Context>, name: String, width: u32, height: u32) -> Depthbuffer {
         let depth_id = unsafe {
             let depth = gl
                 .create_renderbuffer()
@@ -533,7 +533,7 @@ impl Depthbuffer {
         ));
 
         Depthbuffer {
-            name: name.to_owned(),
+            name,
             width,
             height,
             gl,
@@ -582,18 +582,18 @@ impl Framebuffer {
         }
     }
 
-    pub fn new(gl: Rc<glow::Context>, name: &str, width: u32, height: u32) -> Framebuffer {
+    pub fn new(gl: Rc<glow::Context>, name: String, width: u32, height: u32) -> Framebuffer {
         unsafe {
             // The color texture
             let color = Texture::new(
                 gl.clone(),
-                &format!("{} framebuffer color texture", name),
+                format!("{} framebuffer color texture", &name),
                 width,
                 height,
             );
             let depth = Depthbuffer::new(
                 gl.clone(),
-                &format!("{} framebuffer depth texture", name),
+                format!("{} framebuffer depth texture", &name),
                 width,
                 height,
             );
@@ -632,7 +632,7 @@ impl Framebuffer {
             ));
 
             Framebuffer {
-                name: name.to_owned(),
+                name,
                 width,
                 height,
                 gl,
@@ -745,18 +745,16 @@ impl DrawObject {
         }
     }
 
-    fn assign_buffers(&self, vertices: &[f32], indices: &[u32]) {
+    fn assign_buffers(&self, vertices: &[u8], indices: &[u8]) {
         let gl = &self.gl;
         unsafe {
             // Vertices
-            let vertices_raw = transmute_slice_to_byte_slice(vertices);
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vertex_buffer_id));
-            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_raw, glow::STREAM_DRAW);
+            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices, glow::STREAM_DRAW);
 
             // Indices
-            let indices_raw = transmute_slice_to_byte_slice(indices);
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.index_buffer_id));
-            gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_raw, glow::STREAM_DRAW);
+            gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices, glow::STREAM_DRAW);
 
             debug_assert!(
                 gl_check_state_ok(&gl).is_ok(),
@@ -766,7 +764,7 @@ impl DrawObject {
         }
     }
 
-    fn draw(&self, indices_start_offset: VertexIndex, indices_count: usize) {
+    fn draw(&self, indices_start_offset: u32, indices_count: usize) {
         let gl = &self.gl;
         let indices_offset_in_bytes = std::mem::size_of::<u32>() * indices_start_offset as usize;
         unsafe {
@@ -891,8 +889,8 @@ pub struct Renderer {
     shaders: HashMap<String, Shader>,
     drawobjects: HashMap<String, DrawObject>,
 
-    framebuffers: HashMap<FramebufferTarget, Framebuffer>,
-    textures: HashMap<TextureInfo, Texture>,
+    framebuffers: HashMap<String, Framebuffer>,
+    textures: HashMap<String, Texture>,
 }
 
 impl Renderer {
@@ -917,14 +915,14 @@ impl Renderer {
 
         let shader_simple = Shader::new(
             gl.clone(),
-            "simple",
+            "simple".to_owned(),
             VERTEX_SHADER_SOURCE_SIMPLE,
             FRAGMENT_SHADER_SOURCE_SIMPLE,
         )
         .expect("Could not compile simple shader");
         let shader_blit = Shader::new(
             gl.clone(),
-            "blit",
+            "blit".to_owned(),
             VERTEX_SHADER_SOURCE_BLIT,
             FRAGMENT_SHADER_SOURCE_BLIT,
         )
@@ -952,237 +950,249 @@ impl Renderer {
         }
     }
 
-    pub fn clear_screen(&self) {
-        let gl = &self.gl;
-        unsafe {
-            gl.clear_color(0.0, 0.0, 0.0, 1.0);
-            gl.clear_depth_f32(0.0);
-            gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
-        }
-    }
-
     pub fn reset(&mut self) {
         self.framebuffers.clear();
         self.textures.clear();
     }
 
-    pub fn process_drawcommands(
-        &mut self,
-        screen_width: u32,
-        screen_height: u32,
-        drawcommands: &[Drawcommand],
-    ) {
+    pub fn update_screen_dimensions(&mut self, screen_width: u32, screen_height: u32) {
         let gl = &self.gl;
-
-        // Update our screen framebuffer
         self.framebuffers.insert(
-            FramebufferTarget::Screen,
+            "screen".to_owned(),
             Framebuffer::new_screen(gl.clone(), screen_width, screen_height),
         );
+    }
 
-        for drawcommand in drawcommands {
-            match drawcommand {
-                Drawcommand::AssignDrawBuffers {
-                    shader,
-                    vertexbuffer,
-                } => {
-                    let vertexbuffer = vertexbuffer.borrow();
-                    assert!(
-                        vertexbuffer.indices.len() % 3 == 0,
-                        "We only support triangle rendering"
-                    );
-                    self.drawobjects
-                        .get(shader)
-                        .expect(&format!("No drawobject found for shader '{}'", shader))
-                        .assign_buffers(&vertexbuffer.vertices, &vertexbuffer.indices);
-                }
-                Drawcommand::Draw {
-                    shader,
-                    uniform_block,
-                    framebuffer_target,
-                    texture_info,
-                    indices_start_offset,
-                    indices_count,
-                } => {
-                    assert!(
-                        shader != "blit",
-                        "The blit shader does not support drawing operations"
-                    );
+    pub fn get_screen_dimensions(&self) -> (u32, u32) {
+        let screen = self
+            .framebuffers
+            .get("screen")
+            .expect("Screen framebuffer not created");
+        (screen.width, screen.height)
+    }
 
-                    self.framebuffers
-                        .get(framebuffer_target)
-                        .expect(&format!(
-                            "No framebuffer found for '{:?}'",
-                            framebuffer_target
-                        ))
-                        .activate();
+    pub fn assign_buffers(&mut self, shader: &str, vertices: &[u8], indices: &[u8]) {
+        self.drawobjects
+            .get(shader)
+            .expect(&format!("Drawobject not found for shader '{}'", shader))
+            .assign_buffers(&vertices, &indices);
+    }
 
-                    self.shaders
-                        .get(shader)
-                        .expect(&format!("Shader '{}' not found", shader))
-                        .activate(uniform_block);
+    pub fn draw(
+        &mut self,
+        shader: &str,
+        uniform_block: &[f32],
+        framebuffer: &str,
+        texture: &str,
+        indices_start_offset: u32,
+        indices_count: usize,
+    ) {
+        assert!(
+            shader != "blit",
+            "The blit shader does not support drawing operations"
+        );
 
-                    // NOTE: We need to bind the texture after shader activation as it
-                    //       might have invalidated our texture unit
-                    self.textures
-                        .get(texture_info)
-                        .expect(&format!("No texture found for '{:?}'", texture_info))
-                        .activate(0);
+        self.framebuffers
+            .get(framebuffer)
+            .expect(&format!("Framebuffer '{}' not found", framebuffer))
+            .activate();
 
-                    self.drawobjects
-                        .get(shader)
-                        .expect(&format!("Drawobject '{}' not found", shader))
-                        .draw(*indices_start_offset, *indices_count);
-                }
-                Drawcommand::TextureCreate(texture_info) => {
-                    assert!(
-                        !self.textures.contains_key(&texture_info),
-                        "A texture already exists for: '{:?}'",
-                        texture_info
-                    );
-                    self.textures.insert(
-                        texture_info.clone(),
-                        Texture::new(
-                            gl.clone(),
-                            &texture_info.name,
-                            texture_info.width,
-                            texture_info.height,
-                        ),
-                    );
-                }
-                Drawcommand::TextureUpdate {
-                    texture_info,
-                    offset_x,
-                    offset_y,
-                    bitmap,
-                } => {
-                    let texture = self
-                        .textures
-                        .get(&texture_info)
-                        .expect(&format!("No texture found for '{:?}'", texture_info));
-                    texture.update_pixels(
-                        *offset_x,
-                        *offset_y,
-                        bitmap.width as u32,
-                        bitmap.height as u32,
-                        &bitmap.data,
-                    );
-                }
-                Drawcommand::TextureFree(texture_info) => {
-                    self.textures
-                        .remove(texture_info)
-                        .expect(&format!("No texture found for '{:?}'", texture_info));
-                }
-                Drawcommand::FramebufferCreate(framebuffer_info) => {
-                    assert!(
-                        !self
-                            .framebuffers
-                            .contains_key(&FramebufferTarget::Offscreen(framebuffer_info.clone())),
-                        "A framebuffer already exists for: '{:?}'",
-                        framebuffer_info,
-                    );
-                    self.framebuffers.insert(
-                        FramebufferTarget::Offscreen(framebuffer_info.clone()),
-                        Framebuffer::new(
-                            gl.clone(),
-                            &framebuffer_info.name,
-                            framebuffer_info.width,
-                            framebuffer_info.height,
-                        ),
-                    );
-                }
-                Drawcommand::FramebufferFree(framebuffer_info) => {
-                    self.framebuffers
-                        .remove(&FramebufferTarget::Offscreen(framebuffer_info.clone()))
-                        .expect(&format!(
-                            "No framebuffer found for '{:?}'",
-                            framebuffer_info
-                        ));
-                }
-                Drawcommand::FramebufferClear {
-                    framebuffer_target,
-                    new_color,
-                    new_depth,
-                } => {
-                    let framebuffer = self.framebuffers.get(framebuffer_target).expect(&format!(
-                        "No framebuffer found for '{:?}'",
-                        framebuffer_target
-                    ));
-                    framebuffer.activate();
-                    unsafe {
-                        let mut clear_mask = 0;
-                        if let Some(color) = new_color {
-                            clear_mask |= glow::COLOR_BUFFER_BIT;
-                            gl.clear_color(color.r, color.g, color.b, color.a);
-                        }
-                        if let Some(depth) = new_depth {
-                            clear_mask |= glow::DEPTH_BUFFER_BIT;
-                            gl.clear_depth_f32(*depth);
-                        }
-                        gl.clear(clear_mask);
-                    }
-                }
-                Drawcommand::FramebufferBlit {
-                    source_framebuffer_info,
-                    source_rect,
-                    dest_framebuffer_target,
-                    dest_rect,
-                } => {
-                    assert!(
-                        *dest_framebuffer_target
-                            != FramebufferTarget::Offscreen(source_framebuffer_info.clone()),
-                        "Cannot blit from and to the same framebuffer '{:?}'",
-                        source_framebuffer_info,
-                    );
+        self.shaders
+            .get(shader)
+            .expect(&format!("Shader '{}' not found", shader))
+            .activate(uniform_block);
 
-                    let source_framebuffer = self
-                        .framebuffers
-                        .get(&FramebufferTarget::Offscreen(
-                            source_framebuffer_info.clone(),
-                        ))
-                        .expect(&format!(
-                            "No framebuffer found for '{:?}'",
-                            source_framebuffer_info
-                        ));
-                    let dest_framebuffer =
-                        self.framebuffers
-                            .get(dest_framebuffer_target)
-                            .expect(&format!(
-                                "No framebuffer found for '{:?}'",
-                                source_framebuffer_info
-                            ));
+        // NOTE: We need to bind the texture after shader activation as it
+        //       might have invalidated our texture unit
+        self.textures
+            .get(texture)
+            .expect(&format!("Texture '{}' not found", texture))
+            .activate(0);
 
-                    self.framebuffer_blit(
-                        dest_framebuffer,
-                        source_framebuffer,
-                        *dest_rect,
-                        *source_rect,
-                    );
-                }
-            }
-            debug_assert!(
-                gl_check_state_ok(&gl).is_ok(),
-                "Error after drawcommand {:?}",
-                drawcommand
-            );
+        self.drawobjects
+            .get(shader)
+            .expect(&format!("Drawobject '{}' not found", shader))
+            .draw(indices_start_offset, indices_count);
+    }
+
+    pub fn texture_exists(&self, name: &str) -> bool {
+        self.textures.contains_key(name)
+    }
+
+    pub fn texture_create_or_update_whole(
+        &mut self,
+        name: &str,
+        width: u32,
+        height: u32,
+        pixels: &[u8],
+    ) {
+        if self.texture_exists(name) {
+            self.texture_update_pixels(name, 0, 0, width, height, pixels);
+        } else {
+            self.texture_create(name.to_owned(), width, height, pixels);
         }
     }
 
-    fn framebuffer_blit(
-        &self,
-        framebuffer_target: &Framebuffer,
-        framebuffer_source: &Framebuffer,
-        rect_target: BlitRect,
-        rect_source: BlitRect,
+    pub fn texture_create(&mut self, name: String, width: u32, height: u32, pixels: &[u8]) {
+        assert!(
+            !self.textures.contains_key(&name),
+            "Texture '{}' already exists",
+            &name
+        );
+        self.textures.insert(
+            name.clone(),
+            Texture::new(self.gl.clone(), name.clone(), width, height),
+        );
+        self.texture_update_pixels(&name, 0, 0, width, height, pixels);
+    }
+
+    pub fn texture_update_pixels(
+        &mut self,
+        texture: &str,
+        region_offset_x: u32,
+        region_offset_y: u32,
+        region_width: u32,
+        region_height: u32,
+        pixels: &[u8],
     ) {
-        let gl = &self.gl;
+        self.textures
+            .get(texture)
+            .expect(&format!("Texture '{}' not found", texture))
+            .update_pixels(
+                region_offset_x,
+                region_offset_y,
+                region_width,
+                region_height,
+                pixels,
+            );
+    }
+
+    pub fn texture_delete(&mut self, texture: &str) {
+        self.textures
+            .remove(texture)
+            .expect(&format!("Texture '{}' not found", texture));
+    }
+
+    pub fn framebuffer_exists(&self, name: &str) -> bool {
+        self.textures.contains_key(name)
+    }
+
+    pub fn framebuffer_create_or_update(&mut self, name: &str, width: u32, height: u32) {
+        if self.framebuffer_exists(name) {
+            self.framebuffer_update(name, width, height);
+        } else {
+            self.framebuffer_create(name.to_owned(), width, height);
+        }
+    }
+
+    pub fn framebuffer_create(&mut self, name: String, width: u32, height: u32) {
+        assert!(
+            name != "screen",
+            "Not allowed to create framebuffer with name 'screen'"
+        );
+        assert!(
+            !self.textures.contains_key(&name),
+            "Framebuffer '{}' already exists",
+            &name
+        );
+        self.framebuffers.insert(
+            name.clone(),
+            Framebuffer::new(self.gl.clone(), name, width, height),
+        );
+    }
+
+    pub fn framebuffer_update(&mut self, framebuffer: &str, width: u32, height: u32) {
+        assert!(
+            framebuffer != "screen",
+            "Not allowed to update framebuffer with name 'screen'"
+        );
+        {
+            // If our framebuffer already has the given dimensions we do nothing
+            let framebuffer = self
+                .framebuffers
+                .get(framebuffer)
+                .expect(&format!("Framebuffer '{}' not found", framebuffer));
+            if framebuffer.width == width && framebuffer.height == height {
+                // Nothing to do
+                return;
+            }
+        }
+        self.framebuffer_delete(framebuffer);
+        self.framebuffer_create(framebuffer.to_owned(), width, height);
+    }
+
+    pub fn framebuffer_delete(&mut self, framebuffer: &str) {
+        assert!(
+            framebuffer != "screen",
+            "Not allowed to delete framebuffer with name 'screen'"
+        );
+        self.framebuffers
+            .remove(framebuffer)
+            .expect(&format!("Framebuffer '{}' not found", framebuffer));
+    }
+
+    pub fn framebuffer_clear(
+        &mut self,
+        framebuffer: &str,
+        new_color: Option<[f32; 4]>,
+        new_depth: Option<f32>,
+    ) {
+        let framebuffer = self
+            .framebuffers
+            .get(framebuffer)
+            .expect(&format!("Framebuffer '{}' not found", framebuffer));
+        framebuffer.activate();
+
+        assert!(
+            new_color.is_some() || new_depth.is_some(),
+            "Clear command was empty for framebuffer '{}'",
+            framebuffer.name
+        );
+
         unsafe {
+            let gl = &self.gl;
+            let mut clear_mask = 0;
+            if let Some(color) = new_color {
+                clear_mask |= glow::COLOR_BUFFER_BIT;
+                gl.clear_color(color[0], color[1], color[2], color[3]);
+            }
+            if let Some(depth) = new_depth {
+                clear_mask |= glow::DEPTH_BUFFER_BIT;
+                gl.clear_depth_f32(depth);
+            }
+            gl.clear(clear_mask);
+        }
+    }
+
+    pub fn framebuffer_blit(
+        &mut self,
+        framebuffer_source: &str,
+        framebuffer_target: &str,
+        rect_source: Recti,
+        rect_target: Recti,
+    ) {
+        assert!(
+            framebuffer_source != framebuffer_target,
+            "Cannot blit from and to the same framebuffer '{:?}'",
+            framebuffer_source,
+        );
+
+        let framebuffer_source = self
+            .framebuffers
+            .get(framebuffer_source)
+            .expect(&format!("Framebuffer '{}' not found", framebuffer_source));
+        let framebuffer_target = self
+            .framebuffers
+            .get(framebuffer_target)
+            .expect(&format!("Framebuffer '{}' not found", framebuffer_target));
+
+        unsafe {
+            let gl = &self.gl;
             gl.disable(glow::BLEND);
             gl.disable(glow::DEPTH_TEST);
-        }
 
-        framebuffer_target.activate();
-        unsafe {
+            framebuffer_target.activate();
+
             gl.active_texture(glow::TEXTURE0);
             gl.bind_texture(
                 glow::TEXTURE_2D,
@@ -1205,22 +1215,56 @@ impl Renderer {
             .expect("Blit shader not found '{}' not found")
             .activate(&transform.into_column_array());
 
-        let mut vertexbuffer = Vertexbuffer::new::<VertexBlit>();
-        let (indices_start_index, indices_count) = vertexbuffer.push_blit_quad(
-            rect_target,
-            rect_source,
-            framebuffer_source.width,
-            framebuffer_source.height,
-        );
+        let (vertices, indices) = {
+            let dim_left = rect_target.pos.x as f32;
+            let dim_top = rect_target.pos.y as f32;
+            let dim_right = (rect_target.pos.x + rect_target.width()) as f32;
+            let dim_bottom = (rect_target.pos.y + rect_target.height()) as f32;
 
-        let drawobject_blit = self
-            .drawobjects
-            .get("blit")
-            .expect("Blit drawobject not found for shader");
-        drawobject_blit.assign_buffers(&vertexbuffer.vertices, &vertexbuffer.indices);
-        drawobject_blit.draw(indices_start_index, indices_count);
+            let uvs_left = rect_source.pos.x as f32 / framebuffer_source.width as f32;
+            let uvs_top = rect_source.pos.y as f32 / framebuffer_source.height as f32;
+            let uvs_right =
+                (rect_source.pos.x + rect_source.width()) as f32 / framebuffer_source.width as f32;
+            let uvs_bottom = (rect_source.pos.y + rect_source.height()) as f32
+                / framebuffer_source.height as f32;
+
+            let vertices = [
+                // right top
+                dim_right, dim_top, uvs_right, uvs_top, //
+                // right bottom
+                dim_right, dim_bottom, uvs_right, uvs_bottom, //
+                // left bottom
+                dim_left, dim_bottom, uvs_left, uvs_bottom, //
+                // left top
+                dim_left, dim_top, uvs_left, uvs_top, //
+            ];
+            let indices = [
+                // first triangle
+                3, // left top
+                0, // right top
+                1, // right bottom
+                // second triangle
+                2, // left bottom
+                1, // right bottom
+                3, // left top
+            ];
+            (vertices, indices)
+        };
 
         unsafe {
+            let drawobject_blit = self
+                .drawobjects
+                .get("blit")
+                .expect("Blit drawobject not found for shader");
+            drawobject_blit.assign_buffers(
+                transmute_slice_to_byte_slice(&vertices),
+                transmute_slice_to_byte_slice(&indices),
+            );
+            drawobject_blit.draw(0, 6);
+        }
+
+        unsafe {
+            let gl = &self.gl;
             gl.enable(glow::BLEND);
             gl.enable(glow::DEPTH_TEST);
         }

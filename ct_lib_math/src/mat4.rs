@@ -11,6 +11,7 @@ use serde_derive::{Deserialize, Serialize};
 /// |a01 a11 a21 a31|
 /// |a02 a12 a22 a32|
 /// |a03 a13 a23 a33|
+#[repr(C)]
 #[derive(Debug, Default, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Mat4 {
     pub cols: [Vec4; 4],

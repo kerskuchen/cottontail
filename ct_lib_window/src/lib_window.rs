@@ -9,11 +9,6 @@ pub mod platform;
 pub mod input;
 pub mod renderer_opengl;
 
-use ct_lib_core as core;
-use ct_lib_draw as draw;
-use ct_lib_image as image;
-use ct_lib_math as math;
-
 use input::GameInput;
 use platform::audio::AudioOutput;
 use renderer_opengl::Renderer;

@@ -14,22 +14,11 @@ pub type Bitmap = super::grid::Grid<PixelRGBA>;
 
 impl Bitmap {
     pub fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            let len = self.data.len() * std::mem::size_of::<PixelRGBA>();
-            let ptr = self.data.as_ptr() as *const u8;
-            std::slice::from_raw_parts(ptr, len)
-        }
+        unsafe { transmute_slice_to_byte_slice(&self.data) }
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut result = Vec::new();
-        for pixel in &self.data {
-            result.push(pixel.r);
-            result.push(pixel.g);
-            result.push(pixel.b);
-            result.push(pixel.a);
-        }
-        result
+        self.as_bytes().to_vec()
     }
 
     pub fn premultiply_alpha(&mut self) {
@@ -159,9 +148,8 @@ impl Bitmap {
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder.write_header().unwrap();
 
-        let pixels_raw = unsafe { transmute_slice_to_byte_slice(&bitmap.data) };
         writer
-            .write_image_data(pixels_raw)
+            .write_image_data(bitmap.as_bytes())
             .expect(&format!("Could not write png file to '{}'", png_filepath));
     }
 

@@ -10,8 +10,6 @@ path = "src/lib_window.rs"
 [dependencies]
 ct_lib_core = { path = "../ct_lib_core"}
 ct_lib_math = { path = "../ct_lib_math"}
-ct_lib_draw = { path = "../ct_lib_draw"}
-ct_lib_image = { path = "../ct_lib_image"}
 
 serde = "1.0.118"
 ringbuf = "0.2.2"
