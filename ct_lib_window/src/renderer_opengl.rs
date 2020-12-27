@@ -1074,7 +1074,7 @@ impl Renderer {
     }
 
     pub fn framebuffer_exists(&self, name: &str) -> bool {
-        self.textures.contains_key(name)
+        self.framebuffers.contains_key(name)
     }
 
     pub fn framebuffer_create_or_update(&mut self, name: &str, width: u32, height: u32) {
@@ -1091,7 +1091,7 @@ impl Renderer {
             "Not allowed to create framebuffer with name 'screen'"
         );
         assert!(
-            !self.textures.contains_key(&name),
+            !self.framebuffers.contains_key(&name),
             "Framebuffer '{}' already exists",
             &name
         );

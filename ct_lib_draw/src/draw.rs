@@ -814,6 +814,7 @@ impl Drawstate {
                     &transmute_slice_to_byte_slice(&simple_vertexbuffer.indices),
                 );
             }
+            self.simple_vertexbuffer_dirty = false;
         }
 
         // Draw world- and canvas-space batches
