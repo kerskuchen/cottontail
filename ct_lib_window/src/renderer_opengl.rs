@@ -16,6 +16,8 @@ type GlowBuffer = <glow::Context as glow::HasContext>::Buffer;
 
 // NOTE: This translates to the depth range [0, 100] from farthest to nearest (like a paperstack)
 //       For more information see: https://stackoverflow.com/a/36046924
+const todo: &str =
+    "this currently is used for blitting and duplicates drawstate - what do we do with it?";
 pub const DEFAULT_WORLD_ZNEAR: f32 = 0.0;
 pub const DEFAULT_WORLD_ZFAR: f32 = -100.0;
 

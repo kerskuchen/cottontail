@@ -6,7 +6,7 @@ use super::sprite::*;
 use super::*;
 
 use ct_lib_core::{transmute_slice_to_byte_slice, transmute_to_slice};
-use std::{cell::RefCell, cmp::Ordering, rc::Rc};
+use std::cmp::Ordering;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Vertex format
@@ -14,9 +14,6 @@ use std::{cell::RefCell, cmp::Ordering, rc::Rc};
 pub type VertexIndex = u32;
 pub type Depth = f32;
 pub type Additivity = f32;
-
-const FRAMEBUFFER_INDEX_CANVAS: u32 = 0;
-const FRAMEBUFFER_NAME_CANVAS: &str = "canvas";
 
 pub const DEPTH_CLEAR: Depth = 0.0;
 pub const DEPTH_MAX: Depth = 100.0;
@@ -29,7 +26,7 @@ pub const DEFAULT_WORLD_ZFAR: Depth = -100.0;
 pub const ADDITIVITY_NONE: Additivity = 0.0;
 pub const ADDITIVITY_MAX: Additivity = 1.0;
 
-pub trait Vertex: Sized {
+trait Vertex: Sized + Copy + Clone + Default {
     const FLOAT_COMPONENT_COUNT: usize = std::mem::size_of::<Self>() / std::mem::size_of::<f32>();
     fn as_floats(&self) -> &[f32] {
         unsafe { super::core::transmute_to_slice(self) }
@@ -38,7 +35,7 @@ pub trait Vertex: Sized {
 
 #[derive(Default, Clone, Copy, Debug)]
 #[repr(C)]
-pub struct VertexSimple {
+struct VertexSimple {
     pub pos: Vec3,
     pub uv: Vec2,
     pub color: Color,
@@ -48,234 +45,11 @@ impl Vertex for VertexSimple {}
 
 #[derive(Default, Clone, Copy, Debug)]
 #[repr(C)]
-pub struct VertexBlit {
+struct VertexBlit {
     pub pos: Vec2,
     pub uv: Vec2,
 }
 impl Vertex for VertexBlit {}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Vertexbuffers
-
-// NOTE: We don't want to make the vertexbuffer dependent on a specific vertex type via <..>
-//       generics because then it is harder to code share between drawstate and the renderer
-#[derive(Debug, Default, Clone)]
-pub struct Vertexbuffer {
-    pub vertices: Vec<f32>,
-    pub indices: Vec<VertexIndex>,
-    vertices_count: usize,
-    const_vertices_float_component_count: usize,
-}
-
-impl Vertexbuffer {
-    pub fn new<VertexType: Vertex>() -> Vertexbuffer {
-        Vertexbuffer {
-            vertices: Vec::new(),
-            indices: Vec::new(),
-            vertices_count: 0,
-            const_vertices_float_component_count: VertexType::FLOAT_COMPONENT_COUNT,
-        }
-    }
-
-    pub fn clear(&mut self) {
-        self.vertices.clear();
-        self.indices.clear();
-        self.vertices_count = 0;
-    }
-
-    pub fn current_offset(&self) -> VertexIndex {
-        self.indices.len() as VertexIndex
-    }
-
-    /// Returns (start_index_offset, index_count) of pushed object
-    pub fn push_blit_quad(
-        &mut self,
-        rect_target: BlitRect,
-        rect_source: BlitRect,
-        framebuffer_source_width: u32,
-        framebuffer_source_height: u32,
-    ) -> (VertexIndex, usize) {
-        debug_assert!(
-            self.const_vertices_float_component_count == VertexBlit::FLOAT_COMPONENT_COUNT
-        );
-
-        let start_index = self.vertices_count as VertexIndex;
-        let index_count = 6;
-
-        // first triangle
-        self.indices.push(start_index + 3); // left top
-        self.indices.push(start_index + 0); // right top
-        self.indices.push(start_index + 1); // right bottom
-
-        // second triangle
-        self.indices.push(start_index + 2); // left bottom
-        self.indices.push(start_index + 1); // right bottom
-        self.indices.push(start_index + 3); // left top
-
-        let dim = Rect::from_xy_width_height(
-            rect_target.offset_x as f32,
-            rect_target.offset_y as f32,
-            rect_target.width as f32,
-            rect_target.height as f32,
-        );
-
-        let uvs = Rect::from_xy_width_height(
-            rect_source.offset_x as f32,
-            rect_source.offset_y as f32,
-            rect_source.width as f32,
-            rect_source.height as f32,
-        )
-        .scaled_from_origin(Vec2::new(
-            1.0 / framebuffer_source_width as f32,
-            1.0 / framebuffer_source_height as f32,
-        ));
-
-        // right top
-        self.vertices.extend_from_slice(
-            VertexBlit {
-                pos: Vec2::new(dim.right(), dim.top()),
-                uv: Vec2::new(uvs.right(), uvs.top()),
-            }
-            .as_floats(),
-        );
-        // right bottom
-        self.vertices.extend_from_slice(
-            VertexBlit {
-                pos: Vec2::new(dim.right(), dim.bottom()),
-                uv: Vec2::new(uvs.right(), uvs.bottom()),
-            }
-            .as_floats(),
-        );
-        // left bottom
-        self.vertices.extend_from_slice(
-            VertexBlit {
-                pos: Vec2::new(dim.left(), dim.bottom()),
-                uv: Vec2::new(uvs.left(), uvs.bottom()),
-            }
-            .as_floats(),
-        );
-        // left top
-        self.vertices.extend_from_slice(
-            VertexBlit {
-                pos: Vec2::new(dim.left(), dim.top()),
-                uv: Vec2::new(uvs.left(), uvs.top()),
-            }
-            .as_floats(),
-        );
-        self.vertices_count += 4;
-
-        (start_index, index_count)
-    }
-
-    /// Returns (start_index, index_count) of pushed object
-    pub fn push_drawable(&mut self, drawable: Drawable) -> (VertexIndex, usize) {
-        debug_assert!(
-            self.const_vertices_float_component_count == VertexSimple::FLOAT_COMPONENT_COUNT
-        );
-        let depth = drawable.depth;
-        let color = drawable.color_modulate;
-        let additivity = drawable.additivity;
-        let indices_start_offset = self.vertices_count as VertexIndex;
-
-        let index_count = match drawable.geometry {
-            Geometry::QuadMesh { uvs, quad } => {
-                let index_count = 6;
-
-                // first triangle
-                self.indices.push(indices_start_offset + 3); // left top
-                self.indices.push(indices_start_offset + 0); // right top
-                self.indices.push(indices_start_offset + 1); // right bottom
-
-                // second triangle
-                self.indices.push(indices_start_offset + 2); // left bottom
-                self.indices.push(indices_start_offset + 1); // right bottom
-                self.indices.push(indices_start_offset + 3); // left top
-
-                // right top
-                self.vertices.extend_from_slice(
-                    VertexSimple {
-                        pos: Vec3::from_vec2(quad.vert_right_top, depth),
-                        uv: Vec2::new(uvs.right, uvs.top),
-                        color,
-                        additivity,
-                    }
-                    .as_floats(),
-                );
-                // right bottom
-                self.vertices.extend_from_slice(
-                    VertexSimple {
-                        pos: Vec3::from_vec2(quad.vert_right_bottom, depth),
-                        uv: Vec2::new(uvs.right, uvs.bottom),
-                        color,
-                        additivity,
-                    }
-                    .as_floats(),
-                );
-                // left bottom
-                self.vertices.extend_from_slice(
-                    VertexSimple {
-                        pos: Vec3::from_vec2(quad.vert_left_bottom, depth),
-                        uv: Vec2::new(uvs.left, uvs.bottom),
-                        color,
-                        additivity,
-                    }
-                    .as_floats(),
-                );
-                // left top
-                self.vertices.extend_from_slice(
-                    VertexSimple {
-                        pos: Vec3::from_vec2(quad.vert_left_top, depth),
-                        uv: Vec2::new(uvs.left, uvs.top),
-                        color,
-                        additivity,
-                    }
-                    .as_floats(),
-                );
-                self.vertices_count += 4;
-
-                index_count
-            }
-            Geometry::PolygonMesh {
-                vertices,
-                uvs,
-                indices,
-            } => {
-                let index_count = indices.len();
-
-                for index in indices {
-                    self.indices.push(indices_start_offset + index);
-                }
-                for (pos, uv) in vertices.iter().zip(uvs.iter()) {
-                    self.vertices.extend_from_slice(
-                        VertexSimple {
-                            pos: Vec3::from_vec2(*pos, depth),
-                            uv: *uv,
-                            color,
-                            additivity,
-                        }
-                        .as_floats(),
-                    );
-                    self.vertices_count += 1;
-                }
-
-                index_count
-            }
-            Geometry::LineMesh { vertices, indices } => {
-                let index_count = indices.len();
-
-                for index in indices {
-                    self.indices.push(indices_start_offset + index);
-                }
-                for vertex in vertices {
-                    self.vertices.extend_from_slice(vertex.as_floats());
-                    self.vertices_count += 1;
-                }
-                index_count
-            }
-        };
-        (indices_start_offset, index_count)
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Drawawbles
@@ -294,7 +68,7 @@ impl Default for DrawSpace {
 }
 
 #[derive(Debug, Clone)]
-pub enum Geometry {
+enum Geometry {
     QuadMesh {
         uvs: AAQuad,
         quad: Quad,
@@ -311,7 +85,7 @@ pub enum Geometry {
 }
 
 #[derive(Debug, Clone)]
-pub struct Drawable {
+struct Drawable {
     pub drawspace: DrawSpace,
     pub texture_index: TextureIndex,
     pub uv_region_contains_translucency: bool,
@@ -362,17 +136,135 @@ impl Drawable {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Vertexbuffers
+
+type VertexbufferSimple = Vertexbuffer<VertexSimple>;
+
+// NOTE: We don't want to make the vertexbuffer dependent on a specific vertex type via <..>
+//       generics because then it is harder to code share between drawstate and the renderer
+#[derive(Debug, Default, Clone)]
+struct Vertexbuffer<VertexType: Vertex> {
+    pub vertices: Vec<VertexType>,
+    pub indices: Vec<VertexIndex>,
+}
+
+impl<VertexType: Vertex> Vertexbuffer<VertexType> {
+    pub fn new() -> Vertexbuffer<VertexType> {
+        Vertexbuffer {
+            vertices: Vec::new(),
+            indices: Vec::new(),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.vertices.clear();
+        self.indices.clear();
+    }
+
+    pub fn current_offset(&self) -> VertexIndex {
+        self.indices.len() as VertexIndex
+    }
+}
+
+impl VertexbufferSimple {
+    /// Returns index count of pushed object
+    pub fn push_drawable(&mut self, drawable: Drawable) -> usize {
+        let depth = drawable.depth;
+        let color = drawable.color_modulate;
+        let additivity = drawable.additivity;
+        let indices_start_offset = self.vertices.len() as VertexIndex;
+
+        let index_count = match drawable.geometry {
+            Geometry::QuadMesh { uvs, quad } => {
+                let index_count = 6;
+
+                // first triangle
+                self.indices.push(indices_start_offset + 3); // left top
+                self.indices.push(indices_start_offset + 0); // right top
+                self.indices.push(indices_start_offset + 1); // right bottom
+
+                // second triangle
+                self.indices.push(indices_start_offset + 2); // left bottom
+                self.indices.push(indices_start_offset + 1); // right bottom
+                self.indices.push(indices_start_offset + 3); // left top
+
+                // right top
+                self.vertices.push(VertexSimple {
+                    pos: Vec3::from_vec2(quad.vert_right_top, depth),
+                    uv: Vec2::new(uvs.right, uvs.top),
+                    color,
+                    additivity,
+                });
+                // right bottom
+                self.vertices.push(VertexSimple {
+                    pos: Vec3::from_vec2(quad.vert_right_bottom, depth),
+                    uv: Vec2::new(uvs.right, uvs.bottom),
+                    color,
+                    additivity,
+                });
+                // left bottom
+                self.vertices.push(VertexSimple {
+                    pos: Vec3::from_vec2(quad.vert_left_bottom, depth),
+                    uv: Vec2::new(uvs.left, uvs.bottom),
+                    color,
+                    additivity,
+                });
+                // left top
+                self.vertices.push(VertexSimple {
+                    pos: Vec3::from_vec2(quad.vert_left_top, depth),
+                    uv: Vec2::new(uvs.left, uvs.top),
+                    color,
+                    additivity,
+                });
+
+                index_count
+            }
+            Geometry::PolygonMesh {
+                vertices,
+                uvs,
+                indices,
+            } => {
+                let index_count = indices.len();
+
+                for index in indices {
+                    self.indices.push(indices_start_offset + index);
+                }
+                for (pos, uv) in vertices.iter().zip(uvs.iter()) {
+                    self.vertices.push(VertexSimple {
+                        pos: Vec3::from_vec2(*pos, depth),
+                        uv: *uv,
+                        color,
+                        additivity,
+                    });
+                }
+
+                index_count
+            }
+            Geometry::LineMesh { vertices, indices } => {
+                let index_count = indices.len();
+
+                for index in indices {
+                    self.indices.push(indices_start_offset + index);
+                }
+                self.vertices.extend_from_slice(&vertices);
+                index_count
+            }
+        };
+        index_count
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Drawcommands
 
-pub trait UniformBlock: Sized {
+trait UniformBlock: Sized {
     fn as_slice(&self) -> &[f32] {
         unsafe { transmute_to_slice(self) }
     }
 }
-
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
-pub struct ShaderParamsSimple {
+struct ShaderParamsSimple {
     pub transform: Mat4,
     pub texture_color_modulate: Color,
 }
@@ -380,150 +272,30 @@ impl UniformBlock for ShaderParamsSimple {}
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
-pub struct ShaderParamsBlit {
+struct ShaderParamsBlit {
     pub transform: Mat4,
 }
 impl UniformBlock for ShaderParamsBlit {}
 
-#[derive(Debug, Clone)]
-pub enum ShaderParams {
-    Simple { uniform_block: Vec<f32> },
-    Blit { uniform_block: Vec<f32> },
-}
-
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
-pub struct FramebufferInfo {
+struct FramebufferInfo {
     pub name: String,
     pub width: u32,
     pub height: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum FramebufferTarget {
-    Screen,
-    Offscreen(FramebufferInfo),
-}
-
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
-pub struct TextureInfo {
+struct TextureInfo {
     pub name: String,
     pub index: TextureIndex,
     pub width: u32,
     pub height: u32,
 }
 
-#[derive(Clone)]
-pub enum Drawcommand {
-    AssignDrawBuffers {
-        shader: String,
-        vertexbuffer: Rc<RefCell<Vertexbuffer>>,
-    },
-    Draw {
-        shader: String,
-        uniform_block: Vec<f32>,
-        framebuffer_target: FramebufferTarget,
-        texture_info: TextureInfo,
-        indices_start_offset: VertexIndex,
-        indices_count: usize,
-    },
-    TextureCreate(TextureInfo),
-    TextureUpdate {
-        texture_info: TextureInfo,
-        offset_x: u32,
-        offset_y: u32,
-        bitmap: Bitmap,
-    },
-    TextureFree(TextureInfo),
-    FramebufferCreate(FramebufferInfo),
-    FramebufferFree(FramebufferInfo),
-    FramebufferClear {
-        framebuffer_target: FramebufferTarget,
-        new_color: Option<Color>,
-        new_depth: Option<Depth>,
-    },
-    FramebufferBlit {
-        source_framebuffer_info: FramebufferInfo,
-        source_rect: BlitRect,
-        dest_framebuffer_target: FramebufferTarget,
-        dest_rect: BlitRect,
-    },
-}
-
-impl std::fmt::Debug for Drawcommand {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Drawcommand::AssignDrawBuffers {
-                shader,
-                vertexbuffer,
-            } => write!(
-                f,
-                "AssignDrawBuffers: shader: {}, vertexbuffer floatcount: {}, indices count: {}", 
-                shader,
-                vertexbuffer.borrow().vertices_count,
-                vertexbuffer.borrow().indices.len()
-            ),
-            Drawcommand::Draw {
-                shader,
-                uniform_block,
-                framebuffer_target,
-                texture_info,
-                indices_count,
-                indices_start_offset,
-            } => write!(
-                f,
-                "Draw: shader: {}, uniform_block_length: {}, {:?}, {:?}, indices_count: {}, indices_start_offset: {}",
-                shader,
-                uniform_block.len(),
-                framebuffer_target,
-                texture_info,
-                indices_count,
-                indices_start_offset,
-            ),
-            Drawcommand::TextureCreate(texture_info) => {
-                write!(f, "TextureCreate: {:?} ", texture_info)
-            }
-            Drawcommand::TextureUpdate {
-                texture_info,
-                offset_x,
-                offset_y,
-                bitmap,
-            } => write!(
-                f,
-                "TextureUpdate: {:?} rect: x:{},y:{},w:{},h:{}",
-                texture_info, offset_x, offset_y, bitmap.width, bitmap.height
-            ),
-            Drawcommand::TextureFree(texture_info) => write!(f, "TextureFree: {:?}", texture_info,),
-            Drawcommand::FramebufferCreate(framebuffer_info) => {
-                write!(f, "FramebufferCreate: {:?}", framebuffer_info,)
-            }
-            Drawcommand::FramebufferFree(framebuffer_info) => {
-                write!(f, "FramebufferFree: {:?}", framebuffer_info,)
-            }
-            Drawcommand::FramebufferClear {
-                framebuffer_target,
-                new_color,
-                new_depth,
-            } => write!(
-                f,
-                "FramebufferClear: {:?} {:?} {:?}",
-                framebuffer_target, new_color, new_depth
-            ),
-            Drawcommand::FramebufferBlit {
-                source_framebuffer_info,
-                source_rect,
-                dest_framebuffer_target,
-                dest_rect,
-            } => write!(
-                f,
-                "FramebufferBlit: source: {:?} source_rect: {:?}, source: {:?} source_rect: {:?}",
-                source_framebuffer_info, source_rect, dest_framebuffer_target, dest_rect
-            ),
-        }
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Drawstate
+
+const FRAMEBUFFER_NAME_CANVAS: &str = "canvas";
 
 #[derive(Copy, Clone)]
 struct Drawparams {
@@ -561,7 +333,7 @@ pub struct Drawstate {
     simple_batches_world: Vec<DrawBatch>,
     simple_batches_canvas: Vec<DrawBatch>,
     simple_batches_screen: Vec<DrawBatch>,
-    simple_vertexbuffer: Vertexbuffer,
+    simple_vertexbuffer: VertexbufferSimple,
     simple_vertexbuffer_dirty: bool,
 
     canvas_framebuffer: Option<FramebufferInfo>,
@@ -614,7 +386,7 @@ impl Drawstate {
             simple_batches_world: Vec::new(),
             simple_batches_canvas: Vec::new(),
             simple_batches_screen: Vec::new(),
-            simple_vertexbuffer: Vertexbuffer::new::<VertexSimple>(),
+            simple_vertexbuffer: VertexbufferSimple::new(),
             simple_vertexbuffer_dirty: true,
 
             canvas_framebuffer: None,
@@ -629,7 +401,7 @@ impl Drawstate {
         }
     }
 
-    pub fn texturename_for_atlaspage(textures_size: u32, page_index: TextureIndex) -> String {
+    fn texturename_for_atlaspage(textures_size: u32, page_index: TextureIndex) -> String {
         format!(
             "atlas_page_{}__{}x{}",
             page_index, textures_size, textures_size
@@ -742,8 +514,7 @@ impl Drawstate {
                 };
             }
 
-            let (_indices_start_offset, indices_count) =
-                self.simple_vertexbuffer.push_drawable(drawable);
+            let indices_count = self.simple_vertexbuffer.push_drawable(drawable);
             current_batch.indices_count += indices_count;
         }
 
@@ -938,6 +709,7 @@ impl Drawstate {
     // Sprite drawing
 
     /// NOTE: Rotation is performed around the sprites pivot point
+    #[inline]
     pub fn draw_sprite(
         &mut self,
         sprite: &Sprite,
@@ -980,6 +752,7 @@ impl Drawstate {
         );
     }
 
+    #[inline]
     pub fn draw_sprite_clipped(
         &mut self,
         sprite: &Sprite,
@@ -1068,6 +841,7 @@ impl Drawstate {
         }
     }
 
+    #[inline]
     pub fn draw_sprite_3d(
         &mut self,
         sprite: &Sprite3D,
@@ -1102,6 +876,7 @@ impl Drawstate {
 
     /// This fills the following pixels:
     /// [left, right[ x [top, bottom[
+    #[inline]
     pub fn draw_rect(
         &mut self,
         rect: Rect,
@@ -1149,6 +924,7 @@ impl Drawstate {
     /// IMPORTANT: The `pivot` is the rotation pivot and position pivot
     /// This fills the following pixels when given `rotation_dir` = (1,0), `rotation_pivot` = (0,0):
     /// [left, right[ x [top, bottom[
+    #[inline]
     pub fn draw_rect_transformed(
         &mut self,
         rect_dim: Vec2,
@@ -1187,6 +963,7 @@ impl Drawstate {
     }
 
     /// Expects vertices in the form [v_a0, v_a1, v_a2, v_b0, v_b1, v_b2, ...]
+    #[inline]
     pub fn draw_polygon(
         &mut self,
         vertices: &[Vec2],
@@ -1222,6 +999,7 @@ impl Drawstate {
         });
     }
 
+    #[inline]
     pub fn draw_circle_filled(
         &mut self,
         center: Vec2,
@@ -1291,6 +1069,7 @@ impl Drawstate {
         });
     }
 
+    #[inline]
     pub fn draw_circle_bresenham(
         &mut self,
         center: Vec2,
@@ -1372,6 +1151,7 @@ impl Drawstate {
         }
     }
 
+    #[inline]
     pub fn ellipse_bresenham(
         &mut self,
         center: Vec2,
@@ -1396,6 +1176,7 @@ impl Drawstate {
         todo!()
     }
 
+    #[inline]
     pub fn draw_ring(
         &mut self,
         center: Vec2,
@@ -1456,6 +1237,7 @@ impl Drawstate {
     }
 
     /// WARNING: This can be slow if used often
+    #[inline]
     pub fn draw_pixel(
         &mut self,
         pos: Vec2,
@@ -1477,6 +1259,7 @@ impl Drawstate {
     /// WARNING: This can be slow if used often
     /// NOTE: Skipping the last pixel is useful i.e. for drawing translucent line loops which start
     ///       and end on the same pixel and pixels must not overlap
+    #[inline]
     pub fn draw_linestrip_bresenham(
         &mut self,
         points: &[Vec2],
@@ -1497,6 +1280,7 @@ impl Drawstate {
     /// WARNING: This can be slow if used often
     /// NOTE: Skipping the last pixel is useful i.e. for drawing translucent linestrips where pixels
     ///       must not overlap
+    #[inline]
     pub fn draw_line_bresenham(
         &mut self,
         start: Vec2,
@@ -1520,6 +1304,7 @@ impl Drawstate {
         });
     }
 
+    #[inline]
     pub fn draw_line_with_thickness(
         &mut self,
         start: Vec2,
@@ -1660,6 +1445,7 @@ impl Drawstate {
 
     /// Draws a given utf8 text with a given font
     /// Returns the starting_offset for the next `draw_text`
+    #[inline]
     pub fn draw_text(
         &mut self,
         text: &str,
@@ -1745,6 +1531,7 @@ impl Drawstate {
     /// Draws a given utf8 text in a given font using a clipping rectangle
     /// NOTE: This does not do any word wrapping - the given text should be already pre-wrapped
     ///       for a good result
+    #[inline]
     pub fn draw_text_clipped(
         &mut self,
         text: &str,
@@ -1790,6 +1577,7 @@ impl Drawstate {
     //--------------------------------------------------------------------------------------------------
     // Debug Drawing
 
+    #[inline]
     pub fn debug_draw_checkerboard(
         &mut self,
         origin: Vec2,
@@ -1829,6 +1617,7 @@ impl Drawstate {
         }
     }
 
+    #[inline]
     pub fn debug_draw_arrow(
         &mut self,
         start: Vec2,
@@ -1858,6 +1647,7 @@ impl Drawstate {
         );
     }
 
+    #[inline]
     pub fn debug_draw_arrow_line(
         &mut self,
         start: Vec2,
@@ -1870,6 +1660,7 @@ impl Drawstate {
         self.debug_draw_arrow(start, dir, color, additivity, drawspace);
     }
 
+    #[inline]
     pub fn debug_draw_triangle(
         &mut self,
         point_a: Vec2,
@@ -1904,10 +1695,12 @@ impl Drawstate {
         });
     }
 
+    #[inline]
     pub fn debug_log<StringType: Into<String>>(&mut self, text: StringType) {
         self.debug_log_color(Color::white(), text)
     }
 
+    #[inline]
     pub fn debug_log_color<StringType: Into<String>>(&mut self, color: Color, text: StringType) {
         // NOTE: We needed to re-implement this because the borrow-checker does not let us borrow
         //       `self.debug_log_font` to use in `self.draw_text(...)`

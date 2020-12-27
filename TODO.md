@@ -6,10 +6,12 @@
 - fixed vertexbuffer bug
 - adds logs to renderer
 - inverted controlflow draw->renderer
+- make draw api more typesafe again by putting traits into renderer which draw crate can use 
+  (NOTE: we did not put traits like vertex into the renderer because it would need things like
+   Color to be known in the renderer)
 
 # CURRENT
 
-- make draw api more typesafe again by putting traits into renderer which draw crate can use
 
 # NEXT:
 
