@@ -574,6 +574,10 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                 input.screen_framebuffer_height = window_height as u32;
                 input.screen_framebuffer_dimensions_changed = true;
             }
+            renderer.update_screen_dimensions(
+                input.screen_framebuffer_width,
+                input.screen_framebuffer_height,
+            );
         }
         // Mouse x in [0, screen_framebuffer_width - 1]  (left to right)
         // Mouse y in [0, screen_framebuffer_height - 1] (top to bottom)
