@@ -4,6 +4,8 @@ use std::{cell::RefCell, rc::Rc};
 
 use wasm_bindgen::{prelude::*, JsCast};
 
+use super::html_get_document;
+
 const AUDIO_SAMPLE_RATE: usize = 44100;
 const AUDIO_BUFFER_FRAMECOUNT: usize = 2048;
 const AUDIO_QUEUE_FRAMECOUNT: usize = 2 * AUDIO_BUFFER_FRAMECOUNT;
@@ -132,10 +134,6 @@ impl AudioOutput {
 
         // Activation callbacks
         // NOTE: Need enable audio here because of browser UX limitations
-        let document = web_sys::window()
-            .expect("no global `window` exists")
-            .document()
-            .expect("should have a document on window");
         let mut callback_options = web_sys::AddEventListenerOptions::new();
         callback_options.once(true);
         {
@@ -147,7 +145,7 @@ impl AudioOutput {
                     log::info!("Audio output activated by user action");
                 }
             }) as Box<dyn FnMut(_)>);
-            document
+            html_get_document()
                 .add_event_listener_with_callback_and_add_event_listener_options(
                     "click",
                     click_callback.as_ref().unchecked_ref(),
@@ -165,7 +163,7 @@ impl AudioOutput {
                     log::info!("Audio output activated by user action");
                 }
             }) as Box<dyn FnMut(_)>);
-            document
+            html_get_document()
                 .add_event_listener_with_callback_and_add_event_listener_options(
                     "touchstart",
                     touchstart_callback.as_ref().unchecked_ref(),
@@ -183,7 +181,7 @@ impl AudioOutput {
                     log::info!("Audio output activated by user action");
                 }
             }) as Box<dyn FnMut(_)>);
-            document
+            html_get_document()
                 .add_event_listener_with_callback_and_add_event_listener_options(
                     "keydown",
                     keydown_callback.as_ref().unchecked_ref(),

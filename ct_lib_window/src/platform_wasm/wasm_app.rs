@@ -21,35 +21,73 @@ use std::{cell::RefCell, rc::Rc};
 const ENABLE_PANIC_MESSAGES: bool = false;
 const ENABLE_FRAMETIME_LOGGING: bool = false;
 
-fn html_get_window() -> web_sys::Window {
-    web_sys::window().expect("no global `window` exists")
+fn html_get_window() -> &'static web_sys::Window {
+    static mut WINDOW: Option<web_sys::Window> = None;
+    unsafe {
+        if let Some(window) = WINDOW.as_ref() {
+            window
+        } else {
+            WINDOW = Some(web_sys::window().expect("no global `window` exists"));
+            WINDOW.as_ref().unwrap()
+        }
+    }
 }
 
-fn html_get_screen() -> web_sys::Screen {
-    html_get_window()
-        .screen()
-        .expect("Could not get screen handle")
+fn html_get_screen() -> &'static web_sys::Screen {
+    static mut SCREEN: Option<web_sys::Screen> = None;
+    unsafe {
+        if let Some(screen) = SCREEN.as_ref() {
+            screen
+        } else {
+            SCREEN = Some(
+                html_get_window()
+                    .screen()
+                    .expect("Could not get screen handle"),
+            );
+            SCREEN.as_ref().unwrap()
+        }
+    }
+}
+
+fn html_get_document() -> &'static web_sys::Document {
+    static mut DOCUMENT: Option<web_sys::Document> = None;
+    unsafe {
+        if let Some(document) = DOCUMENT.as_ref() {
+            document
+        } else {
+            DOCUMENT = Some(
+                html_get_window()
+                    .document()
+                    .expect("should have a document on window"),
+            );
+            DOCUMENT.as_ref().unwrap()
+        }
+    }
+}
+
+fn html_get_canvas() -> &'static web_sys::HtmlCanvasElement {
+    static mut CANVAS: Option<web_sys::HtmlCanvasElement> = None;
+    unsafe {
+        if let Some(canvas) = CANVAS.as_ref() {
+            canvas
+        } else {
+            let canvas = html_get_document()
+                .get_element_by_id("canvas")
+                .expect("HTML element 'canvas' not found");
+            CANVAS = Some(
+                canvas
+                    .dyn_into::<web_sys::HtmlCanvasElement>()
+                    .expect("'canvas' is not a HTML Canvas element"),
+            );
+            CANVAS.as_ref().unwrap()
+        }
+    }
 }
 
 fn html_request_animation_frame(f: &Closure<dyn FnMut()>) {
     html_get_window()
         .request_animation_frame(f.as_ref().unchecked_ref())
         .expect("should register `requestAnimationFrame` OK");
-}
-
-fn html_get_document() -> web_sys::Document {
-    html_get_window()
-        .document()
-        .expect("should have a document on window")
-}
-
-fn html_get_canvas() -> web_sys::HtmlCanvasElement {
-    let canvas = html_get_document()
-        .get_element_by_id("canvas")
-        .expect("HTML element 'canvas' not found");
-    canvas
-        .dyn_into::<web_sys::HtmlCanvasElement>()
-        .expect("'canvas' is not a HTML Canvas element")
 }
 
 struct FullscreenHandler {
@@ -392,10 +430,10 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     // Touch start
     {
         let input = input.clone();
-        let canvas = html_get_canvas();
         let touchstart_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
-            let offset_x = canvas.get_bounding_client_rect().left();
-            let offset_y = canvas.get_bounding_client_rect().top();
+            let html_canvas = html_get_canvas();
+            let offset_x = html_canvas.get_bounding_client_rect().left();
+            let offset_y = html_canvas.get_bounding_client_rect().top();
             let mut input = input.borrow_mut();
             for index in 0..event.changed_touches().length() {
                 if let Some(touch) = event.changed_touches().item(index) {
@@ -419,10 +457,10 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     // Touch up
     {
         let input = input.clone();
-        let canvas = html_get_canvas();
         let touchend_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
-            let offset_x = canvas.get_bounding_client_rect().left();
-            let offset_y = canvas.get_bounding_client_rect().top();
+            let html_canvas = html_get_canvas();
+            let offset_x = html_canvas.get_bounding_client_rect().left();
+            let offset_y = html_canvas.get_bounding_client_rect().top();
             let mut input = input.borrow_mut();
             for index in 0..event.changed_touches().length() {
                 if let Some(touch) = event.changed_touches().item(index) {
@@ -446,10 +484,10 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     // Touch move
     {
         let input = input.clone();
-        let canvas = html_get_canvas();
         let touchmove_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
-            let offset_x = canvas.get_bounding_client_rect().left();
-            let offset_y = canvas.get_bounding_client_rect().top();
+            let html_canvas = html_get_canvas();
+            let offset_x = html_canvas.get_bounding_client_rect().left();
+            let offset_y = html_canvas.get_bounding_client_rect().top();
             let mut input = input.borrow_mut();
             for index in 0..event.changed_touches().length() {
                 if let Some(touch) = event.changed_touches().item(index) {
@@ -472,10 +510,10 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     // Touch cancel
     {
         let input = input.clone();
-        let canvas = html_get_canvas();
         let touchcancel_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
-            let offset_x = canvas.get_bounding_client_rect().left();
-            let offset_y = canvas.get_bounding_client_rect().top();
+            let html_canvas = html_get_canvas();
+            let offset_x = html_canvas.get_bounding_client_rect().left();
+            let offset_y = html_canvas.get_bounding_client_rect().top();
             let mut input = input.borrow_mut();
             for index in 0..event.changed_touches().length() {
                 if let Some(touch) = event.changed_touches().item(index) {
@@ -544,7 +582,6 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
 
-    let html_canvas = html_get_canvas();
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
         let pre_input_time = timer_current_time_seconds();
 
@@ -559,6 +596,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
             input.screen_is_fullscreen = FullscreenHandler::is_fullscreen_mode_active()
                 || FullscreenHandler::is_window_covering_fullscreen();
 
+            let html_canvas = html_get_canvas();
             let window_width = (html_canvas.client_width() as f64 * dpr).round();
             let window_height = (html_canvas.client_height() as f64 * dpr).round();
             let canvas_width = html_canvas.width();

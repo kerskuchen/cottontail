@@ -12,14 +12,15 @@
 - fix audio stuttering (performance?) on wasm (NOTE: buffer resize)
 - fix copying of glyph-sprites when debug logging
 - removes calls to html_get_canvas in mainloop
+- caches all calls to html elements in wasm platform maybe we can use lazy static in core for each 
+  imporant enough element (canvas, screen, window, document)?
+  NOTE: We did not use lazy_static because it has unneeded atomic reference count overhead
 
 # CURRENT
 
 
 # NEXT:
 
-- cache all calls to html elements in wasm platform maybe we can use lazy static in core for each 
-  imporant enough element (canvas, screen, window, document)?
 - refactor audio system to use non interleaved buffers to comform more to WebAudio API
 - don't process streams if we know that they are empty
 
