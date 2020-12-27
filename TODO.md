@@ -1,19 +1,9 @@
 # DONE:
 
-- split audio out of ct lib
-- replaces audrey crate with wav crate
-- split up draw into draw and image crate
-- WONTFIX Unify platform layers a bit to allow feature sharing (tried it and there very little in 
-  common to justify the cost)
-- move debugscene out of game lib and temporarily into launcher (later we want to make it a 
-  standalone example)
-- remove scenes concept and all its boilerplate
-- removes target frametime concept, snaps deltatimes to nearest refresh rates
-- let game use platform (reverse controlflow)
+- fix audio stuttering introduced earlier
 
 # CURRENT
 
-- fix audio stuttering introduced earlier
 
 # NEXT:
 
@@ -189,3 +179,14 @@
 - fixes audio bug in example scene
 - adds audio debug visualization to example scene
 - sdl layer now pauses on focus lost
+- split audio out of ct lib
+- replaces audrey crate with wav crate
+- split up draw into draw and image crate
+- WONTFIX Unify platform layers a bit to allow feature sharing (tried it and there very little in 
+  common to justify the cost)
+- move debugscene out of game lib and temporarily into launcher (later we want to make it a 
+  standalone example)
+- remove scenes concept and all its boilerplate
+- removes target frametime concept, snaps deltatimes to nearest refresh rates
+- let game use platform (reverse controlflow)
+- replaces wav crate with hound, adds wav encoding for debug purposes

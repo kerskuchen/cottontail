@@ -376,8 +376,8 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
 
             let TODO =
                 "make it so that audio is always there and can handle loading its sounds later";
-            let mut audiochunk = [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES];
             while audio_output.get_num_chunks_to_submit() > 0 {
+                let mut audiochunk = [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES];
                 audio.render_audio_chunk(&mut audiochunk);
                 audio_output.submit_chunk(&audiochunk);
             }

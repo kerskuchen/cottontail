@@ -55,7 +55,6 @@ pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, Vec<AudioSample>
     Ok((sample_rate_hz, samples))
 }
 
-/// IMPORTANT: This Assumes mono
 /// Returns samplerate and a vector of samples
 #[cfg(not(target_arch = "wasm32"))]
 pub fn write_audio_samples_to_wav_file(filepath: &str, frames: &[AudioFrame], samplerate: usize) {
