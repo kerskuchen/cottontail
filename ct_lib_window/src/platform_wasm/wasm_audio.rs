@@ -5,8 +5,8 @@ use std::{cell::RefCell, rc::Rc};
 use wasm_bindgen::{prelude::*, JsCast};
 
 const AUDIO_SAMPLE_RATE: usize = 44100;
-const AUDIO_BUFFER_FRAMECOUNT: usize = 1024;
-const AUDIO_QUEUE_FRAMECOUNT: usize = 4 * AUDIO_BUFFER_FRAMECOUNT;
+const AUDIO_BUFFER_FRAMECOUNT: usize = 2048;
+const AUDIO_QUEUE_FRAMECOUNT: usize = 2 * AUDIO_BUFFER_FRAMECOUNT;
 const AUDIO_NUM_CHANNELS: usize = 2;
 const AUDIO_CHANNEL_LEFT: usize = 0;
 const AUDIO_CHANNEL_RIGHT: usize = 1;
