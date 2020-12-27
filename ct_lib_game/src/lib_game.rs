@@ -129,55 +129,55 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
         if !self.assets.load_graphics() {
             return;
         }
-        if self.draw.is_none() {
-            let textures = self.assets.get_atlas_textures().to_vec();
-            let untextured_sprite = self.assets.get_sprite("untextured").clone();
-            let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-            let debug_log_font = self.assets.get_font(&debug_log_font_name).clone();
-
-            let window_config = GameStateType::get_window_config();
-            let mut draw = Drawstate::new(textures, untextured_sprite, debug_log_font);
-            game_setup_window(
-                &mut draw,
-                &window_config,
-                input.screen_framebuffer_width,
-                input.screen_framebuffer_height,
-                out_systemcommands,
-            );
-            draw.set_shaderparams_simple(
-                Color::white(),
-                Mat4::ortho_origin_left_top(
-                    window_config.canvas_width as f32,
-                    window_config.canvas_height as f32,
-                    DEFAULT_WORLD_ZNEAR,
-                    DEFAULT_WORLD_ZFAR,
-                ),
-                Mat4::ortho_origin_left_top(
-                    window_config.canvas_width as f32,
-                    window_config.canvas_height as f32,
-                    DEFAULT_WORLD_ZNEAR,
-                    DEFAULT_WORLD_ZFAR,
-                ),
-                Mat4::ortho_origin_left_top(
-                    input.screen_framebuffer_width as f32,
-                    input.screen_framebuffer_height as f32,
-                    DEFAULT_WORLD_ZNEAR,
-                    DEFAULT_WORLD_ZFAR,
-                ),
-                Vec2::zero(),
-            );
-            self.draw = Some(draw);
-        }
-        if self.audio.is_none() {
-            let window_config = GameStateType::get_window_config();
-            self.audio = Some(Audiostate::new(
-                input.audio_playback_rate_hz,
-                window_config.canvas_width as f32 / 2.0,
-                10_000.0,
-            ));
-        }
 
         if input.has_focus {
+            if self.draw.is_none() {
+                let textures = self.assets.get_atlas_textures().to_vec();
+                let untextured_sprite = self.assets.get_sprite("untextured").clone();
+                let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
+                let debug_log_font = self.assets.get_font(&debug_log_font_name).clone();
+
+                let window_config = GameStateType::get_window_config();
+                let mut draw = Drawstate::new(textures, untextured_sprite, debug_log_font);
+                game_setup_window(
+                    &mut draw,
+                    &window_config,
+                    input.screen_framebuffer_width,
+                    input.screen_framebuffer_height,
+                    out_systemcommands,
+                );
+                draw.set_shaderparams_simple(
+                    Color::white(),
+                    Mat4::ortho_origin_left_top(
+                        window_config.canvas_width as f32,
+                        window_config.canvas_height as f32,
+                        DEFAULT_WORLD_ZNEAR,
+                        DEFAULT_WORLD_ZFAR,
+                    ),
+                    Mat4::ortho_origin_left_top(
+                        window_config.canvas_width as f32,
+                        window_config.canvas_height as f32,
+                        DEFAULT_WORLD_ZNEAR,
+                        DEFAULT_WORLD_ZFAR,
+                    ),
+                    Mat4::ortho_origin_left_top(
+                        input.screen_framebuffer_width as f32,
+                        input.screen_framebuffer_height as f32,
+                        DEFAULT_WORLD_ZNEAR,
+                        DEFAULT_WORLD_ZFAR,
+                    ),
+                    Vec2::zero(),
+                );
+                self.draw = Some(draw);
+            }
+            if self.audio.is_none() {
+                let window_config = GameStateType::get_window_config();
+                self.audio = Some(Audiostate::new(
+                    input.audio_playback_rate_hz,
+                    window_config.canvas_width as f32 / 2.0,
+                    10_000.0,
+                ));
+            }
             let draw = self.draw.as_mut().unwrap();
             let audio = self.audio.as_mut().unwrap();
 
