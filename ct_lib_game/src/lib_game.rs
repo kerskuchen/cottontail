@@ -58,7 +58,7 @@ pub trait GameStateInterface: Clone {
     fn new(
         draw: &mut Drawstate,
         audio: &mut Audiostate,
-        assets: &mut GameAssets,
+        assets: &GameAssets,
         input: &GameInput,
         globals: &mut Globals,
     ) -> Self;
@@ -66,7 +66,7 @@ pub trait GameStateInterface: Clone {
         &mut self,
         draw: &mut Drawstate,
         audio: &mut Audiostate,
-        assets: &mut GameAssets,
+        assets: &GameAssets,
         input: &GameInput,
         globals: &mut Globals,
         out_systemcommands: &mut Vec<AppCommand>,
@@ -79,10 +79,10 @@ const SPLASHSCREEN_FADEOUT_TIME: f32 = 0.5;
 
 #[derive(Clone)]
 pub struct AppContext<GameStateType: GameStateInterface> {
+    pub assets: GameAssets,
     pub game: Option<GameStateType>,
     pub draw: Option<Drawstate>,
     pub audio: Option<Audiostate>,
-    pub assets: Option<GameAssets>,
     pub splashscreen: Option<SplashScreen>,
     pub globals: Option<Globals>,
 }
@@ -90,10 +90,10 @@ pub struct AppContext<GameStateType: GameStateInterface> {
 impl<GameStateType: GameStateInterface> Default for AppContext<GameStateType> {
     fn default() -> Self {
         AppContext {
+            assets: GameAssets::new("resources"),
             game: None,
             draw: None,
             audio: None,
-            assets: None,
             splashscreen: None,
             globals: None,
         }
@@ -126,82 +126,65 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
         audio_output: &mut AudioOutput,
         out_systemcommands: &mut Vec<AppCommand>,
     ) {
+        if !self.assets.load_graphics() {
+            return;
+        }
+        if self.draw.is_none() {
+            let textures = self.assets.get_atlas_textures().to_vec();
+            let untextured_sprite = self.assets.get_sprite("untextured").clone();
+            let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
+            let debug_log_font = self.assets.get_font(&debug_log_font_name).clone();
+
+            let window_config = GameStateType::get_window_config();
+            let mut draw = Drawstate::new(textures, untextured_sprite, debug_log_font);
+            game_setup_window(
+                &mut draw,
+                &window_config,
+                input.screen_framebuffer_width,
+                input.screen_framebuffer_height,
+                out_systemcommands,
+            );
+            draw.set_shaderparams_simple(
+                Color::white(),
+                Mat4::ortho_origin_left_top(
+                    window_config.canvas_width as f32,
+                    window_config.canvas_height as f32,
+                    DEFAULT_WORLD_ZNEAR,
+                    DEFAULT_WORLD_ZFAR,
+                ),
+                Mat4::ortho_origin_left_top(
+                    window_config.canvas_width as f32,
+                    window_config.canvas_height as f32,
+                    DEFAULT_WORLD_ZNEAR,
+                    DEFAULT_WORLD_ZFAR,
+                ),
+                Mat4::ortho_origin_left_top(
+                    input.screen_framebuffer_width as f32,
+                    input.screen_framebuffer_height as f32,
+                    DEFAULT_WORLD_ZNEAR,
+                    DEFAULT_WORLD_ZFAR,
+                ),
+                Vec2::zero(),
+            );
+            self.draw = Some(draw);
+        }
+        if self.audio.is_none() {
+            let window_config = GameStateType::get_window_config();
+            self.audio = Some(Audiostate::new(
+                input.audio_playback_rate_hz,
+                window_config.canvas_width as f32 / 2.0,
+                10_000.0,
+            ));
+        }
+
         if input.has_focus {
-            if self.assets.is_none() {
-                self.assets = Some(GameAssets::new("resources"));
-            }
-            if !self.assets.as_mut().unwrap().load_graphics() {
-                return;
-            }
-
-            if self.draw.is_none() {
-                let _drawstate_setup_timer = TimerScoped::new_scoped("Drawstate setup time", true);
-
-                let textures = self.assets.as_ref().unwrap().get_atlas_textures().to_vec();
-                let untextured_sprite = self
-                    .assets
-                    .as_ref()
-                    .unwrap()
-                    .get_sprite("untextured")
-                    .clone();
-                let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-                let debug_log_font = self
-                    .assets
-                    .as_ref()
-                    .unwrap()
-                    .get_font(&debug_log_font_name)
-                    .clone();
-
-                let window_config = GameStateType::get_window_config();
-                let mut draw = Drawstate::new(textures, untextured_sprite, debug_log_font);
-                game_setup_window(
-                    &mut draw,
-                    &window_config,
-                    input.screen_framebuffer_width,
-                    input.screen_framebuffer_height,
-                    out_systemcommands,
-                );
-                draw.set_shaderparams_simple(
-                    Color::white(),
-                    Mat4::ortho_origin_left_top(
-                        window_config.canvas_width as f32,
-                        window_config.canvas_height as f32,
-                        DEFAULT_WORLD_ZNEAR,
-                        DEFAULT_WORLD_ZFAR,
-                    ),
-                    Mat4::ortho_origin_left_top(
-                        window_config.canvas_width as f32,
-                        window_config.canvas_height as f32,
-                        DEFAULT_WORLD_ZNEAR,
-                        DEFAULT_WORLD_ZFAR,
-                    ),
-                    Mat4::ortho_origin_left_top(
-                        input.screen_framebuffer_width as f32,
-                        input.screen_framebuffer_height as f32,
-                        DEFAULT_WORLD_ZNEAR,
-                        DEFAULT_WORLD_ZFAR,
-                    ),
-                    Vec2::zero(),
-                );
-                self.draw = Some(draw);
-            }
-            if self.audio.is_none() {
-                let window_config = GameStateType::get_window_config();
-                self.audio = Some(Audiostate::new(
-                    input.audio_playback_rate_hz,
-                    window_config.canvas_width as f32 / 2.0,
-                    10_000.0,
-                ));
-            }
-
             let draw = self.draw.as_mut().unwrap();
-            let assets = self.assets.as_mut().unwrap();
             let audio = self.audio.as_mut().unwrap();
 
             draw.begin_frame();
 
             if self.splashscreen.is_none() {
-                let splash_sprite = assets.get_sprite("splash").clone();
+                let splash_sprite = self.assets.get_sprite("splash").clone();
                 self.splashscreen = Some(SplashScreen::new(
                     splash_sprite,
                     SPLASHSCREEN_FADEIN_TIME,
@@ -227,17 +210,14 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 SplashscreenState::IsFadingIn => {}
                 SplashscreenState::FinishedFadingIn => {
                     {
-                        let audio_recordings_mono = assets.load_audiorecordings_mono();
-                        let audio_recordings_stereo = assets.load_audiorecordings_stereo();
+                        let audio_recordings_mono = self.assets.load_audiorecordings_mono();
+                        let audio_recordings_stereo = self.assets.load_audiorecordings_stereo();
 
                         audio.add_audio_recordings_mono(audio_recordings_mono);
                         audio.add_audio_recordings_stereo(audio_recordings_stereo);
                     }
 
                     {
-                        let _gamestate_setup_timer =
-                            TimerScoped::new_scoped("Gamestate setup time", true);
-
                         assert!(self.game.is_none());
                         assert!(self.globals.is_none());
 
@@ -276,7 +256,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                         self.game = Some(GameStateType::new(
                             draw,
                             audio,
-                            assets,
+                            &self.assets,
                             &input,
                             &mut globals,
                         ));
@@ -351,7 +331,14 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 }
                 draw.debug_log(format!("Deltatime: {:.6}", globals.deltatime));
 
-                game.update(draw, audio, assets, input, globals, out_systemcommands);
+                game.update(
+                    draw,
+                    audio,
+                    &self.assets,
+                    input,
+                    globals,
+                    out_systemcommands,
+                );
                 game_handle_system_keys(&input.keyboard, out_systemcommands);
 
                 globals.camera.update(globals.deltatime);
@@ -374,8 +361,6 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 );
             }
 
-            let TODO =
-                "make it so that audio is always there and can handle loading its sounds later";
             while audio_output.get_num_chunks_to_submit() > 0 {
                 let mut audiochunk = [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES];
                 audio.render_audio_chunk(&mut audiochunk);

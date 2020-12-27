@@ -8,7 +8,6 @@
 # NEXT:
 
 ## better platform layer
-- split input out of ct lib into platform
 - if we can make opengl layer a dependency of draw we can put vertices and traits into 
   opengl layer and maybe make vertexbuffers typesafe again because we won't need to create
   drawcommands anymore and can just pass the vertices and indices out of the vertexbuffers in 
@@ -189,4 +188,5 @@
 - remove scenes concept and all its boilerplate
 - removes target frametime concept, snaps deltatimes to nearest refresh rates
 - let game use platform (reverse controlflow)
+- split input out of ct lib into platform
 - replaces wav crate with hound, adds wav encoding for debug purposes
