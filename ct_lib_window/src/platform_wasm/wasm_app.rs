@@ -544,6 +544,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
 
+    let html_canvas = html_get_canvas();
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
         let pre_input_time = timer_current_time_seconds();
 
@@ -558,17 +559,17 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
             input.screen_is_fullscreen = FullscreenHandler::is_fullscreen_mode_active()
                 || FullscreenHandler::is_window_covering_fullscreen();
 
-            let window_width = (html_get_canvas().client_width() as f64 * dpr).round();
-            let window_height = (html_get_canvas().client_height() as f64 * dpr).round();
-            let canvas_width = html_get_canvas().width();
-            let canvas_height = html_get_canvas().height();
+            let window_width = (html_canvas.client_width() as f64 * dpr).round();
+            let window_height = (html_canvas.client_height() as f64 * dpr).round();
+            let canvas_width = html_canvas.width();
+            let canvas_height = html_canvas.height();
             if canvas_width as i32 != window_width as i32
                 || canvas_height as i32 != window_height as i32
             {
                 assert!(window_width >= 0.0);
                 assert!(window_height >= 0.0);
-                html_get_canvas().set_width(window_width as u32);
-                html_get_canvas().set_height(window_height as u32);
+                html_canvas.set_width(window_width as u32);
+                html_canvas.set_height(window_height as u32);
 
                 input.screen_framebuffer_width = window_width as u32;
                 input.screen_framebuffer_height = window_height as u32;
