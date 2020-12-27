@@ -597,7 +597,10 @@ pub fn run_main<AppContextType: AppContextInterface>() {
         input.touch.calculate_move_deltas();
         input.screen_is_fullscreen = window.fullscreen_active;
 
-        renderer.update_screen_dimensions(screen_width, screen_height);
+        renderer.update_screen_dimensions(
+            input.screen_framebuffer_width,
+            input.screen_framebuffer_height,
+        );
 
         //--------------------------------------------------------------------------------------
         // Start/stop input-recording/-playback
