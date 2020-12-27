@@ -10,6 +10,7 @@
   (NOTE: we did not put traits like vertex into the renderer because it would need things like
    Color to be known in the renderer)
 - fix audio stuttering (performance?) on wasm (NOTE: buffer resize)
+- fix copying of glyph-sprites when debug logging
 
 # CURRENT
 
@@ -121,13 +122,10 @@
 - Find more ways to make wasm perform better
 - test out 22050khz audio?
 - current hotspots are:
-  - sorting drawables ~5% (they are pretty big to sort, maybe we can use references as payload?)
-  - drawing rects by drawing bresenham lines ~8%
-  - copying glyphs when drawing debug logs ~7%
-  - render audiochunk ~40%
-    - process_output_stereo ~26%
-      - process_output_mono ~14%
-- Get rid of needles allocations and copies
+  - sorting drawables (they are pretty big to sort, maybe we can use references as payload?)
+  - drawing rects by drawing bresenham lines 
+  - render audiochunks 
+- Find and get rid of needles allocations and copies
 - Find out what causes garbage collector to trigger
 - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)
 

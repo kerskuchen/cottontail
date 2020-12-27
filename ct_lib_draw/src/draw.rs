@@ -86,13 +86,13 @@ enum Geometry {
 
 #[derive(Debug, Clone)]
 struct Drawable {
-    pub drawspace: DrawSpace,
     pub texture_index: TextureIndex,
     pub uv_region_contains_translucency: bool,
     pub depth: Depth,
     pub color_modulate: Color,
     pub additivity: Additivity,
 
+    pub drawspace: DrawSpace,
     pub geometry: Geometry,
 }
 
@@ -313,6 +313,12 @@ struct DrawBatch {
     pub indices_count: usize,
 }
 
+// NOTE: We need this static because if we put this in drawstate, then the borrowchecker won't let
+//       us borrow glyphs from it when drawing logs. We can only copy glyphs (which is too expensive
+//       on mobile)
+// TODO: Maybe we can get rid of this when Rust updates its borrowchecker someday
+static mut DRAWSTATE_DEBUG_LOG_FONT: Option<SpriteFont> = None;
+
 #[derive(Clone)]
 pub struct Drawstate {
     textures: Vec<Bitmap>,
@@ -340,7 +346,6 @@ pub struct Drawstate {
     canvas_blit_offset: Vec2,
 
     debug_use_flat_color_mode: bool,
-    debug_log_font: SpriteFont,
     debug_log_font_scale: f32,
     debug_log_origin: Vec2,
     debug_log_offset: Vec2,
@@ -366,6 +371,10 @@ impl Drawstate {
         // Reserves a white pixel for special usage on the first page
         let untextured_uv_center_coord = untextured_sprite.trimmed_uvs;
         let untextured_uv_center_atlas_page = untextured_sprite.atlas_texture_index;
+
+        unsafe {
+            DRAWSTATE_DEBUG_LOG_FONT = Some(debug_log_font);
+        }
 
         Drawstate {
             textures,
@@ -393,7 +402,6 @@ impl Drawstate {
             canvas_blit_offset: Vec2::zero(),
 
             debug_use_flat_color_mode: false,
-            debug_log_font,
             debug_log_font_scale: 2.0,
             debug_log_origin: Vec2::new(5.0, 5.0),
             debug_log_offset: Vec2::zero(),
@@ -457,7 +465,9 @@ impl Drawstate {
 
     pub fn debug_init_logging(&mut self, font: Option<SpriteFont>, origin: Vec2, depth: Depth) {
         if let Some(font) = font {
-            self.debug_log_font = font;
+            unsafe {
+                DRAWSTATE_DEBUG_LOG_FONT = Some(font);
+            }
         }
         self.debug_log_origin = origin;
         self.debug_log_depth = depth;
@@ -1706,11 +1716,15 @@ impl Drawstate {
         //       `self.debug_log_font` to use in `self.draw_text(...)`
         let origin = self.debug_log_origin.pixel_snapped();
         let mut pos = self.debug_log_offset;
+        let debug_font = unsafe {
+            // NOTE: See documentation above for explanation why we need this static
+            DRAWSTATE_DEBUG_LOG_FONT
+                .as_ref()
+                .expect("Debug logging font not initialized")
+        };
         for codepoint in text.into().chars() {
             if codepoint != '\n' {
-                let glyph = self
-                    .debug_log_font
-                    .get_glyph_for_codepoint_copy(codepoint as Codepoint);
+                let glyph = debug_font.get_glyph_for_codepoint(codepoint as Codepoint);
 
                 self.draw_sprite(
                     &glyph.sprite,
@@ -1726,13 +1740,13 @@ impl Drawstate {
                 pos.x += self.debug_log_font_scale * glyph.horizontal_advance as f32;
             } else {
                 pos.x = 0.0;
-                pos.y += self.debug_log_font_scale * self.debug_log_font.vertical_advance as f32;
+                pos.y += self.debug_log_font_scale * debug_font.vertical_advance as f32;
             }
         }
 
         // Add final '\n'
         pos.x = 0.0;
-        pos.y += self.debug_log_font_scale * self.debug_log_font.vertical_advance as f32;
+        pos.y += self.debug_log_font_scale * debug_font.vertical_advance as f32;
 
         self.debug_log_offset = pos;
     }
