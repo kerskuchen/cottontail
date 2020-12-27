@@ -59,7 +59,7 @@ impl Vertex for VertexBlit {}
 
 // NOTE: We don't want to make the vertexbuffer dependent on a specific vertex type via <..>
 //       generics because then it is harder to code share between drawstate and the renderer
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Vertexbuffer {
     pub vertices: Vec<f32>,
     pub indices: Vec<VertexIndex>,
@@ -554,14 +554,14 @@ pub struct Drawstate {
     current_clear_color: Color,
     current_clear_depth: Depth,
 
+    simple_drawables: Vec<Drawable>,
     simple_shaderparams_world: ShaderParamsSimple,
     simple_shaderparams_canvas: ShaderParamsSimple,
     simple_shaderparams_screen: ShaderParamsSimple,
     simple_batches_world: Vec<DrawBatch>,
     simple_batches_canvas: Vec<DrawBatch>,
     simple_batches_screen: Vec<DrawBatch>,
-    simple_drawables: Vec<Drawable>,
-    simple_vertexbuffer: Rc<RefCell<Vertexbuffer>>,
+    simple_vertexbuffer: Vertexbuffer,
     simple_vertexbuffer_dirty: bool,
 
     canvas_framebuffer: Option<FramebufferInfo>,
@@ -607,14 +607,14 @@ impl Drawstate {
             current_clear_color: Color::black(),
             current_clear_depth: DEPTH_CLEAR,
 
+            simple_drawables: Vec::new(),
             simple_shaderparams_world: ShaderParamsSimple::default(),
             simple_shaderparams_canvas: ShaderParamsSimple::default(),
             simple_shaderparams_screen: ShaderParamsSimple::default(),
             simple_batches_world: Vec::new(),
             simple_batches_canvas: Vec::new(),
             simple_batches_screen: Vec::new(),
-            simple_drawables: Vec::new(),
-            simple_vertexbuffer: Rc::new(RefCell::new(Vertexbuffer::new::<VertexSimple>())),
+            simple_vertexbuffer: Vertexbuffer::new::<VertexSimple>(),
             simple_vertexbuffer_dirty: true,
 
             canvas_framebuffer: None,
@@ -629,12 +629,7 @@ impl Drawstate {
         }
     }
 
-    pub fn texturename_for_atlaspage(
-        textures_size: u32,
-        textures_count: usize,
-        page_index: TextureIndex,
-    ) -> String {
-        assert!((page_index as usize) < textures_count);
+    pub fn texturename_for_atlaspage(textures_size: u32, page_index: TextureIndex) -> String {
         format!(
             "atlas_page_{}__{}x{}",
             page_index, textures_size, textures_size
@@ -715,14 +710,12 @@ impl Drawstate {
         self.simple_batches_canvas.clear();
         self.simple_batches_screen.clear();
 
-        self.simple_drawables.sort_by(Drawable::compare);
         if self.simple_drawables.is_empty() {
             return;
         }
+        self.simple_drawables.sort_by(Drawable::compare);
 
         // Collect draw batches
-        self.simple_vertexbuffer_dirty = true;
-        let mut vertexbuffer = self.simple_vertexbuffer.borrow_mut();
         let mut current_batch = DrawBatch {
             drawspace: self.simple_drawables[0].drawspace,
             texture_index: self.simple_drawables[0].texture_index,
@@ -730,6 +723,8 @@ impl Drawstate {
             indices_count: 0,
         };
 
+        self.simple_vertexbuffer.clear();
+        self.simple_vertexbuffer_dirty = true;
         for drawable in self.simple_drawables.drain(..) {
             if drawable.texture_index != current_batch.texture_index
                 || drawable.drawspace != current_batch.drawspace
@@ -742,12 +737,13 @@ impl Drawstate {
                 current_batch = DrawBatch {
                     drawspace: drawable.drawspace,
                     texture_index: drawable.texture_index,
-                    indices_start_offset: vertexbuffer.current_offset(),
+                    indices_start_offset: self.simple_vertexbuffer.current_offset(),
                     indices_count: 0,
                 };
             }
 
-            let (_indices_start_offset, indices_count) = vertexbuffer.push_drawable(drawable);
+            let (_indices_start_offset, indices_count) =
+                self.simple_vertexbuffer.push_drawable(drawable);
             current_batch.indices_count += indices_count;
         }
 
@@ -764,7 +760,6 @@ impl Drawstate {
             if self.textures_dirty[atlas_page] {
                 let texture_name = Drawstate::texturename_for_atlaspage(
                     self.textures_size,
-                    self.textures.len(),
                     atlas_page as TextureIndex,
                 );
                 let atlas_page_bitmap = &self.textures[atlas_page];
@@ -786,32 +781,30 @@ impl Drawstate {
             Some(DEPTH_CLEAR),
         );
 
-        let canvas_framebuffer_name = if let Some(canvas_framebuffer) = &self.canvas_framebuffer {
+        // Create and Clear canvas
+        let draw_framebuffer_name = if let Some(canvas_framebuffer) = &self.canvas_framebuffer {
             renderer.framebuffer_create_or_update(
                 &canvas_framebuffer.name,
                 canvas_framebuffer.width,
                 canvas_framebuffer.height,
+            );
+            renderer.framebuffer_clear(
+                &canvas_framebuffer.name,
+                Some(self.current_clear_color.to_slice()),
+                Some(self.current_clear_depth),
             );
             &canvas_framebuffer.name
         } else {
             "screen"
         };
 
-        // Clear canvas
-        renderer.framebuffer_clear(
-            &canvas_framebuffer_name,
-            Some(self.current_clear_color.to_slice()),
-            Some(self.current_clear_depth),
-        );
-
         // Upload vertexbuffers
         if self.simple_vertexbuffer_dirty {
-            let simple_vertexbuffer = self.simple_vertexbuffer.borrow();
             unsafe {
                 renderer.assign_buffers(
                     "simple",
-                    &transmute_slice_to_byte_slice(&simple_vertexbuffer.vertices),
-                    &transmute_slice_to_byte_slice(&simple_vertexbuffer.indices),
+                    &transmute_slice_to_byte_slice(&self.simple_vertexbuffer.vertices),
+                    &transmute_slice_to_byte_slice(&self.simple_vertexbuffer.indices),
                 );
             }
             self.simple_vertexbuffer_dirty = false;
@@ -822,10 +815,9 @@ impl Drawstate {
             renderer.draw(
                 "simple",
                 &self.simple_shaderparams_world.as_slice(),
-                &canvas_framebuffer_name,
+                &draw_framebuffer_name,
                 &Drawstate::texturename_for_atlaspage(
                     self.textures_size,
-                    self.textures.len(),
                     world_batch.texture_index,
                 ),
                 world_batch.indices_start_offset,
@@ -836,10 +828,9 @@ impl Drawstate {
             renderer.draw(
                 "simple",
                 &self.simple_shaderparams_canvas.as_slice(),
-                &canvas_framebuffer_name,
+                &draw_framebuffer_name,
                 &Drawstate::texturename_for_atlaspage(
                     self.textures_size,
-                    self.textures.len(),
                     canvas_batch.texture_index,
                 ),
                 canvas_batch.indices_start_offset,
@@ -883,7 +874,6 @@ impl Drawstate {
                 "screen",
                 &Drawstate::texturename_for_atlaspage(
                     self.textures_size,
-                    self.textures.len(),
                     screen_batch.texture_index,
                 ),
                 screen_batch.indices_start_offset,

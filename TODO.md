@@ -2,10 +2,14 @@
 
 - fix audio stuttering introduced earlier
 - made window crate independant of audio crate
+- make window crate independant of draw crate
+- fixed vertexbuffer bug
+- adds logs to renderer
+- inverted controlflow draw->renderer
 
 # CURRENT
 
-- make window crate independant of draw crate
+- make draw api more typesafe again by putting traits into renderer which draw crate can use
 
 # NEXT:
 

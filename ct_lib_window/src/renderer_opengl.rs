@@ -1,4 +1,4 @@
-use ct_lib_core::transmute_slice_to_byte_slice;
+use ct_lib_core::{log, transmute_slice_to_byte_slice};
 use ct_lib_math::Mat4;
 use ct_lib_math::Recti;
 
@@ -18,6 +18,8 @@ type GlowBuffer = <glow::Context as glow::HasContext>::Buffer;
 //       For more information see: https://stackoverflow.com/a/36046924
 pub const DEFAULT_WORLD_ZNEAR: f32 = 0.0;
 pub const DEFAULT_WORLD_ZFAR: f32 = -100.0;
+
+const ENABLE_LOGS: bool = false;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Error checking
@@ -976,6 +978,22 @@ impl Renderer {
             .get(shader)
             .expect(&format!("Drawobject not found for shader '{}'", shader))
             .assign_buffers(&vertices, &indices);
+
+        if ENABLE_LOGS {
+            log::trace!(
+                "Assigning buffers:
+        shader: '{}'
+        vertices_bytes: '{}'
+        vertices_floatcount: '{}'
+        indices_bytes: {}
+        indices_count: {}",
+                shader,
+                vertices.len(),
+                vertices.len() / std::mem::size_of::<f32>(),
+                indices.len(),
+                indices.len() / std::mem::size_of::<u32>(),
+            );
+        }
     }
 
     pub fn draw(
@@ -1013,6 +1031,22 @@ impl Renderer {
             .get(shader)
             .expect(&format!("Drawobject '{}' not found", shader))
             .draw(indices_start_offset, indices_count);
+
+        if ENABLE_LOGS {
+            log::trace!(
+                "Drawing buffers:
+        shader: '{}'
+        framebuffer: '{}'
+        texture: '{}'
+        indices_start_offset: {}
+        indices_count: {}",
+                shader,
+                framebuffer,
+                texture,
+                indices_start_offset,
+                indices_count,
+            );
+        }
     }
 
     pub fn texture_exists(&self, name: &str) -> bool {
@@ -1039,6 +1073,9 @@ impl Renderer {
             "Texture '{}' already exists",
             &name
         );
+        if ENABLE_LOGS {
+            log::debug!("Creating texture '{}' ({}x{})", &name, width, height);
+        }
         self.textures.insert(
             name.clone(),
             Texture::new(self.gl.clone(), name.clone(), width, height),
@@ -1055,6 +1092,16 @@ impl Renderer {
         region_height: u32,
         pixels: &[u8],
     ) {
+        if ENABLE_LOGS {
+            log::debug!(
+                "Updating texture '{}' (offset: {}x{}, dim: {}x{})",
+                texture,
+                region_offset_x,
+                region_offset_y,
+                region_width,
+                region_height
+            );
+        }
         self.textures
             .get(texture)
             .expect(&format!("Texture '{}' not found", texture))
@@ -1068,6 +1115,9 @@ impl Renderer {
     }
 
     pub fn texture_delete(&mut self, texture: &str) {
+        if ENABLE_LOGS {
+            log::debug!("Deleting texture '{}'", &texture);
+        }
         self.textures
             .remove(texture)
             .expect(&format!("Texture '{}' not found", texture));
@@ -1095,6 +1145,10 @@ impl Renderer {
             "Framebuffer '{}' already exists",
             &name
         );
+
+        if ENABLE_LOGS {
+            log::debug!("Creating framebuffer '{}' ({}x{})", &name, width, height);
+        }
         self.framebuffers.insert(
             name.clone(),
             Framebuffer::new(self.gl.clone(), name, width, height),
@@ -1115,6 +1169,17 @@ impl Renderer {
             if framebuffer.width == width && framebuffer.height == height {
                 // Nothing to do
                 return;
+            } else {
+                if ENABLE_LOGS {
+                    log::debug!(
+                        "Updating framebuffer '{}' ({}x{}) -> ({}x{})",
+                        &framebuffer.name,
+                        framebuffer.width,
+                        framebuffer.height,
+                        width,
+                        height
+                    );
+                }
             }
         }
         self.framebuffer_delete(framebuffer);
@@ -1126,6 +1191,9 @@ impl Renderer {
             framebuffer != "screen",
             "Not allowed to delete framebuffer with name 'screen'"
         );
+        if ENABLE_LOGS {
+            log::debug!("Deleting framebuffer '{}'", framebuffer);
+        }
         self.framebuffers
             .remove(framebuffer)
             .expect(&format!("Framebuffer '{}' not found", framebuffer));
@@ -1186,6 +1254,21 @@ impl Renderer {
             .get(framebuffer_target)
             .expect(&format!("Framebuffer '{}' not found", framebuffer_target));
 
+        if ENABLE_LOGS {
+            log::trace!(
+            "Blitting framebuffers '{}' (offset: {}x{}, dim: {}x{}) -> '{}' (offset: {}x{}, dim: {}x{})",
+            &framebuffer_source.name,
+            rect_source.pos.x,
+            rect_source.pos.y,
+            rect_source.dim.x,
+            rect_source.dim.y,
+            &framebuffer_target.name,
+            rect_target.pos.x,
+            rect_target.pos.y,
+            rect_target.dim.x,
+            rect_target.dim.y,
+        );
+        }
         unsafe {
             let gl = &self.gl;
             gl.disable(glow::BLEND);
