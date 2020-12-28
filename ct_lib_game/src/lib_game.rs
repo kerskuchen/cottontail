@@ -362,14 +362,9 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
             }
 
             while audio_output.get_num_frames_to_submit() > 0 {
-                let mut audiochunk = [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES];
+                let mut audiochunk = AudioChunkStereo::new();
                 audio.render_audio_chunk(&mut audiochunk);
-                let TODO = "get rid of this conversion";
-                let output_chunk: Vec<(f32, f32)> = audiochunk
-                    .iter()
-                    .map(|frame| (frame.left, frame.right))
-                    .collect();
-                audio_output.submit_frames(&output_chunk);
+                audio_output.submit_frames(audiochunk.as_interleaved_f32_slice());
             }
 
             draw.finish_frame();

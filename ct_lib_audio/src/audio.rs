@@ -1,3 +1,5 @@
+use ct_lib_core::transmute_slices;
+
 use super::math::*;
 
 use std::collections::{HashMap, HashSet};
@@ -46,7 +48,7 @@ impl AudioChunkMono {
     }
 }
 #[derive(Clone, Copy)]
-struct AudioChunkStereo {
+pub struct AudioChunkStereo {
     volume: f32,
     frames: [AudioFrame; AUDIO_CHUNKSIZE_IN_FRAMES],
 }
@@ -56,6 +58,9 @@ impl AudioChunkStereo {
             volume: 1.0,
             frames: [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES],
         }
+    }
+    pub fn as_interleaved_f32_slice(&self) -> &[f32] {
+        unsafe { transmute_slices(&self.frames) }
     }
 }
 
@@ -917,7 +922,7 @@ impl Audiostate {
 
     /// It is assumed that `out_chunk` is filled with silence
     #[inline]
-    pub fn render_audio_chunk(&mut self, out_chunk: &mut [AudioFrame; AUDIO_CHUNKSIZE_IN_FRAMES]) {
+    pub fn render_audio_chunk(&mut self, out_chunk: &mut AudioChunkStereo) {
         // Remove streams that have finished
         let mut streams_removed = vec![];
         for &stream_id in &self.streams_to_delete_after_finish {
@@ -938,6 +943,7 @@ impl Audiostate {
             }
 
             for (out_frame, rendered_chunk) in out_chunk
+                .frames
                 .iter_mut()
                 .zip(stream.get_output_chunk_stereo().frames.iter())
             {

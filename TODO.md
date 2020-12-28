@@ -1,13 +1,18 @@
 # DONE:
 
+- don't process streams if we know that they are empty
+- replaces some .expect with .unrwap_or_else to avoid allocation
+- WONTFIX: refactor audio system to use non interleaved buffers to comform more to 
+  WebAudio API. It is not that practical to do it because we don't do that much processing
+  and dynamic audio routing to justify the complexity
 
 # CURRENT
 
+- make audio interpolater use pullbuffer method instead of being an interator
+- simplify our audiobuffers/sources/streams/mono/stero zoo
 
 # NEXT:
 
-- refactor audio system to use non interleaved buffers to comform more to WebAudio API
-- don't process streams if we know that they are empty
 
 ## better platform layer
 - rename things that are not necessarily game related to app
