@@ -242,62 +242,170 @@ pub struct AudioBuffer<FrameType> {
 pub type AudioBufferMono = AudioBuffer<AudioSample>;
 pub type AudioBufferStereo = AudioBuffer<AudioFrame>;
 
+trait AudioSourceTrait {
+    fn sample_rate_hz(&self) -> usize;
+    fn has_finished(&self) -> bool;
+    fn is_looping(&self) -> bool;
+    fn completion_ratio(&self) -> Option<f32>;
+    fn produce_chunk_mono(&mut self, output: &mut AudioChunkMono);
+    fn produce_chunk_stereo(&mut self, output: &mut AudioChunkStereo);
+}
+
 struct AudioSourceBufferMono {
     source_buffer: Rc<AudioBufferMono>,
     play_cursor_buffer_index: usize,
     is_looping: bool,
+}
+impl AudioSourceBufferMono {
+    fn new(buffer: Rc<AudioBufferMono>, play_looped: bool) -> AudioSourceBufferMono {
+        AudioSourceBufferMono {
+            source_buffer: buffer,
+            play_cursor_buffer_index: 0,
+            is_looping: play_looped,
+        }
+    }
+}
+impl AudioSourceTrait for AudioSourceBufferMono {
+    fn sample_rate_hz(&self) -> usize {
+        self.source_buffer.sample_rate_hz
+    }
+    fn has_finished(&self) -> bool {
+        self.play_cursor_buffer_index >= self.source_buffer.samples.len()
+    }
+    fn is_looping(&self) -> bool {
+        self.is_looping
+    }
+    fn completion_ratio(&self) -> Option<f32> {
+        Some(self.play_cursor_buffer_index as f32 / self.source_buffer.samples.len() as f32)
+    }
+
+    fn produce_chunk_mono(&mut self, output: &mut AudioChunkMono) {
+        if self.has_finished() {
+            output.volume = 1.0;
+            return;
+        }
+
+        output.volume = 1.0;
+        for out_sample in &mut output.samples {
+            let result = self
+                .source_buffer
+                .samples
+                .get(self.play_cursor_buffer_index)
+                .cloned();
+
+            self.play_cursor_buffer_index += 1;
+            if self.is_looping {
+                if self.play_cursor_buffer_index
+                    >= (self.source_buffer.loopsection_start_sampleindex
+                        + self.source_buffer.loopsection_samplecount)
+                {
+                    self.play_cursor_buffer_index =
+                        self.source_buffer.loopsection_start_sampleindex;
+                }
+            }
+            *out_sample = result.unwrap_or(0.0);
+        }
+    }
+
+    fn produce_chunk_stereo(&mut self, _output: &mut AudioChunkStereo) {
+        unreachable!()
+    }
 }
 struct AudioSourceSine {
     sine_time: f64,
     sine_frequency: f64,
     sample_rate_hz: usize,
 }
+impl AudioSourceSine {
+    fn new(sine_frequency: f64, stream_frames_per_second: usize) -> AudioSourceSine {
+        AudioSourceSine {
+            sine_frequency,
+            sample_rate_hz: stream_frames_per_second,
+
+            sine_time: 0.0,
+        }
+    }
+}
+impl AudioSourceTrait for AudioSourceSine {
+    fn sample_rate_hz(&self) -> usize {
+        self.sample_rate_hz
+    }
+    fn has_finished(&self) -> bool {
+        false
+    }
+    fn is_looping(&self) -> bool {
+        true
+    }
+    fn completion_ratio(&self) -> Option<f32> {
+        None
+    }
+
+    fn produce_chunk_mono(&mut self, output: &mut AudioChunkMono) {
+        output.volume = 1.0;
+        let time_increment = audio_frames_to_seconds(1, self.sample_rate_hz);
+        for out_sample in &mut output.samples {
+            let sine_amplitude = f64::sin(self.sine_time * 2.0 * PI64);
+            self.sine_time += self.sine_frequency * time_increment;
+            *out_sample = sine_amplitude as AudioSample;
+        }
+    }
+
+    fn produce_chunk_stereo(&mut self, _output: &mut AudioChunkStereo) {
+        unreachable!()
+    }
+}
+
 enum AudioSource {
     BufferMono(AudioSourceBufferMono),
     Sine(AudioSourceSine),
 }
 impl AudioSource {
     fn new_from_buffer(buffer: Rc<AudioBufferMono>, play_looped: bool) -> AudioSource {
-        AudioSource::BufferMono(AudioSourceBufferMono {
-            source_buffer: buffer,
-            play_cursor_buffer_index: 0,
-            is_looping: play_looped,
-        })
+        AudioSource::BufferMono(AudioSourceBufferMono::new(buffer, play_looped))
     }
     fn new_from_sine(sine_frequency: f64, stream_frames_per_second: usize) -> AudioSource {
-        AudioSource::Sine(AudioSourceSine {
+        AudioSource::Sine(AudioSourceSine::new(
             sine_frequency,
-            sample_rate_hz: stream_frames_per_second,
-            sine_time: 0.0,
-        })
+            stream_frames_per_second,
+        ))
     }
 
     fn sample_rate_hz(&self) -> usize {
         match self {
-            AudioSource::BufferMono(buffer) => buffer.source_buffer.sample_rate_hz,
-            AudioSource::Sine(sine) => sine.sample_rate_hz,
+            AudioSource::BufferMono(buffer) => buffer.sample_rate_hz(),
+            AudioSource::Sine(sine) => sine.sample_rate_hz(),
         }
     }
     fn has_finished(&self) -> bool {
         match self {
-            AudioSource::BufferMono(buffer) => {
-                buffer.play_cursor_buffer_index >= buffer.source_buffer.samples.len()
-            }
-            AudioSource::Sine(..) => false,
+            AudioSource::BufferMono(buffer) => buffer.has_finished(),
+            AudioSource::Sine(sine) => sine.has_finished(),
         }
     }
     fn is_looping(&self) -> bool {
         match self {
-            AudioSource::BufferMono(buffer) => buffer.is_looping,
-            AudioSource::Sine(..) => true,
+            AudioSource::BufferMono(buffer) => buffer.is_looping(),
+            AudioSource::Sine(sine) => sine.is_looping(),
         }
     }
     fn completion_ratio(&self) -> Option<f32> {
         match self {
-            AudioSource::BufferMono(buffer) => Some(
-                buffer.play_cursor_buffer_index as f32 / buffer.source_buffer.samples.len() as f32,
-            ),
-            AudioSource::Sine(..) => None,
+            AudioSource::BufferMono(buffer) => buffer.completion_ratio(),
+            AudioSource::Sine(sine) => sine.completion_ratio(),
+        }
+    }
+
+    fn produce_chunk_mono(&mut self, output: &mut AudioChunkMono) {
+        match self {
+            AudioSource::BufferMono(buffer) => buffer.produce_chunk_mono(output),
+            AudioSource::Sine(sine) => sine.produce_chunk_mono(output),
+        }
+    }
+
+    fn produce_chunk_stereo(&mut self, output: &mut AudioChunkStereo) {
+        match self {
+            AudioSource::BufferMono(buffer) => buffer.produce_chunk_stereo(output),
+            AudioSource::Sine(sine) => sine.produce_chunk_stereo(output),
         }
     }
 }
