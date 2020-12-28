@@ -8,29 +8,12 @@
 
 # CURRENT
 
-- make audio interpolater use pullbuffer method instead of being an interator
 - simplify our audiobuffers/sources/streams/mono/stero zoo
+- make audio interpolator use pullbuffer method instead of being an interator
+- check if we are doing volume propagation correctly
 
 # NEXT:
 
-
-## better platform layer
-- rename things that are not necessarily game related to app
-- also do we need resize callbacks at all? (also in sdl2)?
-- fix mouseup/touchup events that happen outside of browser window (i.e. affects leaving fullscreen)
-  we may need https://developer.mozilla.org/en-US/docs/Web/API/Element/setPointerCapture
-- if the user pressed f11 on desktop browser disable the "exit fullscreen" button because it does 
-  not work in this case
-- sometimes when going fullscreen on mobile the canvas does not fully fill the part where the 
-  statusbar would be. if we pull down the status bar the canvas grows to full size.
-- Allow app to save files locally (browserdb?)
-  - get rid of savegame folder on windows and just use appdata
-- gamepad support for wasm
-- Find out why gamepad shoulder trigger axes does not work. Directly accessing the state 
-  with `Gamepad::axis_or_btn_name()` or iterating axis does not let us find any state. We know that 
-  it should work because it does so in the control panel
-- make refresh rate snapping more smart (especially for deltatimes without vsync which is currently 
-  wrong). (ie. we could use the values of the last ten frames as basis for snapping)
 
 ## writing games easier
 - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
@@ -58,6 +41,24 @@
   - https://gamedev.stackexchange.com/a/945
   - https://www.gamedev.net/articles/programming/general-and-gameplay-programming/your-first-step-to-game-development-starts-here-r2976
   - https://bfnightly.bracketproductions.com/rustbook/chapter_0.html
+
+## better platform layer
+- rename things that are not necessarily game related to app
+- also do we need resize callbacks at all? (also in sdl2)?
+- fix mouseup/touchup events that happen outside of browser window (i.e. affects leaving fullscreen)
+  we may need https://developer.mozilla.org/en-US/docs/Web/API/Element/setPointerCapture
+- if the user pressed f11 on desktop browser disable the "exit fullscreen" button because it does 
+  not work in this case
+- sometimes when going fullscreen on mobile the canvas does not fully fill the part where the 
+  statusbar would be. if we pull down the status bar the canvas grows to full size.
+- Allow app to save files locally (browserdb?)
+  - get rid of savegame folder on windows and just use appdata
+- gamepad support for wasm
+- Find out why gamepad shoulder trigger axes does not work. Directly accessing the state 
+  with `Gamepad::axis_or_btn_name()` or iterating axis does not let us find any state. We know that 
+  it should work because it does so in the control panel
+- make refresh rate snapping more smart (especially for deltatimes without vsync which is currently 
+  wrong). (ie. we could use the values of the last ten frames as basis for snapping)
 
 ## better project structure and generator
 - Get rid of crates that are not necessary or replace them with smaller/faster ones 

@@ -242,103 +242,100 @@ pub struct AudioBuffer<FrameType> {
 pub type AudioBufferMono = AudioBuffer<AudioSample>;
 pub type AudioBufferStereo = AudioBuffer<AudioFrame>;
 
-trait AudioSourceMono: Iterator<Item = AudioSample> {
-    fn sample_rate_hz(&self) -> usize;
-    fn has_finished(&self) -> bool;
-    fn is_looping(&self) -> bool;
-    fn completion_ratio(&self) -> Option<f32>;
+struct AudioSourceBufferMono {
+    source_buffer: Rc<AudioBufferMono>,
+    play_cursor_buffer_index: usize,
+    is_looping: bool,
 }
-
-struct AudioBufferSourceMono {
-    pub source_buffer: Rc<AudioBufferMono>,
-    pub play_cursor_buffer_index: usize,
-    pub is_looping: bool,
-}
-impl AudioBufferSourceMono {
-    fn new(buffer: Rc<AudioBufferMono>, play_looped: bool) -> AudioBufferSourceMono {
-        AudioBufferSourceMono {
-            source_buffer: buffer,
-            play_cursor_buffer_index: 0,
-            is_looping: play_looped,
-        }
-    }
-}
-impl AudioSourceMono for AudioBufferSourceMono {
-    fn sample_rate_hz(&self) -> usize {
-        self.source_buffer.sample_rate_hz
-    }
-    fn has_finished(&self) -> bool {
-        self.play_cursor_buffer_index >= self.source_buffer.samples.len()
-    }
-    fn is_looping(&self) -> bool {
-        self.is_looping
-    }
-    fn completion_ratio(&self) -> Option<f32> {
-        Some(self.play_cursor_buffer_index as f32 / self.source_buffer.samples.len() as f32)
-    }
-}
-impl Iterator for AudioBufferSourceMono {
-    type Item = AudioSample;
-    fn next(&mut self) -> Option<Self::Item> {
-        let result = self
-            .source_buffer
-            .samples
-            .get(self.play_cursor_buffer_index)
-            .cloned();
-
-        self.play_cursor_buffer_index = usize::min(
-            self.play_cursor_buffer_index + 1,
-            self.source_buffer.samples.len(),
-        );
-        if self.is_looping {
-            if self.play_cursor_buffer_index
-                >= (self.source_buffer.loopsection_start_sampleindex
-                    + self.source_buffer.loopsection_samplecount)
-            {
-                self.play_cursor_buffer_index = self.source_buffer.loopsection_start_sampleindex;
-            }
-        }
-        result
-    }
-}
-
 struct AudioSourceSine {
     sine_time: f64,
     sine_frequency: f64,
     sample_rate_hz: usize,
 }
-impl AudioSourceSine {
-    fn new(sine_frequency: f64, stream_frames_per_second: usize) -> AudioSourceSine {
-        AudioSourceSine {
+
+enum AudioSource {
+    BufferMono(AudioSourceBufferMono),
+    Sine(AudioSourceSine),
+}
+impl AudioSource {
+    fn new_from_buffer(buffer: Rc<AudioBufferMono>, play_looped: bool) -> AudioSource {
+        AudioSource::BufferMono(AudioSourceBufferMono {
+            source_buffer: buffer,
+            play_cursor_buffer_index: 0,
+            is_looping: play_looped,
+        })
+    }
+    fn new_from_sine(sine_frequency: f64, stream_frames_per_second: usize) -> AudioSource {
+        AudioSource::Sine(AudioSourceSine {
             sine_frequency,
             sample_rate_hz: stream_frames_per_second,
-
             sine_time: 0.0,
+        })
+    }
+
+    fn sample_rate_hz(&self) -> usize {
+        match self {
+            AudioSource::BufferMono(buffer) => buffer.source_buffer.sample_rate_hz,
+            AudioSource::Sine(sine) => sine.sample_rate_hz,
+        }
+    }
+    fn has_finished(&self) -> bool {
+        match self {
+            AudioSource::BufferMono(buffer) => {
+                buffer.play_cursor_buffer_index >= buffer.source_buffer.samples.len()
+            }
+            AudioSource::Sine(..) => false,
+        }
+    }
+    fn is_looping(&self) -> bool {
+        match self {
+            AudioSource::BufferMono(buffer) => buffer.is_looping,
+            AudioSource::Sine(..) => true,
+        }
+    }
+    fn completion_ratio(&self) -> Option<f32> {
+        match self {
+            AudioSource::BufferMono(buffer) => Some(
+                buffer.play_cursor_buffer_index as f32 / buffer.source_buffer.samples.len() as f32,
+            ),
+            AudioSource::Sine(..) => None,
         }
     }
 }
-impl AudioSourceMono for AudioSourceSine {
-    fn sample_rate_hz(&self) -> usize {
-        self.sample_rate_hz
-    }
-    fn has_finished(&self) -> bool {
-        false
-    }
-    fn is_looping(&self) -> bool {
-        true
-    }
-    fn completion_ratio(&self) -> Option<f32> {
-        None
-    }
-}
-impl Iterator for AudioSourceSine {
+impl Iterator for AudioSource {
     type Item = AudioSample;
     fn next(&mut self) -> Option<Self::Item> {
-        let sine_amplitude = f64::sin(self.sine_time * 2.0 * PI64);
-        let time_increment = audio_frames_to_seconds(1, self.sample_rate_hz);
-        self.sine_time += self.sine_frequency * time_increment;
+        match self {
+            AudioSource::BufferMono(buffer) => {
+                let result = buffer
+                    .source_buffer
+                    .samples
+                    .get(buffer.play_cursor_buffer_index)
+                    .cloned();
 
-        Some(sine_amplitude as AudioSample)
+                buffer.play_cursor_buffer_index = usize::min(
+                    buffer.play_cursor_buffer_index + 1,
+                    buffer.source_buffer.samples.len(),
+                );
+                if buffer.is_looping {
+                    if buffer.play_cursor_buffer_index
+                        >= (buffer.source_buffer.loopsection_start_sampleindex
+                            + buffer.source_buffer.loopsection_samplecount)
+                    {
+                        buffer.play_cursor_buffer_index =
+                            buffer.source_buffer.loopsection_start_sampleindex;
+                    }
+                }
+                result
+            }
+            AudioSource::Sine(sine) => {
+                let sine_amplitude = f64::sin(sine.sine_time * 2.0 * PI64);
+                let time_increment = audio_frames_to_seconds(1, sine.sample_rate_hz);
+                sine.sine_time += sine.sine_frequency * time_increment;
+
+                Some(sine_amplitude as AudioSample)
+            }
+        }
     }
 }
 
@@ -380,7 +377,7 @@ fn downcast_stream_mut<T: AudioStream + 'static>(stream: &mut dyn AudioStream) -
 }
 
 struct AudioStreamScheduledMono {
-    pub source: Box<dyn AudioSourceMono>,
+    pub source: AudioSource,
     pub interpolator: PlaybackSpeedInterpolatorLinear,
 
     pub frames_left_till_start: usize,
@@ -392,7 +389,7 @@ struct AudioStreamScheduledMono {
 }
 impl AudioStreamScheduledMono {
     fn new(
-        source_stream: Box<dyn AudioSourceMono>,
+        source_stream: AudioSource,
         delay_framecount: usize,
         playback_speed: f32,
     ) -> AudioStreamScheduledMono {
@@ -506,7 +503,7 @@ struct AudioStreamStereo {
 }
 impl AudioStreamStereo {
     fn new(
-        source: Box<dyn AudioSourceMono>,
+        source: AudioSource,
         delay_framecount: usize,
         playback_speed: f32,
         volume: f32,
@@ -678,7 +675,7 @@ struct AudioStreamSpatial {
 
 impl AudioStreamSpatial {
     fn new(
-        source: Box<dyn AudioSourceMono>,
+        source: AudioSource,
         delay_framecount: usize,
         playback_speed: f32,
         volume: f32,
@@ -942,13 +939,14 @@ impl Audiostate {
                 continue;
             }
 
+            let chunk_volume = out_chunk.volume;
             for (out_frame, rendered_chunk) in out_chunk
                 .frames
                 .iter_mut()
                 .zip(stream.get_output_chunk_stereo().frames.iter())
             {
-                out_frame.left += rendered_chunk.left;
-                out_frame.right += rendered_chunk.right;
+                out_frame.left += chunk_volume * rendered_chunk.left;
+                out_frame.right += chunk_volume * rendered_chunk.right;
             }
         }
         self.next_frame_index_to_output += AUDIO_CHUNKSIZE_IN_FRAMES as AudioFrameIndex;
@@ -1011,10 +1009,7 @@ impl Audiostate {
         let start_delay_framecount = self.start_delay_framecount_for_time(schedule_time_seconds);
         let stream = if recording_name == "sine" {
             Box::new(AudioStreamStereo::new(
-                Box::new(AudioSourceSine::new(
-                    440.0,
-                    self.output_render_params.audio_sample_rate_hz,
-                )),
+                AudioSource::new_from_sine(440.0, self.output_render_params.audio_sample_rate_hz),
                 start_delay_framecount,
                 playback_speed,
                 volume,
@@ -1026,7 +1021,7 @@ impl Audiostate {
                 .get(recording_name)
                 .unwrap_or_else(|| panic!("Recording '{}' not found", recording_name));
             Box::new(AudioStreamStereo::new(
-                Box::new(AudioBufferSourceMono::new(buffer.clone(), play_looped)),
+                AudioSource::new_from_buffer(buffer.clone(), play_looped),
                 start_delay_framecount,
                 playback_speed,
                 volume,
@@ -1085,7 +1080,7 @@ impl Audiostate {
                 .get(recording_name)
                 .unwrap_or_else(|| panic!("Recording '{}' not found", recording_name));
             Box::new(AudioStreamSpatial::new(
-                Box::new(AudioBufferSourceMono::new(buffer.clone(), play_looped)),
+                AudioSource::new_from_buffer(buffer.clone(), play_looped),
                 start_delay_framecount,
                 playback_speed,
                 volume,
