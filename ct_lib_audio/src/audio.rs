@@ -2,6 +2,7 @@ use ct_lib_core::transmute_slices;
 
 use super::math::*;
 
+use core::panic;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -483,54 +484,72 @@ struct AudioRenderParams {
     pub distance_for_max_pan: f32,
 }
 
-trait AudioStreamTrait {
-    fn process_output_mono(&mut self, output_params: AudioRenderParams);
-    fn process_output_stereo(&mut self, output_params: AudioRenderParams);
+struct AudioStream {
+    pub name: String,
 
-    fn get_output_chunk_mono(&self) -> &AudioChunkMono;
-    fn get_output_chunk_stereo(&self) -> &AudioChunkStereo;
-
-    fn has_finished(&self) -> bool;
-    fn is_looping(&self) -> bool;
-    fn completion_ratio(&self) -> Option<f32>;
-
-    fn set_volume(&mut self, volume: f32);
-    fn set_playback_speed(&mut self, playback_speed_factor: f32);
-}
-struct AudioStreamScheduledMono {
     pub playback_speed_interpolator: PlaybackSpeedInterpolator,
 
     pub frames_left_till_start: usize,
+    pub volume_base: f32,
+    /// Only used when we don't have spatial params
+    pub pan_base: f32,
     /// Must be > 0
-    pub playback_speed: f32,
+    pub playback_speed_base: f32,
     pub has_finished: bool,
 
-    output: AudioChunkMono,
+    pub volume_adapter: VolumeAdapter,
+    pub pan_adapter: MonoToStereoAdapter,
+
+    output_mono: AudioChunkMono,
+    output_mono_temp: AudioChunkMono,
+    output_stereo: AudioChunkStereo,
+
+    pub spatial_params: Option<SpatialParams>,
 }
-impl AudioStreamScheduledMono {
+
+impl AudioStream {
     fn new(
+        name: String,
         source: AudioSource,
         delay_framecount: usize,
-        playback_speed: f32,
-    ) -> AudioStreamScheduledMono {
-        AudioStreamScheduledMono {
+        playback_speed_percent: f32,
+        volume: f32,
+        pan: f32,
+        spatial_params: Option<SpatialParams>,
+    ) -> AudioStream {
+        AudioStream {
+            name,
+
             playback_speed_interpolator: PlaybackSpeedInterpolator::new(source),
+
             frames_left_till_start: delay_framecount,
-            playback_speed,
+            volume_base: volume,
+            pan_base: pan,
+            playback_speed_base: playback_speed_percent,
             has_finished: false,
 
-            output: AudioChunkMono::new(),
+            volume_adapter: VolumeAdapter::new(volume),
+            pan_adapter: MonoToStereoAdapter::new(0.0),
+
+            output_mono: AudioChunkMono::new(),
+            output_mono_temp: AudioChunkMono::new(),
+            output_stereo: AudioChunkStereo::new(),
+
+            spatial_params,
         }
     }
-}
 
-impl AudioStreamTrait for AudioStreamScheduledMono {
-    fn process_output_mono(&mut self, output_params: AudioRenderParams) {
-        // Reset volume for new output chunk
-        self.output.volume = 1.0;
+    fn produce_output(&mut self, output_params: AudioRenderParams) {
+        // Reset volume for output chunks
+        self.output_mono.volume = 1.0;
+        self.output_mono_temp.volume = 1.0;
+        self.output_stereo.volume = 1.0;
 
+        // Fast path - we are finished
         if self.has_finished {
-            self.output.volume = 0.0;
+            self.output_mono.volume = 0.0;
+            self.output_mono_temp.volume = 0.0;
+            self.output_stereo.volume = 0.0;
             return;
         }
 
@@ -548,27 +567,52 @@ impl AudioStreamTrait for AudioStreamScheduledMono {
 
         // Fast path - our stream won't start this chunk
         if silence_framecount == AUDIO_CHUNKSIZE_IN_FRAMES {
-            self.output.volume = 0.0;
+            self.output_mono.volume = 0.0;
+            self.output_mono_temp.volume = 0.0;
+            self.output_stereo.volume = 0.0;
             return;
         }
 
-        for sample in &mut self.output.samples[0..silence_framecount] {
+        // Write remaining delay frames
+        for sample in &mut self.output_mono_temp.samples[0..silence_framecount] {
             *sample = 0.0;
         }
+
+        // Calculate spatial settings if necessary
+        let (final_volume, final_pan, final_playback_speed_factor) =
+            if let Some(spatial_params) = self.spatial_params {
+                let (spatial_volume_factor, spatial_pan, spatial_playback_speed_factor) =
+                    spatial_params.calculate_volume_pan_playback_speed(&output_params);
+                (
+                    self.volume_base * spatial_volume_factor,
+                    spatial_pan,
+                    self.playback_speed_base * spatial_playback_speed_factor,
+                )
+            } else {
+                (self.volume_base, self.pan_base, self.playback_speed_base)
+            };
+        self.set_volume(final_volume);
+        self.pan_adapter.set_pan(final_pan);
+
         self.playback_speed_interpolator.produce_samples(
-            &mut self.output.samples[silence_framecount..],
+            &mut self.output_mono_temp.samples[silence_framecount..],
             output_params.audio_sample_rate_hz as f32,
-            self.playback_speed,
+            final_playback_speed_factor,
         );
         self.has_finished = self.playback_speed_interpolator.has_finished();
-    }
 
-    fn get_output_chunk_mono(&self) -> &AudioChunkMono {
-        &self.output
+        self.volume_adapter
+            .process(&self.output_mono_temp, &mut self.output_mono);
+        self.pan_adapter
+            .process(&self.output_mono, &mut self.output_stereo);
     }
 
     fn get_output_chunk_stereo(&self) -> &AudioChunkStereo {
-        unimplemented!()
+        &self.output_stereo
+    }
+
+    fn has_started(&self) -> bool {
+        self.frames_left_till_start == 0
     }
 
     fn has_finished(&self) -> bool {
@@ -580,104 +624,56 @@ impl AudioStreamTrait for AudioStreamScheduledMono {
     }
 
     fn completion_ratio(&self) -> Option<f32> {
-        if self.frames_left_till_start > 0 {
-            None
-        } else {
+        if self.has_started() {
             self.playback_speed_interpolator.completion_ratio()
+        } else {
+            None
         }
-    }
-
-    fn process_output_stereo(&mut self, _output_params: AudioRenderParams) {
-        unimplemented!()
-    }
-    fn set_volume(&mut self, _volume: f32) {
-        unimplemented!()
-    }
-
-    fn set_playback_speed(&mut self, playback_speed_factor: f32) {
-        self.playback_speed = playback_speed_factor;
-    }
-}
-struct AudioStreamStereo {
-    pub stream_mono: AudioStreamScheduledMono,
-    pub volume: VolumeAdapter,
-    pub pan: MonoToStereoAdapter,
-
-    output_mono: AudioChunkMono,
-    output_stereo: AudioChunkStereo,
-}
-impl AudioStreamStereo {
-    fn new(
-        source: AudioSource,
-        delay_framecount: usize,
-        playback_speed: f32,
-        volume: f32,
-        pan: f32,
-    ) -> AudioStreamStereo {
-        let stream = AudioStreamScheduledMono::new(source, delay_framecount, playback_speed);
-        AudioStreamStereo {
-            stream_mono: stream,
-            volume: VolumeAdapter::new(volume),
-            pan: MonoToStereoAdapter::new(pan),
-            output_mono: AudioChunkMono::new(),
-            output_stereo: AudioChunkStereo::new(),
-        }
-    }
-}
-
-impl AudioStreamTrait for AudioStreamStereo {
-    fn process_output_mono(&mut self, _output_params: AudioRenderParams) {
-        unimplemented!()
-    }
-    fn process_output_stereo(&mut self, output_params: AudioRenderParams) {
-        // Reset volume for new output chunk
-        self.output_mono.volume = 1.0;
-        self.output_stereo.volume = 1.0;
-
-        self.stream_mono.process_output_mono(output_params);
-        self.volume.process(
-            self.stream_mono.get_output_chunk_mono(),
-            &mut self.output_mono,
-        );
-        self.pan.process(&self.output_mono, &mut self.output_stereo);
-    }
-
-    fn get_output_chunk_mono(&self) -> &AudioChunkMono {
-        unimplemented!()
-    }
-
-    fn get_output_chunk_stereo(&self) -> &AudioChunkStereo {
-        &self.output_stereo
-    }
-
-    fn has_finished(&self) -> bool {
-        self.stream_mono.has_finished()
-    }
-
-    fn is_looping(&self) -> bool {
-        self.stream_mono.is_looping()
-    }
-
-    fn completion_ratio(&self) -> Option<f32> {
-        self.stream_mono.completion_ratio()
     }
 
     fn set_volume(&mut self, volume: f32) {
-        self.volume.set_volume(volume);
+        self.volume_base = volume;
     }
-    fn set_playback_speed(&mut self, playback_speed_factor: f32) {
-        self.stream_mono.set_playback_speed(playback_speed_factor);
+
+    fn set_pan(&mut self, pan: f32) {
+        self.pan_base = pan;
+    }
+
+    fn set_playback_speed(&mut self, playback_speed_percent: f32) {
+        self.playback_speed_base = playback_speed_percent;
+    }
+
+    fn set_spatial_pos(&mut self, pos: Vec2) {
+        if let Some(spatial) = &mut self.spatial_params {
+            spatial.pos = pos;
+        } else {
+            panic!(
+                "Stream '{}' has no spatial component to set position",
+                self.name
+            );
+        }
+    }
+
+    fn set_spatial_vel(&mut self, vel: Vec2) {
+        if let Some(spatial) = &mut self.spatial_params {
+            spatial.vel = vel;
+        } else {
+            panic!(
+                "Stream '{}' has no spatial component to set velocity",
+                self.name
+            );
+        }
     }
 }
 
-struct AudioStreamSpatial {
-    pub stream_stereo: AudioStreamStereo,
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Audiostream Spatial
 
-    pub volume: f32,
+#[derive(Copy, Clone)]
+struct SpatialParams {
     pub pos: Vec2,
     pub vel: Vec2,
     pub doppler_effect_strength: f32,
-
     /// The higher the exponent, the faster the falloff
     /// ...
     /// 0.5 - squareroot
@@ -690,30 +686,16 @@ struct AudioStreamSpatial {
     pub falloff_distance_end: f32,
 }
 
-impl AudioStreamSpatial {
+impl SpatialParams {
     fn new(
-        source: AudioSource,
-        delay_framecount: usize,
-        playback_speed: f32,
-        volume: f32,
-        initial_pan: f32,
         pos: Vec2,
         vel: Vec2,
         doppler_effect_strength: f32,
         falloff_type: AudioFalloffType,
         falloff_distance_start: f32,
         falloff_distance_end: f32,
-    ) -> AudioStreamSpatial {
-        let stream_stereo = AudioStreamStereo::new(
-            source,
-            delay_framecount,
-            playback_speed,
-            volume,
-            initial_pan,
-        );
-        AudioStreamSpatial {
-            stream_stereo,
-            volume,
+    ) -> SpatialParams {
+        SpatialParams {
             pos,
             vel,
             doppler_effect_strength,
@@ -722,20 +704,11 @@ impl AudioStreamSpatial {
             falloff_distance_end,
         }
     }
-}
-impl AudioStreamTrait for AudioStreamSpatial {
-    fn process_output_mono(&mut self, _output_params: AudioRenderParams) {
-        unimplemented!()
-    }
-    fn process_output_stereo(&mut self, output_params: AudioRenderParams) {
-        let playback_speed_factor = spatial_playback_speed_factor(
-            self.pos,
-            self.vel,
-            output_params.listener_pos,
-            output_params.listener_vel,
-            self.doppler_effect_strength,
-            output_params.doppler_effect_medium_velocity_abs_max,
-        );
+
+    fn calculate_volume_pan_playback_speed(
+        &self,
+        output_params: &AudioRenderParams,
+    ) -> (f32, f32, f32) {
         let volume_factor = spatial_volume_factor(
             self.pos,
             output_params.listener_pos,
@@ -748,192 +721,29 @@ impl AudioStreamTrait for AudioStreamSpatial {
             output_params.listener_pos,
             output_params.distance_for_max_pan,
         );
-
-        self.stream_stereo.set_volume(self.volume * volume_factor);
-        self.stream_stereo.pan.set_pan(pan);
-        self.stream_stereo.set_playback_speed(
-            self.stream_stereo.stream_mono.playback_speed * playback_speed_factor,
+        let playback_speed_factor = spatial_playback_speed_factor(
+            self.pos,
+            self.vel,
+            output_params.listener_pos,
+            output_params.listener_vel,
+            self.doppler_effect_strength,
+            output_params.doppler_effect_medium_velocity_abs_max,
         );
-
-        self.stream_stereo.process_output_stereo(output_params);
-    }
-    fn get_output_chunk_mono(&self) -> &AudioChunkMono {
-        unimplemented!()
-    }
-    fn get_output_chunk_stereo(&self) -> &AudioChunkStereo {
-        &self.stream_stereo.output_stereo
-    }
-
-    fn has_finished(&self) -> bool {
-        self.stream_stereo.has_finished()
-    }
-    fn is_looping(&self) -> bool {
-        self.stream_stereo.is_looping()
-    }
-
-    fn completion_ratio(&self) -> Option<f32> {
-        self.stream_stereo.completion_ratio()
-    }
-    fn set_volume(&mut self, volume: f32) {
-        self.volume = volume;
-    }
-    fn set_playback_speed(&mut self, playback_speed_factor: f32) {
-        self.stream_stereo.set_playback_speed(playback_speed_factor);
+        (volume_factor, pan, playback_speed_factor)
     }
 }
-
-enum AudioStream {
-    ScheduledMono(AudioStreamScheduledMono),
-    ScheduledStereo(AudioStreamStereo),
-    Spatial(AudioStreamSpatial),
-}
-impl AudioStream {
-    fn new_sheduled_mono(
-        source: AudioSource,
-        delay_framecount: usize,
-        playback_speed: f32,
-    ) -> AudioStream {
-        AudioStream::ScheduledMono(AudioStreamScheduledMono::new(
-            source,
-            delay_framecount,
-            playback_speed,
-        ))
-    }
-    fn new_scheduled_stereo(
-        source: AudioSource,
-        delay_framecount: usize,
-        playback_speed: f32,
-        volume: f32,
-        pan: f32,
-    ) -> AudioStream {
-        let stream_mono = AudioStreamScheduledMono::new(source, delay_framecount, playback_speed);
-        AudioStream::ScheduledStereo(AudioStreamStereo {
-            stream_mono,
-            volume: VolumeAdapter::new(volume),
-            pan: MonoToStereoAdapter::new(pan),
-            output_mono: AudioChunkMono::new(),
-            output_stereo: AudioChunkStereo::new(),
-        })
-    }
-
-    fn new_scheduled_spatial(
-        source: AudioSource,
-        delay_framecount: usize,
-        playback_speed: f32,
-        volume: f32,
-        initial_pan: f32,
-        pos: Vec2,
-        vel: Vec2,
-        doppler_effect_strength: f32,
-        falloff_type: AudioFalloffType,
-        falloff_distance_start: f32,
-        falloff_distance_end: f32,
-    ) -> AudioStream {
-        let stream_stereo = AudioStreamStereo::new(
-            source,
-            delay_framecount,
-            playback_speed,
-            volume,
-            initial_pan,
-        );
-        AudioStream::Spatial(AudioStreamSpatial {
-            stream_stereo,
-            volume,
-            pos,
-            vel,
-            doppler_effect_strength,
-            falloff_type,
-            falloff_distance_start,
-            falloff_distance_end,
-        })
-    }
-
-    fn get_output_chunk_mono(&self) -> &AudioChunkMono {
-        match self {
-            AudioStream::ScheduledMono(mono) => mono.get_output_chunk_mono(),
-            AudioStream::ScheduledStereo(stereo) => stereo.get_output_chunk_mono(),
-            AudioStream::Spatial(spatial) => spatial.get_output_chunk_mono(),
-        }
-    }
-
-    fn get_output_chunk_stereo(&self) -> &AudioChunkStereo {
-        match self {
-            AudioStream::ScheduledMono(mono) => mono.get_output_chunk_stereo(),
-            AudioStream::ScheduledStereo(stereo) => stereo.get_output_chunk_stereo(),
-            AudioStream::Spatial(spatial) => spatial.get_output_chunk_stereo(),
-        }
-    }
-
-    fn has_finished(&self) -> bool {
-        match self {
-            AudioStream::ScheduledMono(mono) => mono.has_finished(),
-            AudioStream::ScheduledStereo(stereo) => stereo.has_finished(),
-            AudioStream::Spatial(spatial) => spatial.has_finished(),
-        }
-    }
-
-    fn is_looping(&self) -> bool {
-        match self {
-            AudioStream::ScheduledMono(mono) => mono.is_looping(),
-            AudioStream::ScheduledStereo(stereo) => stereo.is_looping(),
-            AudioStream::Spatial(spatial) => spatial.is_looping(),
-        }
-    }
-
-    fn completion_ratio(&self) -> Option<f32> {
-        match self {
-            AudioStream::ScheduledMono(mono) => mono.completion_ratio(),
-            AudioStream::ScheduledStereo(stereo) => stereo.completion_ratio(),
-            AudioStream::Spatial(spatial) => spatial.completion_ratio(),
-        }
-    }
-
-    fn set_volume(&mut self, volume: f32) {
-        match self {
-            AudioStream::ScheduledMono(mono) => mono.set_volume(volume),
-            AudioStream::ScheduledStereo(stereo) => stereo.set_volume(volume),
-            AudioStream::Spatial(spatial) => spatial.set_volume(volume),
-        }
-    }
-
-    fn set_playback_speed(&mut self, playback_speed_factor: f32) {
-        match self {
-            AudioStream::ScheduledMono(mono) => mono.set_playback_speed(playback_speed_factor),
-            AudioStream::ScheduledStereo(stereo) => {
-                stereo.set_playback_speed(playback_speed_factor)
-            }
-            AudioStream::Spatial(spatial) => spatial.set_playback_speed(playback_speed_factor),
-        }
-    }
-
-    fn process_output_mono(&mut self, output_params: AudioRenderParams) {
-        match self {
-            AudioStream::ScheduledMono(mono) => mono.process_output_mono(output_params),
-            AudioStream::ScheduledStereo(stereo) => stereo.process_output_mono(output_params),
-            AudioStream::Spatial(spatial) => spatial.process_output_mono(output_params),
-        }
-    }
-
-    fn process_output_stereo(&mut self, output_params: AudioRenderParams) {
-        match self {
-            AudioStream::ScheduledMono(mono) => mono.process_output_stereo(output_params),
-            AudioStream::ScheduledStereo(stereo) => stereo.process_output_stereo(output_params),
-            AudioStream::Spatial(spatial) => spatial.process_output_stereo(output_params),
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Audiostream Spatial
 
 #[derive(Copy, Clone)]
 pub enum AudioFalloffType {
+    None,
     /// For large non-focused sounds
     Linear,
     /// For focused sounds
     Natural,
     /// Like `Natural` but can still be heard outside the falloff distance
-    NaturalUnbounded { minimum_volume: f32 },
+    NaturalUnbounded {
+        minimum_volume: f32,
+    },
 }
 impl AudioFalloffType {
     fn value_for_distance(
@@ -942,6 +752,10 @@ impl AudioFalloffType {
         falloff_distance_start: f32,
         falloff_distance_end: f32,
     ) -> f32 {
+        if let AudioFalloffType::None = self {
+            return 1.0;
+        }
+
         let minimum_volume = if let AudioFalloffType::NaturalUnbounded { minimum_volume } = self {
             *minimum_volume
         } else {
@@ -961,6 +775,7 @@ impl AudioFalloffType {
                 AudioFalloffType::NaturalUnbounded { minimum_volume } => {
                     minimum_volume + (1.0 - minimum_volume) * f32::exp(-6.0 * distance_ratio)
                 }
+                _ => unreachable!(),
             }
         }
     }
@@ -1167,7 +982,7 @@ impl Audiostate {
 
         // Render samples
         for stream in self.streams.values_mut() {
-            stream.process_output_stereo(self.output_render_params);
+            stream.produce_output(self.output_render_params);
             if stream.get_output_chunk_stereo().volume == 0.0 {
                 continue;
             }
@@ -1196,27 +1011,15 @@ impl Audiostate {
     }
 
     #[inline]
-    pub fn spatial_stream_set_pos(&mut self, stream_id: AudioStreamId, pos: Vec2) {
+    pub fn stream_set_spatial_pos(&mut self, stream_id: AudioStreamId, pos: Vec2) {
         let stream = self.get_stream_mut(stream_id);
-        match stream {
-            AudioStream::Spatial(spatial) => spatial.pos = pos,
-            _ => panic!(
-                "Audio stream with id {} is not a spatial audiostream",
-                stream_id
-            ),
-        }
+        stream.set_spatial_pos(pos);
     }
 
     #[inline]
-    pub fn spatial_stream_set_vel(&mut self, stream_id: AudioStreamId, vel: Vec2) {
+    pub fn stream_set_spatial_vel(&mut self, stream_id: AudioStreamId, vel: Vec2) {
         let stream = self.get_stream_mut(stream_id);
-        match stream {
-            AudioStream::Spatial(spatial) => spatial.vel = vel,
-            _ => panic!(
-                "Audio stream with id {} is not a spatial audiostream",
-                stream_id
-            ),
-        }
+        stream.set_spatial_vel(vel);
     }
 
     pub fn stream_set_volume(&mut self, stream_id: AudioStreamId, volume: f32) {
@@ -1229,7 +1032,7 @@ impl Audiostate {
         stream.set_playback_speed(playback_speed);
     }
 
-    fn start_delay_framecount_for_time(&self, schedule_time_seconds: f64) -> usize {
+    fn start_time_to_delay_framecount(&self, schedule_time_seconds: f64) -> usize {
         let start_frame_index = audio_seconds_to_frames(
             schedule_time_seconds,
             self.output_render_params.audio_sample_rate_hz,
@@ -1251,7 +1054,7 @@ impl Audiostate {
         pan: f32,
     ) -> AudioStreamId {
         let id = self.get_next_stream_id();
-        let start_delay_framecount = self.start_delay_framecount_for_time(schedule_time_seconds);
+        let start_delay_framecount = self.start_time_to_delay_framecount(schedule_time_seconds);
         let source = if recording_name == "sine" {
             AudioSource::new_from_sine(440.0, self.output_render_params.audio_sample_rate_hz)
         } else {
@@ -1261,12 +1064,14 @@ impl Audiostate {
                 .unwrap_or_else(|| panic!("Recording '{}' not found", recording_name));
             AudioSource::new_from_buffer(buffer.clone(), play_looped)
         };
-        let stream = AudioStream::new_scheduled_stereo(
+        let stream = AudioStream::new(
+            format!("{}:{}", recording_name, id),
             source,
             start_delay_framecount,
             playback_speed,
             volume,
             pan,
+            None,
         );
         self.streams.insert(id, stream);
         id
@@ -1308,7 +1113,7 @@ impl Audiostate {
         falloff_distance_end: f32,
     ) -> AudioStreamId {
         let id = self.get_next_stream_id();
-        let start_delay_framecount = self.start_delay_framecount_for_time(schedule_time_seconds);
+        let start_delay_framecount = self.start_time_to_delay_framecount(schedule_time_seconds);
         let stream = {
             let initial_pan = spatial_pan(
                 pos,
@@ -1322,18 +1127,21 @@ impl Audiostate {
                     .unwrap_or_else(|| panic!("Recording '{}' not found", recording_name));
                 AudioSource::new_from_buffer(buffer.clone(), play_looped)
             };
-            AudioStream::new_scheduled_spatial(
+            AudioStream::new(
+                format!("{}:{}", recording_name, id),
                 source,
                 start_delay_framecount,
                 playback_speed,
                 volume,
-                initial_pan,
-                pos,
-                vel,
-                doppler_effect_strength,
-                falloff_type,
-                falloff_distance_start,
-                falloff_distance_end,
+                0.0,
+                Some(SpatialParams::new(
+                    pos,
+                    vel,
+                    doppler_effect_strength,
+                    falloff_type,
+                    falloff_distance_start,
+                    falloff_distance_end,
+                )),
             )
         };
         self.streams.insert(id, stream);

@@ -5,11 +5,11 @@
 - WONTFIX: refactor audio system to use non interleaved buffers to comform more to 
   WebAudio API. It is not that practical to do it because we don't do that much processing
   and dynamic audio routing to justify the complexity
+- make audio interpolator use pullbuffer method instead of being an iterator
 
 # CURRENT
 
 - simplify our audiobuffers/sources/streams/mono/stero zoo
-- make audio interpolator use pullbuffer method instead of being an interator
 - check if we are doing volume propagation correctly
 
 # NEXT:
