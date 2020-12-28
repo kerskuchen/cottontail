@@ -184,7 +184,7 @@ impl MonoToStereoAdapter {
 }
 
 #[derive(Clone)]
-struct PlaybackSpeedInterpolator {
+struct ResamplerLinear {
     source: AudioSource,
     sample_current: AudioSample,
     sample_next: AudioSample,
@@ -193,9 +193,9 @@ struct PlaybackSpeedInterpolator {
     internal_buffer: AudioChunkMono,
     internal_buffer_readpos: usize,
 }
-impl PlaybackSpeedInterpolator {
-    fn new(source: AudioSource) -> PlaybackSpeedInterpolator {
-        PlaybackSpeedInterpolator {
+impl ResamplerLinear {
+    pub fn new(source: AudioSource) -> ResamplerLinear {
+        ResamplerLinear {
             source,
             sample_current: 0.0,
             sample_next: 0.0,
@@ -206,43 +206,21 @@ impl PlaybackSpeedInterpolator {
         }
     }
 
-    fn is_looping(&self) -> bool {
+    pub fn is_looping(&self) -> bool {
         self.source.is_looping()
     }
 
-    fn completion_ratio(&self) -> Option<f32> {
+    pub fn completion_ratio(&self) -> Option<f32> {
         let TODO = "this is slightly wrong if we still have samples in our internal buffer";
         self.source.completion_ratio()
     }
 
-    fn has_finished(&self) -> bool {
+    pub fn has_finished(&self) -> bool {
         self.source.has_finished()
             && self.internal_buffer_readpos >= self.internal_buffer.samples.len()
     }
 
-    fn get_next_sample(&mut self) -> AudioSample {
-        if self.internal_buffer_readpos >= self.internal_buffer.samples.len() {
-            // We have depleted our internal buffer and need to replenish it from our source
-
-            if self.source.has_finished() {
-                self.internal_buffer.volume = 0.0;
-                return 0.0;
-            } else {
-                self.source.produce_chunk_mono(&mut self.internal_buffer);
-                self.internal_buffer_readpos = 0;
-            }
-        }
-
-        let sample = unsafe {
-            self.internal_buffer
-                .samples
-                .get_unchecked(self.internal_buffer_readpos)
-        };
-        self.internal_buffer_readpos += 1;
-        *sample
-    }
-
-    fn produce_samples(
+    pub fn produce_samples(
         &mut self,
         output: &mut [AudioSample],
         output_sample_rate_hz: f32,
@@ -282,6 +260,28 @@ impl PlaybackSpeedInterpolator {
 
             *out_sample = interpolated_sample_value;
         }
+    }
+
+    fn get_next_sample(&mut self) -> AudioSample {
+        if self.internal_buffer_readpos >= self.internal_buffer.samples.len() {
+            // We have depleted our internal buffer and need to replenish it from our source
+
+            if self.source.has_finished() {
+                self.internal_buffer.volume = 0.0;
+                return 0.0;
+            } else {
+                self.source.produce_chunk_mono(&mut self.internal_buffer);
+                self.internal_buffer_readpos = 0;
+            }
+        }
+
+        let sample = unsafe {
+            self.internal_buffer
+                .samples
+                .get_unchecked(self.internal_buffer_readpos)
+        };
+        self.internal_buffer_readpos += 1;
+        *sample
     }
 }
 
@@ -492,17 +492,18 @@ struct AudioRenderParams {
 struct AudioStream {
     pub name: String,
 
-    playback_speed_interpolator: PlaybackSpeedInterpolator,
-
     frames_left_till_start: usize,
-    volume_base: f32,
-    /// Only used when we don't have spatial params
-    pan_base: f32,
-    /// Must be > 0
-    playback_speed_base: f32,
     has_finished: bool,
 
+    /// Must be > 0
+    playback_speed_base: f32,
+    playback_speed_resampler: ResamplerLinear,
+
+    volume_base: f32,
     volume_adapter: VolumeAdapter,
+
+    /// Only used when we don't have spatial params
+    pan_base: f32,
     pan_adapter: MonoToStereoAdapter,
 
     output_mono_raw: AudioChunkMono,
@@ -513,7 +514,7 @@ struct AudioStream {
 }
 
 impl AudioStream {
-    fn new(
+    pub fn new(
         name: String,
         source: AudioSource,
         delay_framecount: usize,
@@ -525,15 +526,16 @@ impl AudioStream {
         AudioStream {
             name,
 
-            playback_speed_interpolator: PlaybackSpeedInterpolator::new(source),
-
             frames_left_till_start: delay_framecount,
-            volume_base: volume,
-            pan_base: pan,
-            playback_speed_base: playback_speed_percent,
             has_finished: false,
 
+            playback_speed_base: playback_speed_percent,
+            playback_speed_resampler: ResamplerLinear::new(source),
+
+            volume_base: volume,
             volume_adapter: VolumeAdapter::new(volume),
+
+            pan_base: pan,
             pan_adapter: MonoToStereoAdapter::new(0.0),
 
             output_mono_raw: AudioChunkMono::new(),
@@ -544,7 +546,7 @@ impl AudioStream {
         }
     }
 
-    fn produce_output_chunk(&mut self, output_params: AudioRenderParams) {
+    pub fn produce_output_chunk(&mut self, output_params: AudioRenderParams) {
         // Reset volume for output chunks
         self.output_mono_with_volume.volume = 1.0;
         self.output_mono_raw.volume = 1.0;
@@ -598,12 +600,12 @@ impl AudioStream {
             };
 
         // Resampler stage
-        self.playback_speed_interpolator.produce_samples(
+        self.playback_speed_resampler.produce_samples(
             &mut self.output_mono_raw.samples[silence_framecount..],
             output_params.audio_sample_rate_hz as f32,
             final_playback_speed_factor,
         );
-        self.has_finished = self.playback_speed_interpolator.has_finished();
+        self.has_finished = self.playback_speed_resampler.has_finished();
 
         // Volume stage
         self.volume_adapter.set_volume(final_volume);
@@ -616,43 +618,43 @@ impl AudioStream {
             .process(&self.output_mono_with_volume, &mut self.output_stereo);
     }
 
-    fn get_output_chunk(&self) -> &AudioChunkStereo {
+    pub fn get_output_chunk(&self) -> &AudioChunkStereo {
         &self.output_stereo
     }
 
-    fn has_started(&self) -> bool {
+    pub fn has_started(&self) -> bool {
         self.frames_left_till_start == 0
     }
 
-    fn has_finished(&self) -> bool {
+    pub fn has_finished(&self) -> bool {
         self.has_finished
     }
 
-    fn is_looping(&self) -> bool {
-        self.playback_speed_interpolator.is_looping()
+    pub fn is_looping(&self) -> bool {
+        self.playback_speed_resampler.is_looping()
     }
 
-    fn completion_ratio(&self) -> Option<f32> {
+    pub fn completion_ratio(&self) -> Option<f32> {
         if self.has_started() {
-            self.playback_speed_interpolator.completion_ratio()
+            self.playback_speed_resampler.completion_ratio()
         } else {
             None
         }
     }
 
-    fn set_volume(&mut self, volume: f32) {
+    pub fn set_volume(&mut self, volume: f32) {
         self.volume_base = volume;
     }
 
-    fn set_pan(&mut self, pan: f32) {
+    pub fn set_pan(&mut self, pan: f32) {
         self.pan_base = pan;
     }
 
-    fn set_playback_speed(&mut self, playback_speed_percent: f32) {
+    pub fn set_playback_speed(&mut self, playback_speed_percent: f32) {
         self.playback_speed_base = playback_speed_percent;
     }
 
-    fn set_spatial_pos(&mut self, pos: Vec2) {
+    pub fn set_spatial_pos(&mut self, pos: Vec2) {
         if let Some(spatial) = &mut self.spatial_params {
             spatial.pos = pos;
         } else {
@@ -663,7 +665,7 @@ impl AudioStream {
         }
     }
 
-    fn set_spatial_vel(&mut self, vel: Vec2) {
+    pub fn set_spatial_vel(&mut self, vel: Vec2) {
         if let Some(spatial) = &mut self.spatial_params {
             spatial.vel = vel;
         } else {
@@ -679,70 +681,6 @@ impl AudioStream {
 // Audiostream Spatial
 
 #[derive(Copy, Clone)]
-struct SpatialParams {
-    pub pos: Vec2,
-    pub vel: Vec2,
-    pub doppler_effect_strength: f32,
-    /// The higher the exponent, the faster the falloff
-    /// ...
-    /// 0.5 - squareroot
-    /// 1.0 - linear
-    /// 2.0 - quadratic
-    /// 3.0 - cubic
-    /// ...
-    pub falloff_type: AudioFalloffType,
-    pub falloff_distance_start: f32,
-    pub falloff_distance_end: f32,
-}
-
-impl SpatialParams {
-    fn new(
-        pos: Vec2,
-        vel: Vec2,
-        doppler_effect_strength: f32,
-        falloff_type: AudioFalloffType,
-        falloff_distance_start: f32,
-        falloff_distance_end: f32,
-    ) -> SpatialParams {
-        SpatialParams {
-            pos,
-            vel,
-            doppler_effect_strength,
-            falloff_type,
-            falloff_distance_start,
-            falloff_distance_end,
-        }
-    }
-
-    fn calculate_volume_pan_playback_speed(
-        &self,
-        output_params: &AudioRenderParams,
-    ) -> (f32, f32, f32) {
-        let volume_factor = spatial_volume_factor(
-            self.pos,
-            output_params.listener_pos,
-            self.falloff_type,
-            self.falloff_distance_start,
-            self.falloff_distance_end,
-        );
-        let pan = spatial_pan(
-            self.pos,
-            output_params.listener_pos,
-            output_params.distance_for_max_pan,
-        );
-        let playback_speed_factor = spatial_playback_speed_factor(
-            self.pos,
-            self.vel,
-            output_params.listener_pos,
-            output_params.listener_vel,
-            self.doppler_effect_strength,
-            output_params.doppler_effect_medium_velocity_abs_max,
-        );
-        (volume_factor, pan, playback_speed_factor)
-    }
-}
-
-#[derive(Copy, Clone)]
 pub enum AudioFalloffType {
     None,
     /// For large non-focused sounds
@@ -755,7 +693,7 @@ pub enum AudioFalloffType {
     },
 }
 impl AudioFalloffType {
-    fn value_for_distance(
+    pub fn value_for_distance(
         &self,
         distance: f32,
         falloff_distance_start: f32,
@@ -790,50 +728,111 @@ impl AudioFalloffType {
     }
 }
 
-fn spatial_pan(source_pos: Vec2, listener_pos: Vec2, distance_for_max_pan: f32) -> f32 {
-    clampf(
-        (source_pos.x - listener_pos.x) / distance_for_max_pan,
-        -1.0,
-        1.0,
-    )
+#[derive(Copy, Clone)]
+struct SpatialParams {
+    pub pos: Vec2,
+    pub vel: Vec2,
+    pub doppler_effect_strength: f32,
+    pub falloff_type: AudioFalloffType,
+    pub falloff_distance_start: f32,
+    pub falloff_distance_end: f32,
 }
 
-fn spatial_playback_speed_factor(
-    source_pos: Vec2,
-    source_vel: Vec2,
-    listener_pos: Vec2,
-    listener_vel: Vec2,
-    doppler_effect_strength: f32,
-    doppler_effect_medium_velocity_abs_max: f32,
-) -> f32 {
-    // This uses the stationary observer doppler effect forumla
-    // https://en.wikipedia.org/wiki/Doppler_effect#Consequences
-    let dir_to_source = {
-        let listener_to_source = source_pos - listener_pos;
-        let listener_to_source_distance = listener_to_source.magnitude();
-        if is_effectively_zero(listener_to_source_distance) {
-            Vec2::unit_x()
-        } else {
-            listener_to_source / listener_to_source_distance
+impl SpatialParams {
+    pub fn new(
+        pos: Vec2,
+        vel: Vec2,
+        doppler_effect_strength: f32,
+        falloff_type: AudioFalloffType,
+        falloff_distance_start: f32,
+        falloff_distance_end: f32,
+    ) -> SpatialParams {
+        SpatialParams {
+            pos,
+            vel,
+            doppler_effect_strength,
+            falloff_type,
+            falloff_distance_start,
+            falloff_distance_end,
         }
-    };
-    let vel_relative = source_vel - listener_vel;
-    let vel_relative_source = Vec2::dot(vel_relative, dir_to_source);
-    let vel_relative_source_ratio =
-        doppler_effect_strength * vel_relative_source / doppler_effect_medium_velocity_abs_max;
+    }
 
-    1.0 / (1.0 + clampf(vel_relative_source_ratio, -0.5, 0.5))
-}
+    pub fn calculate_volume_pan_playback_speed(
+        &self,
+        output_params: &AudioRenderParams,
+    ) -> (f32, f32, f32) {
+        let volume_factor = SpatialParams::calculate_spatial_volume_factor(
+            self.pos,
+            output_params.listener_pos,
+            self.falloff_type,
+            self.falloff_distance_start,
+            self.falloff_distance_end,
+        );
+        let pan = SpatialParams::calculate_spatial_pan(
+            self.pos,
+            output_params.listener_pos,
+            output_params.distance_for_max_pan,
+        );
+        let playback_speed_factor = SpatialParams::calculate_spatial_playback_speed_factor(
+            self.pos,
+            self.vel,
+            output_params.listener_pos,
+            output_params.listener_vel,
+            self.doppler_effect_strength,
+            output_params.doppler_effect_medium_velocity_abs_max,
+        );
+        (volume_factor, pan, playback_speed_factor)
+    }
 
-fn spatial_volume_factor(
-    source_pos: Vec2,
-    listener_pos: Vec2,
-    falloff_type: AudioFalloffType,
-    falloff_distance_start: f32,
-    falloff_distance_end: f32,
-) -> f32 {
-    let distance = Vec2::distance(source_pos, listener_pos);
-    falloff_type.value_for_distance(distance, falloff_distance_start, falloff_distance_end)
+    fn calculate_spatial_pan(
+        source_pos: Vec2,
+        listener_pos: Vec2,
+        distance_for_max_pan: f32,
+    ) -> f32 {
+        clampf(
+            (source_pos.x - listener_pos.x) / distance_for_max_pan,
+            -1.0,
+            1.0,
+        )
+    }
+
+    fn calculate_spatial_playback_speed_factor(
+        source_pos: Vec2,
+        source_vel: Vec2,
+        listener_pos: Vec2,
+        listener_vel: Vec2,
+        doppler_effect_strength: f32,
+        doppler_effect_medium_velocity_abs_max: f32,
+    ) -> f32 {
+        // This uses the stationary observer doppler effect forumla
+        // https://en.wikipedia.org/wiki/Doppler_effect#Consequences
+        let dir_to_source = {
+            let listener_to_source = source_pos - listener_pos;
+            let listener_to_source_distance = listener_to_source.magnitude();
+            if is_effectively_zero(listener_to_source_distance) {
+                Vec2::unit_x()
+            } else {
+                listener_to_source / listener_to_source_distance
+            }
+        };
+        let vel_relative = source_vel - listener_vel;
+        let vel_relative_source = Vec2::dot(vel_relative, dir_to_source);
+        let vel_relative_source_ratio =
+            doppler_effect_strength * vel_relative_source / doppler_effect_medium_velocity_abs_max;
+
+        1.0 / (1.0 + clampf(vel_relative_source_ratio, -0.5, 0.5))
+    }
+
+    fn calculate_spatial_volume_factor(
+        source_pos: Vec2,
+        listener_pos: Vec2,
+        falloff_type: AudioFalloffType,
+        falloff_distance_start: f32,
+        falloff_distance_end: f32,
+    ) -> f32 {
+        let distance = Vec2::distance(source_pos, listener_pos);
+        falloff_type.value_for_distance(distance, falloff_distance_start, falloff_distance_end)
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1015,7 +1014,7 @@ impl Audiostate {
         let id = self.get_next_stream_id();
         let start_delay_framecount = self.start_time_to_delay_framecount(schedule_time_seconds);
         let stream = {
-            let initial_pan = spatial_pan(
+            let initial_pan = SpatialParams::calculate_spatial_pan(
                 pos,
                 self.output_render_params.listener_pos,
                 self.output_render_params.distance_for_max_pan,

@@ -10,6 +10,8 @@
 - fixes input recording
 - greatly improved audio performance bt merging audiostream stages together
 - fixes volume propagation of streams
+- WONTFIX(build times would be too high and crate dependencies not clear) make crate controlflow 
+  more streamlined (maybe build everything as one crate?)
 
 # CURRENT
 
@@ -22,11 +24,10 @@
 - Easier text drawing api
   - one that is simple without much parameters
   - one that just centers text in rect
+  - macro based debug log with format strings?
   - other ideas?
 - Ability to draw debug graphs to i.e. try out attenuation for audio distance
-- Easy debug-printing text API that draws in screenspace (not canvas-space)
 - We need to add a debug layer to the drawstate with its own drawqueue
-- make crate controlflow more streamlined (maybe build everything as one crate?)
 - get rid of scenes system and game events
 - add unified/virtual gamecursor input to gamecursors struct (uses mouse or first touchfinger)
 - simplify query for finger press events
@@ -58,7 +59,7 @@
 - gamepad support for wasm
 - Find out why gamepad shoulder trigger axes does not work. Directly accessing the state 
   with `Gamepad::axis_or_btn_name()` or iterating axis does not let us find any state. We know that 
-  it should work because it does so in the control panel
+  it should work because it does so in the MSWindows control panel
 - make refresh rate snapping more smart (especially for deltatimes without vsync which is currently 
   wrong). (ie. we could use the values of the last ten frames as basis for snapping)
 
