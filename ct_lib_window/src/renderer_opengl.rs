@@ -961,10 +961,16 @@ impl Renderer {
 
     pub fn update_screen_dimensions(&mut self, screen_width: u32, screen_height: u32) {
         let gl = &self.gl;
-        self.framebuffers.insert(
-            "screen".to_owned(),
-            Framebuffer::new_screen(gl.clone(), screen_width, screen_height),
-        );
+        if !self.framebuffers.contains_key("screen") {
+            self.framebuffers.insert(
+                "screen".to_owned(),
+                Framebuffer::new_screen(gl.clone(), screen_width, screen_height),
+            );
+        }
+
+        let framebuffer = self.framebuffers.get_mut("screen").unwrap();
+        framebuffer.width = screen_width;
+        framebuffer.height = screen_height;
     }
 
     pub fn get_screen_dimensions(&self) -> (u32, u32) {
