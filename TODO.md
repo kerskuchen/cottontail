@@ -6,10 +6,11 @@
   WebAudio API. It is not that practical to do it because we don't do that much processing
   and dynamic audio routing to justify the complexity
 - make audio interpolator use pullbuffer method instead of being an iterator
+- simplify our audiobuffers/sources/streams/mono/stero zoo
+- fixes input recording
 
 # CURRENT
 
-- simplify our audiobuffers/sources/streams/mono/stero zoo
 - check if we are doing volume propagation correctly
 
 # NEXT:

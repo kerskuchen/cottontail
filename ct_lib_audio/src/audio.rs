@@ -484,6 +484,7 @@ struct AudioRenderParams {
     pub distance_for_max_pan: f32,
 }
 
+#[derive(Clone)]
 struct AudioStream {
     pub name: String,
 
@@ -833,6 +834,7 @@ fn spatial_volume_factor(
 /// This can never be zero for a valid stream
 pub type AudioStreamId = u64;
 
+#[derive(Clone)]
 pub struct Audiostate {
     next_frame_index_to_output: AudioFrameIndex,
     output_render_params: AudioRenderParams,
@@ -845,11 +847,6 @@ pub struct Audiostate {
 
     audio_recordings_mono: HashMap<String, Rc<AudioBufferMono>>,
     audio_recordings_stereo: HashMap<String, Rc<AudioBufferStereo>>,
-}
-impl Clone for Audiostate {
-    fn clone(&self) -> Self {
-        todo!()
-    }
 }
 
 impl Audiostate {
@@ -1133,7 +1130,7 @@ impl Audiostate {
                 start_delay_framecount,
                 playback_speed,
                 volume,
-                0.0,
+                initial_pan,
                 Some(SpatialParams::new(
                     pos,
                     vel,
