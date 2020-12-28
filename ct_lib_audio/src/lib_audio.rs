@@ -43,7 +43,7 @@ pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, Vec<AudioSample>
                     .collect(),
                 _ => {
                     return Err(format!(
-                        "{} Bit PCM wav data not supported",
+                        "{} bit PCM wav data not supported",
                         header.bits_per_sample
                     ))
                 }

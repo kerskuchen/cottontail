@@ -31,8 +31,33 @@ impl AudioFrame {
 }
 
 pub const AUDIO_CHUNKSIZE_IN_FRAMES: usize = 512;
-pub type AudioChunkMono = [AudioSample; AUDIO_CHUNKSIZE_IN_FRAMES];
-pub type AudioChunkStereo = [AudioFrame; AUDIO_CHUNKSIZE_IN_FRAMES];
+
+#[derive(Clone, Copy)]
+struct AudioChunkMono {
+    volume: f32,
+    samples: [AudioSample; AUDIO_CHUNKSIZE_IN_FRAMES],
+}
+impl AudioChunkMono {
+    pub fn new() -> AudioChunkMono {
+        AudioChunkMono {
+            volume: 1.0,
+            samples: [0.0; AUDIO_CHUNKSIZE_IN_FRAMES],
+        }
+    }
+}
+#[derive(Clone, Copy)]
+struct AudioChunkStereo {
+    volume: f32,
+    frames: [AudioFrame; AUDIO_CHUNKSIZE_IN_FRAMES],
+}
+impl AudioChunkStereo {
+    pub fn new() -> AudioChunkStereo {
+        AudioChunkStereo {
+            volume: 1.0,
+            frames: [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES],
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Timing
@@ -70,18 +95,30 @@ impl VolumeAdapter {
     fn set_volume(&mut self, volume: f32) {
         self.target = volume;
     }
-    fn process(&mut self, input_samples: &AudioChunkMono, output_samples: &mut AudioChunkMono) {
+    fn process(&mut self, input: &AudioChunkMono, output: &mut AudioChunkMono) {
+        if input.volume == 0.0 {
+            // Fast path - input is silent - no need to ramp up/down volume
+            output.volume = 0.0;
+            self.current = self.target;
+            return;
+        }
+
         if self.target == self.current {
             // Fast path - all values are the same for the chunk
             let volume = self.target;
-            for (in_sample, out_sample) in input_samples.iter().zip(output_samples.iter_mut()) {
-                *out_sample = volume * in_sample;
+
+            if volume == 0.0 {
+                // No need to copy silence
+                output.volume = 0.0;
+            } else {
+                *output = *input;
+                output.volume *= volume;
             }
         } else {
             // Slow path - need to ramp up/down volume
             let volume_increase = (self.target - self.current) / AUDIO_CHUNKSIZE_IN_FRAMES as f32;
             let mut volume = self.current;
-            for (in_sample, out_sample) in input_samples.iter().zip(output_samples.iter_mut()) {
+            for (in_sample, out_sample) in input.samples.iter().zip(output.samples.iter_mut()) {
                 *out_sample = volume * in_sample;
                 volume += volume_increase;
             }
@@ -106,12 +143,19 @@ impl MonoToStereoAdapter {
     fn set_pan(&mut self, pan: f32) {
         self.target = pan;
     }
-    fn process(&mut self, input_samples: &AudioChunkMono, output_frames: &mut AudioChunkStereo) {
+    fn process(&mut self, input: &AudioChunkMono, output: &mut AudioChunkStereo) {
+        if input.volume == 0.0 {
+            // Fast path - input is silent - no need to ramp up/down pan
+            output.volume = 0.0;
+            self.current = self.target;
+            return;
+        }
+
         if self.target == self.current {
             // Fast path - all values are the same for the chunk
             let percent = 0.5 * (self.target + 1.0); // Transform [-1,1] -> [0,1]
             let (volume_left, volume_right) = crossfade_squareroot(1.0, percent);
-            for (in_sample, out_frame) in input_samples.iter().zip(output_frames.iter_mut()) {
+            for (in_sample, out_frame) in input.samples.iter().zip(output.frames.iter_mut()) {
                 out_frame.left = volume_left * in_sample;
                 out_frame.right = volume_right * in_sample;
             }
@@ -122,7 +166,7 @@ impl MonoToStereoAdapter {
             let percent_increase =
                 (percent_target - percent_start) / AUDIO_CHUNKSIZE_IN_FRAMES as f32;
             let mut percent = percent_start;
-            for (in_sample, out_frame) in input_samples.iter().zip(output_frames.iter_mut()) {
+            for (in_sample, out_frame) in input.samples.iter().zip(output.frames.iter_mut()) {
                 let (volume_left, volume_right) = crossfade_squareroot(*in_sample, percent);
                 *out_frame = AudioFrame::new(volume_left, volume_right);
                 percent += percent_increase;
@@ -339,7 +383,7 @@ struct AudioStreamScheduledMono {
     pub playback_speed: f32,
     pub has_finished: bool,
 
-    output_buffer: AudioChunkMono,
+    output: AudioChunkMono,
 }
 impl AudioStreamScheduledMono {
     fn new(
@@ -354,12 +398,20 @@ impl AudioStreamScheduledMono {
             playback_speed,
             has_finished: false,
 
-            output_buffer: [0.0; AUDIO_CHUNKSIZE_IN_FRAMES],
+            output: AudioChunkMono::new(),
         }
     }
 }
 impl AudioStream for AudioStreamScheduledMono {
     fn process_output_mono(&mut self, output_params: AudioRenderParams) {
+        // Reset volume for new output chunk
+        self.output.volume = 1.0;
+
+        if self.has_finished {
+            self.output.volume = 0.0;
+            return;
+        }
+
         let silence_framecount = {
             let silence_framecount =
                 usize::min(self.frames_left_till_start, AUDIO_CHUNKSIZE_IN_FRAMES);
@@ -374,9 +426,7 @@ impl AudioStream for AudioStreamScheduledMono {
 
         // Fast path - our stream won't start this chunk
         if silence_framecount == AUDIO_CHUNKSIZE_IN_FRAMES {
-            for sample in &mut self.output_buffer {
-                *sample = 0.0;
-            }
+            self.output.volume = 0.0;
             return;
         }
 
@@ -385,10 +435,10 @@ impl AudioStream for AudioStreamScheduledMono {
                 self.source.sample_rate_hz() as f32 / output_params.audio_sample_rate_hz as f32;
             self.playback_speed * sample_rate_conversion_factor
         };
-        for sample in &mut self.output_buffer[0..silence_framecount] {
+        for sample in &mut self.output.samples[0..silence_framecount] {
             *sample = 0.0;
         }
-        for out_sample in &mut self.output_buffer[silence_framecount..] {
+        for out_sample in &mut self.output.samples[silence_framecount..] {
             if let Some(resampled_value) = self
                 .interpolator
                 .next_sample(&mut self.source, playback_speed)
@@ -401,7 +451,7 @@ impl AudioStream for AudioStreamScheduledMono {
         }
     }
     fn get_output_chunk_mono(&self) -> &AudioChunkMono {
-        &self.output_buffer
+        &self.output
     }
     fn get_output_chunk_stereo(&self) -> &AudioChunkStereo {
         unimplemented!()
@@ -446,8 +496,8 @@ struct AudioStreamStereo {
     pub volume: VolumeAdapter,
     pub pan: MonoToStereoAdapter,
 
-    output_buffer_mono: [AudioSample; AUDIO_CHUNKSIZE_IN_FRAMES],
-    output_buffer_stereo: [AudioFrame; AUDIO_CHUNKSIZE_IN_FRAMES],
+    output_mono: AudioChunkMono,
+    output_stereo: AudioChunkStereo,
 }
 impl AudioStreamStereo {
     fn new(
@@ -462,8 +512,8 @@ impl AudioStreamStereo {
             stream,
             volume: VolumeAdapter::new(volume),
             pan: MonoToStereoAdapter::new(pan),
-            output_buffer_mono: [0.0; AUDIO_CHUNKSIZE_IN_FRAMES],
-            output_buffer_stereo: [AudioFrame::silence(); AUDIO_CHUNKSIZE_IN_FRAMES],
+            output_mono: AudioChunkMono::new(),
+            output_stereo: AudioChunkStereo::new(),
         }
     }
 }
@@ -472,19 +522,20 @@ impl AudioStream for AudioStreamStereo {
         unimplemented!()
     }
     fn process_output_stereo(&mut self, output_params: AudioRenderParams) {
+        // Reset volume for new output chunk
+        self.output_mono.volume = 1.0;
+        self.output_stereo.volume = 1.0;
+
         self.stream.process_output_mono(output_params);
-        self.volume.process(
-            self.stream.get_output_chunk_mono(),
-            &mut self.output_buffer_mono,
-        );
-        self.pan
-            .process(&self.output_buffer_mono, &mut self.output_buffer_stereo);
+        self.volume
+            .process(self.stream.get_output_chunk_mono(), &mut self.output_mono);
+        self.pan.process(&self.output_mono, &mut self.output_stereo);
     }
     fn get_output_chunk_mono(&self) -> &AudioChunkMono {
         unimplemented!()
     }
     fn get_output_chunk_stereo(&self) -> &AudioChunkStereo {
-        &self.output_buffer_stereo
+        &self.output_stereo
     }
 
     fn has_finished(&self) -> bool {
@@ -690,7 +741,7 @@ impl AudioStream for AudioStreamSpatial {
         unimplemented!()
     }
     fn get_output_chunk_stereo(&self) -> &AudioChunkStereo {
-        &self.stream_stereo.output_buffer_stereo
+        &self.stream_stereo.output_stereo
     }
 
     fn has_finished(&self) -> bool {
@@ -810,7 +861,7 @@ impl Audiostate {
     fn get_stream(&self, stream_id: AudioStreamId) -> &Box<dyn AudioStream> {
         self.streams
             .get(&stream_id)
-            .expect(&format!("No audio stream found for id {}", stream_id))
+            .unwrap_or_else(|| panic!("No audio stream found for id {}", stream_id))
     }
     fn get_stream_mut(&mut self, stream_id: AudioStreamId) -> &mut Box<dyn AudioStream> {
         self.streams
@@ -854,7 +905,7 @@ impl Audiostate {
     }
 
     /// It is assumed that `out_chunk` is filled with silence
-    pub fn render_audio_chunk(&mut self, out_chunk: &mut AudioChunkStereo) {
+    pub fn render_audio_chunk(&mut self, out_chunk: &mut [AudioFrame; AUDIO_CHUNKSIZE_IN_FRAMES]) {
         // Remove streams that have finished
         let mut streams_removed = vec![];
         for &stream_id in &self.streams_to_delete_after_finish {
@@ -870,9 +921,13 @@ impl Audiostate {
         // Render samples
         for stream in self.streams.values_mut() {
             stream.process_output_stereo(self.output_render_params);
+            if stream.get_output_chunk_stereo().volume == 0.0 {
+                continue;
+            }
+
             for (out_frame, rendered_chunk) in out_chunk
                 .iter_mut()
-                .zip(stream.get_output_chunk_stereo().iter())
+                .zip(stream.get_output_chunk_stereo().frames.iter())
             {
                 out_frame.left += rendered_chunk.left;
                 out_frame.right += rendered_chunk.right;

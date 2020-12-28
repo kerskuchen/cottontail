@@ -1,20 +1,5 @@
 # DONE:
 
-- fix audio stuttering introduced earlier
-- made window crate independant of audio crate
-- make window crate independant of draw crate
-- fixed vertexbuffer bug
-- adds logs to renderer
-- inverted controlflow draw->renderer
-- make draw api more typesafe again 
-  (NOTE: we did not put traits like vertex into the renderer because it would need things like
-   Color to be known in the renderer)
-- fix audio stuttering (performance?) on wasm (NOTE: buffer resize)
-- fix copying of glyph-sprites when debug logging
-- removes calls to html_get_canvas in mainloop
-- caches all calls to html elements in wasm platform maybe we can use lazy static in core for each 
-  imporant enough element (canvas, screen, window, document)?
-  NOTE: We did not use lazy_static because it has unneeded atomic reference count overhead
 
 # CURRENT
 
@@ -195,3 +180,19 @@
 - let game use platform (reverse controlflow)
 - split input out of ct lib into platform
 - replaces wav crate with hound, adds wav encoding for debug purposes
+
+- fix audio stuttering introduced earlier
+- made window crate independant of audio crate
+- make window crate independant of draw crate
+- fixed vertexbuffer bug
+- adds logs to renderer
+- inverted controlflow draw->renderer
+- make draw api more typesafe again 
+  (NOTE: we did not put traits like vertex into the renderer because it would need things like
+   Color to be known in the renderer)
+- fix audio stuttering (performance?) on wasm (NOTE: buffer resize)
+- fix copying of glyph-sprites when debug logging
+- removes calls to html_get_canvas in mainloop
+- caches all calls to html elements in wasm platform maybe we can use lazy static in core for each 
+  imporant enough element (canvas, screen, window, document)?
+  NOTE: We did not use lazy_static because it has unneeded atomic reference count overhead
