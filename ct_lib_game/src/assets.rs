@@ -178,19 +178,19 @@ impl GameAssets {
     pub fn get_anim(&self, animation_name: &str) -> &Animation<Sprite> {
         self.animations
             .get(animation_name)
-            .expect(&format!("Could not find animation '{}'", animation_name))
+            .unwrap_or_else(|| panic!("Could not find animation '{}'", animation_name))
     }
 
     pub fn get_anim_3d(&self, animation_name: &str) -> &Animation<Sprite3D> {
         self.animations_3d
             .get(animation_name)
-            .expect(&format!("Could not find animation '{}'", animation_name))
+            .unwrap_or_else(|| panic!("Could not find animation '{}'", animation_name))
     }
 
     pub fn get_font(&self, font_name: &str) -> &SpriteFont {
         self.fonts
             .get(font_name)
-            .expect(&format!("Could not find font '{}'", font_name))
+            .unwrap_or_else(|| panic!("Could not find font '{}'", font_name))
     }
 
     pub fn get_sprite(&self, sprite_name: &str) -> &Sprite {
@@ -202,10 +202,7 @@ impl GameAssets {
             self.atlas
                 .sprites
                 .get(&format!("{}.0", sprite_name))
-                .expect(&format!(
-                    "Sprite with name '{}' does not exist",
-                    sprite_name
-                ))
+                .unwrap_or_else(|| panic!("Sprite with name '{}' does not exist", sprite_name))
         }
     }
 
@@ -217,10 +214,7 @@ impl GameAssets {
             //       of a sprite without the ".0" suffix
             self.sprites_3d
                 .get(&format!("{}.0", sprite_name))
-                .expect(&format!(
-                    "Sprite with name '{}' does not exist",
-                    sprite_name
-                ))
+                .unwrap_or_else(|| panic!("Sprite with name '{}' does not exist", sprite_name))
         }
     }
 
@@ -259,7 +253,7 @@ impl GameAssets {
             let texture_filepath = path_join(&self.assets_folder, texture_filepath_relative);
             textures.push(
                 Bitmap::from_png_data(&self.files_bindata[&texture_filepath])
-                    .expect(&format!("Could load texture '{}'", texture_filepath)),
+                    .unwrap_or_else(|error| panic!("Could load texture '{}'", texture_filepath)),
             );
         }
 

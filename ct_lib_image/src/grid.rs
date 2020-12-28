@@ -899,7 +899,7 @@ where
                         segment_width,
                         segment_height,
                     ))
-                    .expect(&format!("Segment ({},{}) was empty", x, y));
+                    .unwrap_or_else(|| panic!("Segment ({},{}) was empty", x, y));
                 segment_images.push(subgrid);
                 segment_coordinates.push(pos);
             }

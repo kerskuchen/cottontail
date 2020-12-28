@@ -389,7 +389,7 @@ impl Texture {
         let texture_id = unsafe {
             let texture = gl
                 .create_texture()
-                .expect(&format!("Cannot create texture '{}'", name));
+                .unwrap_or_else(|error| panic!("Cannot create texture '{}': {}", name, error));
             gl.bind_texture(glow::TEXTURE_2D, Some(texture));
             gl.tex_image_2d(
                 glow::TEXTURE_2D,
@@ -427,10 +427,12 @@ impl Texture {
             texture
         };
 
-        gl_check_state_ok(&gl).expect(&format!(
-            "Something went wrong while creating texture '{}'",
-            name
-        ));
+        gl_check_state_ok(&gl).unwrap_or_else(|error| {
+            panic!(
+                "Something went wrong while creating texture '{}': {}",
+                name, error
+            )
+        });
         Texture {
             name: name,
             width,
@@ -484,10 +486,12 @@ impl Texture {
             gl.bind_texture(glow::TEXTURE_2D, None);
         }
 
-        gl_check_state_ok(&gl).expect(&format!(
-            "Something went wrong while updating texture '{}'",
-            self.name
-        ));
+        gl_check_state_ok(&gl).unwrap_or_else(|error| {
+            panic!(
+                "Something went wrong while updating texture '{}': {}",
+                self.name, error
+            )
+        });
     }
 }
 
@@ -518,7 +522,7 @@ impl Depthbuffer {
         let depth_id = unsafe {
             let depth = gl
                 .create_renderbuffer()
-                .expect(&format!("Cannot create depthbuffer '{}'", name));
+                .unwrap_or_else(|error| panic!("Cannot create depthbuffer '{}': {}", name, error));
             gl.bind_renderbuffer(glow::RENDERBUFFER, Some(depth));
             gl.renderbuffer_storage(
                 glow::RENDERBUFFER,
@@ -531,10 +535,12 @@ impl Depthbuffer {
             depth
         };
 
-        gl_check_state_ok(&gl).expect(&format!(
-            "Something went wrong while creating depthbuffer '{}'",
-            name
-        ));
+        gl_check_state_ok(&gl).unwrap_or_else(|error| {
+            panic!(
+                "Something went wrong while creating depthbuffer '{}': {}",
+                name, error
+            )
+        });
 
         Depthbuffer {
             name,
@@ -605,7 +611,7 @@ impl Framebuffer {
             // Create offscreen framebuffer
             let framebuffer = gl
                 .create_framebuffer()
-                .expect(&format!("Cannot create framebuffer '{}'", name));
+                .unwrap_or_else(|error| panic!("Cannot create framebuffer '{}': {}", name, error));
             gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
 
             // Attach color and depth buffers
@@ -626,14 +632,16 @@ impl Framebuffer {
             assert!(
                 gl.check_framebuffer_status(glow::FRAMEBUFFER) == glow::FRAMEBUFFER_COMPLETE,
                 "Framebuffer status was not ok for framebuffer '{}'",
-                name
+                name,
             );
             gl.bind_framebuffer(glow::FRAMEBUFFER, None);
 
-            gl_check_state_ok(&gl).expect(&format!(
-                "Something went wrong while creating framebuffer '{}'",
-                name
-            ));
+            gl_check_state_ok(&gl).unwrap_or_else(|error| {
+                panic!(
+                    "Something went wrong while creating framebuffer '{}': {}",
+                    name, error
+                )
+            });
 
             Framebuffer {
                 name,
@@ -687,22 +695,28 @@ impl DrawObject {
     fn new_from_shader(gl: Rc<glow::Context>, shader: &Shader) -> DrawObject {
         let name = shader.name.clone();
         let (vertex_array, vertex_buffer, index_buffer) = unsafe {
-            let vertex_array = gl.create_vertex_array().expect(&format!(
-                "Cannot create vertex array object for drawobject '{}'",
-                name
-            ));
+            let vertex_array = gl.create_vertex_array().unwrap_or_else(|error| {
+                panic!(
+                    "Cannot create vertex array object for drawobject '{}': {}",
+                    name, error
+                )
+            });
             gl.bind_vertex_array(Some(vertex_array));
 
-            let vertex_buffer = gl.create_buffer().expect(&format!(
-                "Cannot create vertex buffer for drawobject '{}'",
-                name
-            ));
+            let vertex_buffer = gl.create_buffer().unwrap_or_else(|error| {
+                panic!(
+                    "Cannot create vertex buffer for drawobject '{}': {}",
+                    name, error
+                )
+            });
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(vertex_buffer));
 
-            let index_buffer = gl.create_buffer().expect(&format!(
-                "Cannot create index buffer for drawobject '{}'",
-                name
-            ));
+            let index_buffer = gl.create_buffer().unwrap_or_else(|error| {
+                panic!(
+                    "Cannot create index buffer for drawobject '{}': {}",
+                    name, error
+                )
+            });
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(index_buffer));
 
             // Assign attributes
@@ -732,10 +746,12 @@ impl DrawObject {
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
             gl.bind_buffer(glow::ARRAY_BUFFER, None);
 
-            gl_check_state_ok(&gl).expect(&format!(
-                "Something went wrong while creating drawobject '{}'",
-                name
-            ));
+            gl_check_state_ok(&gl).unwrap_or_else(|error| {
+                panic!(
+                    "Something went wrong while creating drawobject '{}': {}",
+                    name, error
+                )
+            });
 
             (vertex_array, vertex_buffer, index_buffer)
         };
@@ -954,11 +970,13 @@ impl Renderer {
         }
     }
 
+    #[inline]
     pub fn reset(&mut self) {
         self.framebuffers.clear();
         self.textures.clear();
     }
 
+    #[inline]
     pub fn update_screen_dimensions(&mut self, screen_width: u32, screen_height: u32) {
         let gl = &self.gl;
         if !self.framebuffers.contains_key("screen") {
@@ -973,18 +991,20 @@ impl Renderer {
         framebuffer.height = screen_height;
     }
 
+    #[inline]
     pub fn get_screen_dimensions(&self) -> (u32, u32) {
         let screen = self
             .framebuffers
             .get("screen")
-            .expect("Screen framebuffer not created");
+            .unwrap_or_else(|| panic!("Screen framebuffer not created"));
         (screen.width, screen.height)
     }
 
+    #[inline]
     pub fn assign_buffers(&mut self, shader: &str, vertices: &[u8], indices: &[u8]) {
         self.drawobjects
             .get(shader)
-            .expect(&format!("Drawobject not found for shader '{}'", shader))
+            .unwrap_or_else(|| panic!("Drawobject not found for shader '{}'", shader))
             .assign_buffers(&vertices, &indices);
 
         if ENABLE_LOGS {
@@ -1004,6 +1024,7 @@ impl Renderer {
         }
     }
 
+    #[inline]
     pub fn draw(
         &mut self,
         shader: &str,
@@ -1020,24 +1041,24 @@ impl Renderer {
 
         self.framebuffers
             .get(framebuffer)
-            .expect(&format!("Framebuffer '{}' not found", framebuffer))
+            .unwrap_or_else(|| panic!("Framebuffer '{}' not found", framebuffer))
             .activate();
 
         self.shaders
             .get(shader)
-            .expect(&format!("Shader '{}' not found", shader))
+            .unwrap_or_else(|| panic!("Shader '{}' not found", shader))
             .activate(uniform_block);
 
         // NOTE: We need to bind the texture after shader activation as it
         //       might have invalidated our texture unit
         self.textures
             .get(texture)
-            .expect(&format!("Texture '{}' not found", texture))
+            .unwrap_or_else(|| panic!("Texture '{}' not found", texture))
             .activate(0);
 
         self.drawobjects
             .get(shader)
-            .expect(&format!("Drawobject '{}' not found", shader))
+            .unwrap_or_else(|| panic!("Drawobject '{}' not found", shader))
             .draw(indices_start_offset, indices_count);
 
         if ENABLE_LOGS {
@@ -1057,10 +1078,12 @@ impl Renderer {
         }
     }
 
+    #[inline]
     pub fn texture_exists(&self, name: &str) -> bool {
         self.textures.contains_key(name)
     }
 
+    #[inline]
     pub fn texture_create_or_update_whole(
         &mut self,
         name: &str,
@@ -1075,6 +1098,7 @@ impl Renderer {
         }
     }
 
+    #[inline]
     pub fn texture_create(&mut self, name: String, width: u32, height: u32, pixels: &[u8]) {
         assert!(
             !self.textures.contains_key(&name),
@@ -1091,6 +1115,7 @@ impl Renderer {
         self.texture_update_pixels(&name, 0, 0, width, height, pixels);
     }
 
+    #[inline]
     pub fn texture_update_pixels(
         &mut self,
         texture: &str,
@@ -1112,7 +1137,7 @@ impl Renderer {
         }
         self.textures
             .get(texture)
-            .expect(&format!("Texture '{}' not found", texture))
+            .unwrap_or_else(|| panic!("Texture '{}' not found", texture))
             .update_pixels(
                 region_offset_x,
                 region_offset_y,
@@ -1122,19 +1147,22 @@ impl Renderer {
             );
     }
 
+    #[inline]
     pub fn texture_delete(&mut self, texture: &str) {
         if ENABLE_LOGS {
             log::debug!("Deleting texture '{}'", &texture);
         }
         self.textures
             .remove(texture)
-            .expect(&format!("Texture '{}' not found", texture));
+            .unwrap_or_else(|| panic!("Texture '{}' not found", texture));
     }
 
+    #[inline]
     pub fn framebuffer_exists(&self, name: &str) -> bool {
         self.framebuffers.contains_key(name)
     }
 
+    #[inline]
     pub fn framebuffer_create_or_update(&mut self, name: &str, width: u32, height: u32) {
         if self.framebuffer_exists(name) {
             self.framebuffer_update(name, width, height);
@@ -1143,6 +1171,7 @@ impl Renderer {
         }
     }
 
+    #[inline]
     pub fn framebuffer_create(&mut self, name: String, width: u32, height: u32) {
         assert!(
             name != "screen",
@@ -1163,6 +1192,7 @@ impl Renderer {
         );
     }
 
+    #[inline]
     pub fn framebuffer_update(&mut self, framebuffer: &str, width: u32, height: u32) {
         assert!(
             framebuffer != "screen",
@@ -1173,7 +1203,7 @@ impl Renderer {
             let framebuffer = self
                 .framebuffers
                 .get(framebuffer)
-                .expect(&format!("Framebuffer '{}' not found", framebuffer));
+                .unwrap_or_else(|| panic!("Framebuffer '{}' not found", framebuffer));
             if framebuffer.width == width && framebuffer.height == height {
                 // Nothing to do
                 return;
@@ -1194,6 +1224,7 @@ impl Renderer {
         self.framebuffer_create(framebuffer.to_owned(), width, height);
     }
 
+    #[inline]
     pub fn framebuffer_delete(&mut self, framebuffer: &str) {
         assert!(
             framebuffer != "screen",
@@ -1204,9 +1235,10 @@ impl Renderer {
         }
         self.framebuffers
             .remove(framebuffer)
-            .expect(&format!("Framebuffer '{}' not found", framebuffer));
+            .unwrap_or_else(|| panic!("Framebuffer '{}' not found", framebuffer));
     }
 
+    #[inline]
     pub fn framebuffer_clear(
         &mut self,
         framebuffer: &str,
@@ -1216,7 +1248,7 @@ impl Renderer {
         let framebuffer = self
             .framebuffers
             .get(framebuffer)
-            .expect(&format!("Framebuffer '{}' not found", framebuffer));
+            .unwrap_or_else(|| panic!("Framebuffer '{}' not found", framebuffer));
         framebuffer.activate();
 
         assert!(
@@ -1240,6 +1272,7 @@ impl Renderer {
         }
     }
 
+    #[inline]
     pub fn framebuffer_blit(
         &mut self,
         framebuffer_source: &str,
@@ -1256,11 +1289,11 @@ impl Renderer {
         let framebuffer_source = self
             .framebuffers
             .get(framebuffer_source)
-            .expect(&format!("Framebuffer '{}' not found", framebuffer_source));
+            .unwrap_or_else(|| panic!("Framebuffer '{}' not found", framebuffer_source));
         let framebuffer_target = self
             .framebuffers
             .get(framebuffer_target)
-            .expect(&format!("Framebuffer '{}' not found", framebuffer_target));
+            .unwrap_or_else(|| panic!("Framebuffer '{}' not found", framebuffer_target));
 
         if ENABLE_LOGS {
             log::trace!(

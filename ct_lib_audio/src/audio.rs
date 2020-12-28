@@ -820,6 +820,7 @@ impl Audiostate {
         }
     }
 
+    #[inline]
     pub fn reset(&mut self) {
         self.next_frame_index_to_output = 0;
 
@@ -832,6 +833,7 @@ impl Audiostate {
         self.streams_to_delete_after_finish = HashSet::new();
     }
 
+    #[inline]
     pub fn add_audio_recordings_mono(
         &mut self,
         mut audio_recordings_mono: HashMap<String, AudioBufferMono>,
@@ -841,6 +843,7 @@ impl Audiostate {
                 .insert(name, Rc::new(audiobuffer));
         }
     }
+    #[inline]
     pub fn add_audio_recordings_stereo(
         &mut self,
         mut audio_recordings_stereo: HashMap<String, AudioBufferStereo>,
@@ -851,6 +854,7 @@ impl Audiostate {
         }
     }
 
+    #[inline]
     pub fn current_time_seconds(&self) -> f64 {
         audio_frames_to_seconds(
             self.next_frame_index_to_output,
@@ -866,20 +870,24 @@ impl Audiostate {
     fn get_stream_mut(&mut self, stream_id: AudioStreamId) -> &mut Box<dyn AudioStream> {
         self.streams
             .get_mut(&stream_id)
-            .expect(&format!("No audio stream found for id {}", stream_id))
+            .unwrap_or_else(|| panic!("No audio stream found for id {}", stream_id))
     }
     fn get_stream_spatial_mut(&mut self, stream_id: AudioStreamId) -> &mut AudioStreamSpatial {
         let stream = self.get_stream_mut(stream_id);
-        downcast_stream_mut::<AudioStreamSpatial>(&mut **stream).expect(&format!(
-            "Audio stream with id {} is not a spatial audiostream",
-            stream_id
-        ))
+        downcast_stream_mut::<AudioStreamSpatial>(&mut **stream).unwrap_or_else(|| {
+            panic!(
+                "Audio stream with id {} is not a spatial audiostream",
+                stream_id
+            )
+        })
     }
 
+    #[inline]
     pub fn stream_has_finished(&self, stream_id: AudioStreamId) -> bool {
         self.get_stream(stream_id).has_finished()
     }
 
+    #[inline]
     pub fn stream_forget(&mut self, stream_id: AudioStreamId) {
         let stream = self.get_stream(stream_id);
         assert!(
@@ -890,21 +898,25 @@ impl Audiostate {
         self.streams_to_delete_after_finish.insert(stream_id);
     }
 
+    #[inline]
     pub fn stream_completion_ratio(&self, stream_id: AudioStreamId) -> Option<f32> {
         let stream = self.get_stream(stream_id);
         stream.completion_ratio()
     }
 
+    #[inline]
     fn get_next_stream_id(&mut self) -> AudioStreamId {
         self.next_stream_id += 1;
         self.next_stream_id
     }
 
+    #[inline]
     pub fn set_global_playback_speed_factor(&mut self, global_playback_speed: f32) {
         self.output_render_params.global_playback_speed = global_playback_speed;
     }
 
     /// It is assumed that `out_chunk` is filled with silence
+    #[inline]
     pub fn render_audio_chunk(&mut self, out_chunk: &mut [AudioFrame; AUDIO_CHUNKSIZE_IN_FRAMES]) {
         // Remove streams that have finished
         let mut streams_removed = vec![];
@@ -936,19 +948,23 @@ impl Audiostate {
         self.next_frame_index_to_output += AUDIO_CHUNKSIZE_IN_FRAMES as AudioFrameIndex;
     }
 
+    #[inline]
     pub fn set_listener_pos(&mut self, listener_pos: Vec2) {
         self.output_render_params.listener_pos = listener_pos;
     }
 
+    #[inline]
     pub fn set_listener_vel(&mut self, listener_vel: Vec2) {
         self.output_render_params.listener_vel = listener_vel;
     }
 
+    #[inline]
     pub fn spatial_stream_set_pos(&mut self, stream_id: AudioStreamId, pos: Vec2) {
         let spatial_stream = self.get_stream_spatial_mut(stream_id);
         spatial_stream.pos = pos;
     }
 
+    #[inline]
     pub fn spatial_stream_set_vel(&mut self, stream_id: AudioStreamId, vel: Vec2) {
         let spatial_stream = self.get_stream_spatial_mut(stream_id);
         spatial_stream.vel = vel;
@@ -975,6 +991,7 @@ impl Audiostate {
     }
 
     #[must_use]
+    #[inline]
     pub fn play(
         &mut self,
         recording_name: &str,
@@ -1001,7 +1018,7 @@ impl Audiostate {
             let buffer = self
                 .audio_recordings_mono
                 .get(recording_name)
-                .expect(&format!("Recording '{}' not found", recording_name));
+                .unwrap_or_else(|| panic!("Recording '{}' not found", recording_name));
             Box::new(AudioStreamStereo::new(
                 Box::new(AudioBufferSourceMono::new(buffer.clone(), play_looped)),
                 start_delay_framecount,
@@ -1013,6 +1030,7 @@ impl Audiostate {
         self.streams.insert(id, stream);
         id
     }
+    #[inline]
     pub fn play_oneshot(
         &mut self,
         recording_name: &str,
@@ -1033,6 +1051,7 @@ impl Audiostate {
     }
 
     #[must_use]
+    #[inline]
     pub fn play_spatial(
         &mut self,
         recording_name: &str,
@@ -1058,7 +1077,7 @@ impl Audiostate {
             let buffer = self
                 .audio_recordings_mono
                 .get(recording_name)
-                .expect(&format!("Recording '{}' not found", recording_name));
+                .unwrap_or_else(|| panic!("Recording '{}' not found", recording_name));
             Box::new(AudioStreamSpatial::new(
                 Box::new(AudioBufferSourceMono::new(buffer.clone(), play_looped)),
                 start_delay_framecount,
@@ -1078,6 +1097,7 @@ impl Audiostate {
     }
 
     #[must_use]
+    #[inline]
     pub fn play_spatial_oneshot(
         &mut self,
         recording_name: &str,

@@ -221,14 +221,18 @@ pub fn path_to_filename_without_extension(filepath: &str) -> String {
 /// NOTE: This also creates all necessary folders
 pub fn path_copy_file(from_filepath: &str, to_filepath: &str) {
     let to_create_path = path_without_filename(to_filepath);
-    std::fs::create_dir_all(path_without_filename(to_filepath)).expect(&format!(
-        "Failed to copy file from '{}' to '{}': Could not create necessary folder '{}'",
-        from_filepath, to_filepath, to_create_path,
-    ));
-    std::fs::copy(from_filepath, to_filepath).expect(&format!(
-        "Failed to copy file from '{}' to '{}'",
-        from_filepath, to_filepath
-    ));
+    std::fs::create_dir_all(path_without_filename(to_filepath)).unwrap_or_else(|error| {
+        panic!(
+            "Failed to copy file from '{}' to '{}': Could not create necessary folder '{}': {}",
+            from_filepath, to_filepath, to_create_path, error
+        )
+    });
+    std::fs::copy(from_filepath, to_filepath).unwrap_or_else(|error| {
+        panic!(
+            "Failed to copy file from '{}' to '{}': {}",
+            from_filepath, to_filepath, error
+        )
+    });
 }
 
 /// NOTE: This also creates all necessary folders including the `to_folderpath`

@@ -89,14 +89,18 @@ pub fn serialize_to_binary_file<T>(data: &T, filepath: &str)
 where
     T: serde::Serialize,
 {
-    let encoded_data = bincode::serialize(data).expect(&format!(
-        "Could not encode data for serializing to binary file '{}'",
-        filepath
-    ));
-    std::fs::write(filepath, encoded_data).expect(&format!(
-        "Could not write serialized data to binary file '{}'",
-        filepath
-    ));
+    let encoded_data = bincode::serialize(data).unwrap_or_else(|error| {
+        panic!(
+            "Could not encode data for serializing to binary file '{}': {}",
+            filepath, error
+        )
+    });
+    std::fs::write(filepath, encoded_data).unwrap_or_else(|error| {
+        panic!(
+            "Could not write serialized data to binary file '{}': {}",
+            filepath, error
+        )
+    });
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -104,14 +108,18 @@ pub fn serialize_to_json_file<T>(data: &T, filepath: &str)
 where
     T: serde::Serialize,
 {
-    let output_string = serde_json::to_string_pretty(data).expect(&format!(
-        "Could not deserialize data to json for writing to '{}",
-        filepath
-    ));
-    std::fs::write(filepath, output_string).expect(&format!(
-        "Could write data string to json file '{}'",
-        filepath
-    ));
+    let output_string = serde_json::to_string_pretty(data).unwrap_or_else(|error| {
+        panic!(
+            "Could not deserialize data to json for writing to '{}': {}",
+            filepath, error
+        )
+    });
+    std::fs::write(filepath, output_string).unwrap_or_else(|error| {
+        panic!(
+            "Could write data string to json file '{}': {}",
+            filepath, error
+        )
+    });
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -119,14 +127,18 @@ pub fn deserialize_from_binary_file<T>(filepath: &str) -> T
 where
     for<'de> T: serde::Deserialize<'de>,
 {
-    let file_content = platform::read_file_whole(filepath).expect(&format!(
-        "Could not open binary file '{}' for deserialization",
-        filepath
-    ));
-    bincode::deserialize(&file_content).expect(&format!(
-        "Could not deserialize from binary file '{}'",
-        filepath
-    ))
+    let file_content = platform::read_file_whole(filepath).unwrap_or_else(|error| {
+        panic!(
+            "Could not open binary file '{}' for deserialization: {}",
+            filepath, error
+        )
+    });
+    bincode::deserialize(&file_content).unwrap_or_else(|error| {
+        panic!(
+            "Could not deserialize from binary file '{}': {}",
+            filepath, error
+        )
+    })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -134,14 +146,18 @@ pub fn deserialize_from_json_file<T>(filepath: &str) -> T
 where
     for<'de> T: serde::Deserialize<'de>,
 {
-    let file_content = platform::read_file_whole(filepath).expect(&format!(
-        "Could not open binary file '{}' for deserialization",
-        filepath
-    ));
-    serde_json::from_reader(std::io::Cursor::new(file_content)).expect(&format!(
-        "Could not deserialize from json file '{}'",
-        filepath
-    ))
+    let file_content = platform::read_file_whole(filepath).unwrap_or_else(|error| {
+        panic!(
+            "Could not open binary file '{}' for deserialization: {}",
+            filepath, error
+        )
+    });
+    serde_json::from_reader(std::io::Cursor::new(file_content)).unwrap_or_else(|error| {
+        panic!(
+            "Could not deserialize from json file '{}': {}",
+            filepath, error
+        )
+    })
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

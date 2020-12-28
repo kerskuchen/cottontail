@@ -356,7 +356,7 @@ impl BitmapFont {
         color_border: PixelRGBA,
     ) -> BitmapFont {
         let font = rusttype::Font::try_from_bytes(font_ttf_bytes)
-            .expect(&format!("Could not decode font from bytes"));
+            .unwrap_or_else(|| panic!("Could not decode font '{}' from bytes", font_name));
 
         // Font metrics
         let (descent, vertical_advance, baseline) = {
@@ -457,10 +457,7 @@ impl BitmapFont {
             .values()
             .map(|glyph| glyph.horizontal_advance)
             .max()
-            .expect(&format!(
-                "Pixelfont '{}' does not contain any glyphs",
-                font_name
-            ));
+            .unwrap_or_else(|| panic!("Pixelfont '{}' does not contain any glyphs", font_name));
 
         BitmapFont {
             font_name: font_name.to_owned(),
