@@ -183,45 +183,100 @@ impl MonoToStereoAdapter {
 }
 
 #[derive(Clone)]
-struct PlaybackSpeedInterpolatorLinear {
-    sample_current: Option<AudioSample>,
-    sample_next: Option<AudioSample>,
+struct PlaybackSpeedInterpolator {
+    source: AudioSource,
+    sample_current: AudioSample,
+    sample_next: AudioSample,
     sample_time_percent: f32,
+
+    internal_buffer: AudioChunkMono,
+    internal_buffer_readpos: usize,
 }
-impl PlaybackSpeedInterpolatorLinear {
-    fn new() -> PlaybackSpeedInterpolatorLinear {
-        PlaybackSpeedInterpolatorLinear {
-            sample_current: Some(0.0),
-            sample_next: Some(0.0),
+impl PlaybackSpeedInterpolator {
+    fn new(source: AudioSource) -> PlaybackSpeedInterpolator {
+        PlaybackSpeedInterpolator {
+            source,
+            sample_current: 0.0,
+            sample_next: 0.0,
             sample_time_percent: 0.0,
+
+            internal_buffer: AudioChunkMono::new(),
+            internal_buffer_readpos: AUDIO_CHUNKSIZE_IN_FRAMES,
         }
     }
 
-    fn next_sample(
+    fn is_looping(&self) -> bool {
+        self.source.is_looping()
+    }
+
+    fn completion_ratio(&self) -> Option<f32> {
+        let TODO = "this is slightly wrong if we still have samples in our internal buffer";
+        self.source.completion_ratio()
+    }
+
+    fn has_finished(&self) -> bool {
+        self.source.has_finished()
+            && self.internal_buffer_readpos >= self.internal_buffer.samples.len()
+    }
+
+    fn get_next_sample(&mut self) -> AudioSample {
+        if self.internal_buffer_readpos >= self.internal_buffer.samples.len() {
+            // We have depleted our internal buffer and need to replenish it from our source
+
+            if self.source.has_finished() {
+                self.internal_buffer.volume = 0.0;
+                return 0.0;
+            } else {
+                self.source.produce_chunk_mono(&mut self.internal_buffer);
+                self.internal_buffer_readpos = 0;
+            }
+        }
+
+        let sample = unsafe {
+            self.internal_buffer
+                .samples
+                .get_unchecked(self.internal_buffer_readpos)
+        };
+        self.internal_buffer_readpos += 1;
+        *sample
+    }
+
+    fn produce_samples(
         &mut self,
-        source_samples: &mut dyn Iterator<Item = AudioSample>,
-        speed: f32,
-    ) -> Option<AudioSample> {
-        if self.sample_current.is_none() && self.sample_next.is_none() {
-            return None;
+        output: &mut [AudioSample],
+        output_sample_rate_hz: f32,
+        playback_speed_factor: f32,
+    ) {
+        assert!(playback_speed_factor > EPSILON);
+
+        if self.has_finished() {
+            // Our source and internal buffer are empty - we are done here
+            return;
         }
 
-        assert!(speed > EPSILON);
-        self.sample_time_percent += speed;
+        let playback_speed_increment = {
+            let sample_rate_conversion_factor =
+                self.source.sample_rate_hz() as f32 / output_sample_rate_hz;
+            playback_speed_factor * sample_rate_conversion_factor
+        };
 
-        while self.sample_time_percent >= 1.0 {
-            self.sample_current = self.sample_next;
-            self.sample_next = source_samples.next();
-            self.sample_time_percent -= 1.0;
+        for out_sample in output.iter_mut() {
+            self.sample_time_percent += playback_speed_increment;
+
+            while self.sample_time_percent >= 1.0 {
+                self.sample_current = self.sample_next;
+                self.sample_next = self.get_next_sample();
+                self.sample_time_percent -= 1.0;
+            }
+
+            let interpolated_sample_value = lerp(
+                self.sample_current,
+                self.sample_next,
+                self.sample_time_percent,
+            );
+
+            *out_sample = interpolated_sample_value;
         }
-
-        let interpolated_sample_value = lerp(
-            self.sample_current.unwrap_or(0.0),
-            self.sample_next.unwrap_or(0.0),
-            self.sample_time_percent,
-        );
-
-        Some(interpolated_sample_value)
     }
 }
 
@@ -242,7 +297,7 @@ pub struct AudioBuffer<FrameType> {
 pub type AudioBufferMono = AudioBuffer<AudioSample>;
 pub type AudioBufferStereo = AudioBuffer<AudioFrame>;
 
-trait AudioSourceTrait {
+trait AudioSourceTrait: Clone {
     fn sample_rate_hz(&self) -> usize;
     fn has_finished(&self) -> bool;
     fn is_looping(&self) -> bool;
@@ -251,6 +306,7 @@ trait AudioSourceTrait {
     fn produce_chunk_stereo(&mut self, output: &mut AudioChunkStereo);
 }
 
+#[derive(Clone)]
 struct AudioSourceBufferMono {
     source_buffer: Rc<AudioBufferMono>,
     play_cursor_buffer_index: usize,
@@ -281,7 +337,7 @@ impl AudioSourceTrait for AudioSourceBufferMono {
 
     fn produce_chunk_mono(&mut self, output: &mut AudioChunkMono) {
         if self.has_finished() {
-            output.volume = 1.0;
+            output.volume = 0.0;
             return;
         }
 
@@ -311,6 +367,7 @@ impl AudioSourceTrait for AudioSourceBufferMono {
         unreachable!()
     }
 }
+#[derive(Clone)]
 struct AudioSourceSine {
     sine_time: f64,
     sine_frequency: f64,
@@ -355,6 +412,7 @@ impl AudioSourceTrait for AudioSourceSine {
     }
 }
 
+#[derive(Clone)]
 enum AudioSource {
     BufferMono(AudioSourceBufferMono),
     Sine(AudioSourceSine),
@@ -409,42 +467,6 @@ impl AudioSource {
         }
     }
 }
-impl Iterator for AudioSource {
-    type Item = AudioSample;
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            AudioSource::BufferMono(buffer) => {
-                let result = buffer
-                    .source_buffer
-                    .samples
-                    .get(buffer.play_cursor_buffer_index)
-                    .cloned();
-
-                buffer.play_cursor_buffer_index = usize::min(
-                    buffer.play_cursor_buffer_index + 1,
-                    buffer.source_buffer.samples.len(),
-                );
-                if buffer.is_looping {
-                    if buffer.play_cursor_buffer_index
-                        >= (buffer.source_buffer.loopsection_start_sampleindex
-                            + buffer.source_buffer.loopsection_samplecount)
-                    {
-                        buffer.play_cursor_buffer_index =
-                            buffer.source_buffer.loopsection_start_sampleindex;
-                    }
-                }
-                result
-            }
-            AudioSource::Sine(sine) => {
-                let sine_amplitude = f64::sin(sine.sine_time * 2.0 * PI64);
-                let time_increment = audio_frames_to_seconds(1, sine.sample_rate_hz);
-                sine.sine_time += sine.sine_frequency * time_increment;
-
-                Some(sine_amplitude as AudioSample)
-            }
-        }
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Audiostreams Basic
@@ -476,8 +498,7 @@ trait AudioStreamTrait {
     fn set_playback_speed(&mut self, playback_speed_factor: f32);
 }
 struct AudioStreamScheduledMono {
-    pub source: AudioSource,
-    pub interpolator: PlaybackSpeedInterpolatorLinear,
+    pub playback_speed_interpolator: PlaybackSpeedInterpolator,
 
     pub frames_left_till_start: usize,
     /// Must be > 0
@@ -493,8 +514,7 @@ impl AudioStreamScheduledMono {
         playback_speed: f32,
     ) -> AudioStreamScheduledMono {
         AudioStreamScheduledMono {
-            source,
-            interpolator: PlaybackSpeedInterpolatorLinear::new(),
+            playback_speed_interpolator: PlaybackSpeedInterpolator::new(source),
             frames_left_till_start: delay_framecount,
             playback_speed,
             has_finished: false,
@@ -532,25 +552,15 @@ impl AudioStreamTrait for AudioStreamScheduledMono {
             return;
         }
 
-        let playback_speed = {
-            let sample_rate_conversion_factor =
-                self.source.sample_rate_hz() as f32 / output_params.audio_sample_rate_hz as f32;
-            self.playback_speed * sample_rate_conversion_factor
-        };
         for sample in &mut self.output.samples[0..silence_framecount] {
             *sample = 0.0;
         }
-        for out_sample in &mut self.output.samples[silence_framecount..] {
-            if let Some(resampled_value) = self
-                .interpolator
-                .next_sample(&mut self.source, playback_speed)
-            {
-                *out_sample = resampled_value;
-            } else {
-                self.has_finished = true;
-                *out_sample = 0.0;
-            }
-        }
+        self.playback_speed_interpolator.produce_samples(
+            &mut self.output.samples[silence_framecount..],
+            output_params.audio_sample_rate_hz as f32,
+            self.playback_speed,
+        );
+        self.has_finished = self.playback_speed_interpolator.has_finished();
     }
 
     fn get_output_chunk_mono(&self) -> &AudioChunkMono {
@@ -566,14 +576,14 @@ impl AudioStreamTrait for AudioStreamScheduledMono {
     }
 
     fn is_looping(&self) -> bool {
-        self.source.is_looping()
+        self.playback_speed_interpolator.is_looping()
     }
 
     fn completion_ratio(&self) -> Option<f32> {
         if self.frames_left_till_start > 0 {
             None
         } else {
-            self.source.completion_ratio()
+            self.playback_speed_interpolator.completion_ratio()
         }
     }
 
