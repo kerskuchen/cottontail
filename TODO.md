@@ -8,10 +8,11 @@
 - make audio interpolator use pullbuffer method instead of being an iterator
 - simplify our audiobuffers/sources/streams/mono/stero zoo
 - fixes input recording
+- greatly improved audio performance bt merging audiostream stages together
+- fixes volume propagation of streams
 
 # CURRENT
 
-- check if we are doing volume propagation correctly
 
 # NEXT:
 
@@ -89,8 +90,6 @@
   - improve wasm startup speed
 
 ## audio system
-- find a way to make pulling buffers more convenient, performant and generic (i.e. linear 
-  interpolators use `next()` on their interal source to get the next sample)
 - use global playback speed factor in a final output interplator not
 - Support ogg audio and differentiate between mono/stereo recordings
 - streaming long audio (music)
@@ -120,7 +119,6 @@
 - current hotspots are:
   - sorting drawables (they are pretty big to sort, maybe we can use references as payload?)
   - drawing rects by drawing bresenham lines 
-  - render audiochunks 
 - Find and get rid of needles allocations and copies
 - Find out what causes garbage collector to trigger
 - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)
