@@ -962,6 +962,16 @@ fn main() {
     let mut filelist_content = String::new();
     let filelist = collect_files_recursive("resources");
     for filepath in &filelist {
+        if filepath.ends_with(".json") {
+            // NOTE If we have BOTH a resource JSON and corresponding binary DATA file we only add
+            // the DATA file to the index because the JSON file is only for human consumption and
+            // does not need to be downloaded/parsed on app startup
+            let corresponding_data_filepath = path_with_extension(filepath, "data");
+            if path_exists(&corresponding_data_filepath) {
+                continue;
+            }
+        }
+
         filelist_content += &format!("{}\n", filepath);
     }
     std::fs::write("resources/index.txt", filelist_content.as_bytes())

@@ -164,8 +164,15 @@ pub fn path_join(first: &str, second: &str) -> String {
 
 /// NOTE: Result contains Unix-style file seperators only
 pub fn path_with_extension(filepath: &str, new_extension: &str) -> String {
+    let extension = if new_extension.starts_with('.') {
+        // NOTE: The `.with_extension(..)` method always adds an extra '.' even if we already
+        //       provide on. So we remove ours if needed.
+        &new_extension[1..]
+    } else {
+        new_extension
+    };
     Path::new(filepath)
-        .with_extension(new_extension)
+        .with_extension(extension)
         .to_string_owned_or_panic()
         .replace("\\", "/")
 }

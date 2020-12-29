@@ -1,12 +1,30 @@
 # DONE:
 
 - restored sprite debug scene
+- added 3d sprite and spatial sound example
 
 # CURRENT
 
 
 # NEXT:
 
+## improve asset loading
+- refactor gamememory/audio/draw/asset initialization to 
+  - allow hotloading of assets
+  - improve wasm startup speed
+
+## audio system
+- use global playback speed factor in a final output interplator not
+- Support ogg audio and differentiate between mono/stereo recordings
+- streaming long audio (music)
+
+## renderer flexibility + speed + cleanup
+- add ability to add new shaders from drawstate
+- Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and implement it. Throw out the rest 
+
+## improve examples
+- find a good way to separate/disable audio when switching scenes
+- restore gui/credits displaying as an example scene
 
 ## writing games easier
 - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
@@ -70,26 +88,11 @@
   Also useful:
   https://social.technet.microsoft.com/wiki/contents/articles/38117.microsoft-trusted-root-certificate-program-participants-as-of-june-27-2017.aspx#C
 
-## renderer flexibility + speed + cleanup
-- add ability to add new shaders from drawstate
-- Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and implement it. Throw out the rest 
-
-## improve asset loading
-- refactor gamememory/audio/draw/asset initialization to 
-  - allow hotloading of assets
-  - improve wasm startup speed
-
-## audio system
-- use global playback speed factor in a final output interplator not
-- Support ogg audio and differentiate between mono/stereo recordings
-- streaming long audio (music)
-
-# user interface
+# user experience
 - make app pause on onfocus/lost events more robust
 - show focus lost overlay "press here to continue"
 - give appcode a hint and some time to wind down and save state etc.
 - let appcode respond with an ACK that it won't need to update anymore
-- only replay drawcommands that are don't allocate resources
 - add icon, title and tags to html (look at other projects we did)
 - check out the output of https://realfavicongenerator.net/
 - add splash screen on first run as html canvas background image + some "run game" icon
