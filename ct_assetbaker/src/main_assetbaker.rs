@@ -586,7 +586,7 @@ fn convert_animation(
     final_sprites_by_name: &IndexMap<Spritename, Sprite>,
 ) -> Animation<Sprite> {
     assert!(anim.sprite_names.len() == anim.frame_durations_ms.len());
-    let mut anim_result = Animation::new_empty(&anim.name);
+    let mut anim_result = Animation::new_empty(anim.name.clone());
     for (&frame_duration_ms, sprite_name) in
         anim.frame_durations_ms.iter().zip(anim.sprite_names.iter())
     {
@@ -603,7 +603,7 @@ fn convert_animation_3d(
     final_sprites_by_name_3d: &IndexMap<Spritename3D, Sprite3D>,
 ) -> Animation<Sprite3D> {
     assert!(anim_3d.sprite_names.len() == anim_3d.frame_durations_ms.len());
-    let mut anim_result = Animation::new_empty(&anim_3d.name);
+    let mut anim_result = Animation::new_empty(anim_3d.name.clone());
     for (&frame_duration_ms, sprite_name) in anim_3d
         .frame_durations_ms
         .iter()

@@ -1,17 +1,6 @@
 # DONE:
 
-- don't process streams if we know that they are empty
-- replaces some .expect with .unrwap_or_else to avoid allocation
-- WONTFIX: refactor audio system to use non interleaved buffers to comform more to 
-  WebAudio API. It is not that practical to do it because we don't do that much processing
-  and dynamic audio routing to justify the complexity
-- make audio interpolator use pullbuffer method instead of being an iterator
-- simplify our audiobuffers/sources/streams/mono/stero zoo
-- fixes input recording
-- greatly improved audio performance bt merging audiostream stages together
-- fixes volume propagation of streams
-- WONTFIX(build times would be too high and crate dependencies not clear) make crate controlflow 
-  more streamlined (maybe build everything as one crate?)
+- restored sprite debug scene
 
 # CURRENT
 
@@ -202,3 +191,16 @@
 - caches all calls to html elements in wasm platform maybe we can use lazy static in core for each 
   imporant enough element (canvas, screen, window, document)?
   NOTE: We did not use lazy_static because it has unneeded atomic reference count overhead
+
+- don't process streams if we know that they are empty
+- replaces some .expect with .unrwap_or_else to avoid allocation
+- WONTFIX: refactor audio system to use non interleaved buffers to comform more to 
+  WebAudio API. It is not that practical to do it because we don't do that much processing
+  and dynamic audio routing to justify the complexity
+- make audio interpolator use pullbuffer method instead of being an iterator
+- simplify our audiobuffers/sources/streams/mono/stero zoo
+- fixes input recording
+- greatly improved audio performance bt merging audiostream stages together
+- fixes volume propagation of streams
+- WONTFIX(build times would be too high and crate dependencies not clear) make crate controlflow 
+  more streamlined (maybe build everything as one crate?)
