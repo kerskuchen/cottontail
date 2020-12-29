@@ -1710,9 +1710,9 @@ pub struct Animation<FrameType: Clone> {
 }
 
 impl<FrameType: Clone> Animation<FrameType> {
-    pub fn new_empty(name: &str) -> Animation<FrameType> {
+    pub fn new_empty(name: String) -> Animation<FrameType> {
         Animation {
-            name: name.to_owned(),
+            name,
             frames: Vec::with_capacity(32),
             length: 0.0,
         }
