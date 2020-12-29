@@ -844,6 +844,10 @@ pub type AudioStreamId = u64;
 #[derive(Clone)]
 pub struct Audiostate {
     next_frame_index_to_output: AudioFrameIndex,
+
+    audio_time: f64,
+    audio_time_smoothed: f64,
+
     output_render_params: AudioRenderParams,
 
     /// This can never be zero when used with `get_next_stream_id` method
@@ -864,6 +868,8 @@ impl Audiostate {
     ) -> Audiostate {
         Audiostate {
             next_frame_index_to_output: 0,
+            audio_time: 0.0,
+            audio_time_smoothed: 0.0,
 
             output_render_params: AudioRenderParams {
                 audio_sample_rate_hz,
@@ -919,10 +925,16 @@ impl Audiostate {
 
     #[inline]
     pub fn current_time_seconds(&self) -> f64 {
-        audio_frames_to_seconds(
-            self.next_frame_index_to_output,
-            self.output_render_params.audio_sample_rate_hz,
-        )
+        self.audio_time
+    }
+
+    pub fn current_time_seconds_smoothed(&self) -> f64 {
+        self.audio_time_smoothed
+    }
+
+    /// IMPORTANT: This needs to be called exactly once per frame to have correct time reporting
+    pub fn update_deltatime(&mut self, deltatime: f32) {
+        self.audio_time_smoothed += deltatime as f64;
     }
 
     #[inline]
@@ -1157,7 +1169,17 @@ impl Audiostate {
                 out_frame.right += chunk_volume * rendered_chunk_frame.right;
             }
         }
+
+        // Update internal timers
         self.next_frame_index_to_output += AUDIO_CHUNKSIZE_IN_FRAMES as AudioFrameIndex;
+        let new_audio_time = audio_frames_to_seconds(
+            self.next_frame_index_to_output,
+            self.output_render_params.audio_sample_rate_hz,
+        );
+        if self.audio_time != new_audio_time {
+            self.audio_time = new_audio_time;
+            self.audio_time_smoothed = (self.audio_time_smoothed + new_audio_time) / 2.0;
+        }
     }
 
     fn start_time_to_delay_framecount(&self, schedule_time_seconds: f64) -> usize {

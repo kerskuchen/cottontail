@@ -317,6 +317,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 };
                 globals.deltatime = deltatime;
                 audio.set_global_playback_speed_factor(deltatime_speed_factor);
+                audio.update_deltatime(deltatime);
 
                 if !is_effectively_zero(globals.debug_deltatime_speed_factor - 1.0) {
                     draw.debug_log(format!("Timefactor: {:.3}", globals.deltatime_speed_factor));
