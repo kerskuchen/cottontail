@@ -473,6 +473,15 @@ impl Transform {
     }
 
     #[inline]
+    pub const fn from_pos_scale_angle(pos: Vec2, scale: Vec2, dir_angle: f32) -> Transform {
+        Transform {
+            pos,
+            scale,
+            dir_angle,
+        }
+    }
+
+    #[inline]
     pub fn rotation_dir(&self) -> Vec2 {
         Vec2::from_angle_flipped_y(self.dir_angle)
     }
