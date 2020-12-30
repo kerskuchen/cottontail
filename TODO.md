@@ -8,6 +8,7 @@
   into Audiostate has sadly the consequence that AudioBufferStreamed cannot derive Clone anymore but we can
   work around that by saving the current frame position in AudioBufferStreamed and 
   reconstruct+restream to the previousy saved location
+- use bgboss.ogg instead of bgboss.wav in our examples
 
 
 # NEXT:
@@ -17,6 +18,8 @@
   - allow hotloading of assets
   - improve wasm startup speed (load graphic assets first to show splash screen, 
     then later sound assets)
+- automatically convert wav -> ogg? if yes - do we do it always or do we make it dependend on 
+  filesize? 
 
 ## audio system
 - distribute rendering of chunks over multiple frames at a constant rate instead of multiple chunks 
