@@ -13,3 +13,4 @@ ct_lib_math = { path = "../ct_lib_math"}
 
 hound = "3.4.0"
 serde = "1.0.118"
+lewton = "0.10.1"

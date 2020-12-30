@@ -1,9 +1,13 @@
 # DONE:
 
-- restored sprite debug scene
-- added 3d sprite and spatial sound example
+- adds ogg decoding for whole files
 
 # CURRENT
+
+- make new AudioBufferStreamed that holds a OggReader and streams ogg data on demand. Putting it
+  into Audiostate has sadly the consequence that AudioBufferStreamed cannot derive Clone anymore but we can
+  work around that by saving the current frame position in AudioBufferStreamed and 
+  reconstruct+restream to the previousy saved location
 
 
 # NEXT:
@@ -11,19 +15,25 @@
 ## improve asset loading
 - refactor gamememory/audio/draw/asset initialization to 
   - allow hotloading of assets
-  - improve wasm startup speed
+  - improve wasm startup speed (load graphic assets first to show splash screen, 
+    then later sound assets)
 
 ## audio system
-- use global playback speed factor in a final output interplator not
-- Support ogg audio and differentiate between mono/stereo recordings
-- streaming long audio (music)
+- distribute rendering of chunks over multiple frames at a constant rate instead of multiple chunks 
+  in one frame to fill up the queue (important on wasm because we have bigger buffers there but even
+  less time per frame)
+- Support ogg streaming 
+- add final output resampler to resample internal hz rate to output hz rate (useful if we want 
+  to render internally at 22050hz but output at 44100hz) and also use global 
+  playback speed factor in final resampler
 
 ## renderer flexibility + speed + cleanup
+- Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and 
+  implement it (drawing the depthbuffer and various debug grids should be useful). Throw out the rest 
 - add ability to add new shaders from drawstate
-- Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and implement it. Throw out the rest 
 
 ## improve examples
-- find a good way to separate/disable audio when switching scenes
+- find a good way to switch/disable audio when switching scenes
 - restore gui/credits displaying as an example scene
 
 ## writing games easier
@@ -71,15 +81,15 @@
   wrong). (ie. we could use the values of the last ten frames as basis for snapping)
 
 ## better project structure and generator
+- add more vscode tasks for wasm builds
 - Get rid of crates that are not necessary or replace them with smaller/faster ones 
-- nanoserde, oorandom, minimp3, ...
-- get rid of sdl in favor of something more simple?
+  - nanoserde, oorandom, minimp3, ...
+  - get rid of sdl in favor of something more simple?
 - look how other projects like bevy handle project templates
 - convert debug scene to example in a dedicated examples folder with its own assets and build scripts
 - rename game -> app
 - look for ways to simplify project creation and building
 - add new html/batchfiles and everything we added recently to the templates
-- add more vscode tasks for wasm builds
 - Update version info resource with the crate version
 - Zip up final executable and add version from crate
 - We need to certify our Windows executable with a real certificate
@@ -207,3 +217,6 @@
 - fixes volume propagation of streams
 - WONTFIX(build times would be too high and crate dependencies not clear) make crate controlflow 
   more streamlined (maybe build everything as one crate?)
+
+- restored sprite debug scene
+- added 3d sprite and spatial sound example

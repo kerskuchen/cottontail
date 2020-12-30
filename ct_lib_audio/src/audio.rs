@@ -1,4 +1,5 @@
 use ct_lib_core::transmute_slices;
+use lewton::inside_ogg::OggStreamReader;
 
 use super::math::*;
 
@@ -292,12 +293,12 @@ impl ResamplerLinear {
 pub struct AudioBuffer<FrameType> {
     pub name: String,
     pub sample_rate_hz: usize,
-    pub samples: Vec<FrameType>,
+    pub frames: Vec<FrameType>,
 
     /// Defaults to 0
-    pub loopsection_start_sampleindex: usize,
+    pub loopsection_start_frameindex: usize,
     /// Defaults to samples.len()
-    pub loopsection_samplecount: usize,
+    pub loopsection_framecount: usize,
 }
 pub type AudioBufferMono = AudioBuffer<AudioSample>;
 pub type AudioBufferStereo = AudioBuffer<AudioFrame>;
@@ -331,13 +332,13 @@ impl AudioSourceTrait for AudioSourceBufferMono {
         self.source_buffer.sample_rate_hz
     }
     fn has_finished(&self) -> bool {
-        self.play_cursor_buffer_index >= self.source_buffer.samples.len()
+        self.play_cursor_buffer_index >= self.source_buffer.frames.len()
     }
     fn is_looping(&self) -> bool {
         self.is_looping
     }
     fn completion_ratio(&self) -> Option<f32> {
-        Some(self.play_cursor_buffer_index as f32 / self.source_buffer.samples.len() as f32)
+        Some(self.play_cursor_buffer_index as f32 / self.source_buffer.frames.len() as f32)
     }
 
     fn produce_chunk_mono(&mut self, output: &mut AudioChunkMono) {
@@ -350,18 +351,17 @@ impl AudioSourceTrait for AudioSourceBufferMono {
         for out_sample in &mut output.samples {
             let result = self
                 .source_buffer
-                .samples
+                .frames
                 .get(self.play_cursor_buffer_index)
                 .cloned();
 
             self.play_cursor_buffer_index += 1;
             if self.is_looping {
                 if self.play_cursor_buffer_index
-                    >= (self.source_buffer.loopsection_start_sampleindex
-                        + self.source_buffer.loopsection_samplecount)
+                    >= (self.source_buffer.loopsection_start_frameindex
+                        + self.source_buffer.loopsection_framecount)
                 {
-                    self.play_cursor_buffer_index =
-                        self.source_buffer.loopsection_start_sampleindex;
+                    self.play_cursor_buffer_index = self.source_buffer.loopsection_start_frameindex;
                 }
             }
             *out_sample = result.unwrap_or(0.0);

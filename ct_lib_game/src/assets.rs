@@ -127,7 +127,7 @@ impl GameAssets {
             self.fonts = self.load_fonts();
             self.animations_3d = self.load_animations_3d();
             self.sprites_3d = self.load_sprites_3d();
-            log::debug!("Loaded graphic resources");
+            log::info!("Loaded graphic resources");
         }
 
         return true;
@@ -144,31 +144,58 @@ impl GameAssets {
             .filter(|&path| path.ends_with(".wav"))
         {
             let wav_data = &self.files_bindata[wav_filepath];
-            let (sample_rate_hz, samples) = audio::decode_wav_from_bytes(wav_data).expect(
-                &format!("Could not decode wav audio file: '{}'", wav_filepath),
-            );
+            let (sample_rate_hz, frames) = audio::decode_wav_from_bytes(wav_data).expect(&format!(
+                "Could not decode wav audio file: '{}'",
+                wav_filepath
+            ));
             let TODO = "Introduce concept of asset name in our indexfile and get rid of this replacing hack";
             let name = wav_filepath
                 .replace(&format!("{}/", self.assets_folder), "")
                 .replace(".wav", "");
-            let samplecount = samples.len();
+            let framecount = frames.len();
             let recording = AudioBufferMono {
                 name: name.clone(),
                 sample_rate_hz,
-                samples,
-                loopsection_start_sampleindex: 0,
-                loopsection_samplecount: samplecount,
+                frames,
+                loopsection_start_frameindex: 0,
+                loopsection_framecount: framecount,
             };
             audiorecordings.insert(name, recording);
         }
 
+        log::info!("Loaded sound resources");
         audiorecordings
     }
 
     pub fn load_audiorecordings_stereo(&self) -> HashMap<String, AudioBufferStereo> {
         assert!(self.files_loading_stage == AssetLoadingStage::Finished);
-        let TODO = true;
-        HashMap::new()
+
+        let mut audiorecordings = HashMap::new();
+
+        for ogg_filepath in self
+            .files_list
+            .iter()
+            .filter(|&path| path.ends_with(".ogg"))
+        {
+            let ogg_data = &self.files_bindata[ogg_filepath];
+            let (sample_rate_hz, frames) = audio::decode_ogg_from_bytes_stereo(&ogg_data).unwrap();
+            let TODO = "Introduce concept of asset name in our indexfile and get rid of this replacing hack";
+            let name = ogg_filepath
+                .replace(&format!("{}/", self.assets_folder), "")
+                .replace(".wav", "");
+            let framecount = frames.len();
+            let recording = AudioBufferStereo {
+                name: name.clone(),
+                sample_rate_hz,
+                frames,
+                loopsection_start_frameindex: 0,
+                loopsection_framecount: framecount,
+            };
+            audiorecordings.insert(name, recording);
+        }
+
+        log::info!("Loaded music resources");
+        audiorecordings
     }
 
     pub fn get_atlas_textures(&self) -> &[Bitmap] {

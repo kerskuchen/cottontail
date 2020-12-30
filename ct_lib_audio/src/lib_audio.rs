@@ -2,6 +2,7 @@ pub mod audio;
 pub use audio::*;
 
 use ct_lib_math as math;
+use lewton::{audio::PreviousWindowRight, inside_ogg::OggStreamReader};
 
 #[inline]
 fn convert_u8_sample_to_f32(sample: u8) -> f32 {
@@ -53,6 +54,33 @@ pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, Vec<AudioSample>
     };
 
     Ok((sample_rate_hz, samples))
+}
+
+/// Returns samplerate, channelcount and a vector of interleaved samples
+pub fn decode_ogg_from_bytes_stereo(ogg_data: &[u8]) -> Result<(usize, Vec<AudioFrame>), String> {
+    let mut reader = OggStreamReader::new(std::io::Cursor::new(ogg_data))
+        .map_err(|error| format!("Could not decode ogg audio data: {}", error))?;
+    let sample_rate_hz = reader.ident_hdr.audio_sample_rate as usize;
+    if reader.ident_hdr.audio_channels != 2 {
+        return Err("Only stereo ogg data is supported".to_owned());
+    }
+
+    let mut result_frames = Vec::new();
+    let mut packet_index = 0;
+    while let Some(decoded_samples) = reader
+        .read_dec_packet_generic::<Vec<Vec<f32>>>()
+        .map_err(|error| format!("Could not decode ogg packet {}: {}", packet_index, error))?
+    {
+        packet_index += 1;
+        let framecount = decoded_samples[0].len();
+        for index in 0..framecount {
+            let left = unsafe { decoded_samples[0].get_unchecked(index) };
+            let right = unsafe { decoded_samples[1].get_unchecked(index) };
+            result_frames.push(AudioFrame::new(*left, *right));
+        }
+    }
+
+    Ok((sample_rate_hz, result_frames))
 }
 
 /// Returns samplerate and a vector of samples
