@@ -204,6 +204,8 @@ fn bake_audio_resources() {
                 channelcount,
                 framecount,
                 compression_quality: None,
+                loopsection_start_frameindex: None,
+                loopsection_framecount: None,
             };
             serialize_to_json_file(&metadata, &metadata_path);
             metadata
@@ -239,6 +241,8 @@ fn bake_audio_resources() {
                 channelcount: 1,
                 framecount,
                 compression_quality: Some(5),
+                loopsection_start_frameindex: None,
+                loopsection_framecount: None,
             };
             serialize_to_json_file(&metadata, &metadata_path);
             metadata

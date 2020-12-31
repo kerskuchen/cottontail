@@ -26,6 +26,8 @@ pub struct AudioMetadata {
     pub channelcount: usize,
     pub framecount: usize,
     pub compression_quality: Option<usize>,
+    pub loopsection_start_frameindex: Option<usize>,
+    pub loopsection_framecount: Option<usize>,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -148,6 +150,10 @@ impl GameAssets {
 
                 if self.files_loaders.is_empty() {
                     assert!(self.files_bindata.len() == self.files_list.len());
+
+                    self.audio = self.load_audio();
+                    log::info!("Loaded audio resources");
+
                     self.files_loading_stage = AssetLoadingStage::Finished;
                     log::info!("Finished loading asset files");
                     true
@@ -173,10 +179,6 @@ impl GameAssets {
             self.sprites_3d = self.load_sprites_3d();
             log::info!("Loaded graphic resources");
         }
-        if self.audio.file_names.is_empty() {
-            self.audio = self.load_audio();
-            log::info!("Loaded audio resources");
-        }
 
         return true;
     }
@@ -186,25 +188,27 @@ impl GameAssets {
 
         let mut audiorecordings = HashMap::new();
 
-        for wav_filepath in self
-            .files_list
-            .iter()
-            .filter(|&path| path.ends_with(".wav"))
-        {
-            let wav_data = &self.files_bindata[wav_filepath];
-            let (sample_rate_hz, frames) = audio::decode_wav_from_bytes(wav_data).expect(&format!(
-                "Could not decode wav audio file: '{}'",
-                wav_filepath
-            ));
-            let TODO = "Introduce concept of asset name in our indexfile and get rid of this replacing hack";
-            let name = wav_filepath
-                .replace(&format!("{}/", self.assets_folder), "")
-                .replace(".wav", "");
-            let recording = AudioRecording::new(name.clone(), sample_rate_hz, frames);
-            audiorecordings.insert(name, recording);
+        for (resource_name, metadata) in self.audio.file_metadata.iter() {
+            if metadata.channelcount != 1 {
+                continue;
+            }
+            let ogg_data = &self.audio.file_content[resource_name];
+            let recording = AudioRecordingMono::new_from_ogg_stream_with_loopsection(
+                metadata.resource_name.clone(),
+                metadata.framecount,
+                ogg_data.clone(),
+                metadata.loopsection_start_frameindex.unwrap_or(0),
+                metadata
+                    .loopsection_framecount
+                    .unwrap_or(metadata.framecount),
+            )
+            .unwrap_or_else(|error| {
+                panic!("Cannot create Audiorecording from resource '{}'", error)
+            });
+            audiorecordings.insert(resource_name.clone(), recording);
         }
 
-        log::info!("Loaded sound resources");
+        log::info!("Loaded mono audio recordings");
         audiorecordings
     }
 
@@ -213,30 +217,27 @@ impl GameAssets {
 
         let mut audiorecordings = HashMap::new();
 
-        for ogg_filepath in self
-            .files_list
-            .iter()
-            .filter(|&path| path.ends_with(".ogg"))
-        {
-            let ogg_data = &self.files_bindata[ogg_filepath];
-            let (sample_rate_hz, channel_count) =
-                audio::decode_ogg_samplerate_channelcount(&ogg_data).expect(&format!(
-                    "Could not decode ogg audio file: '{}'",
-                    ogg_filepath
-                ));
-            let frames = audio::decode_ogg_frames_stereo(&ogg_data).expect(&format!(
-                "Could not decode ogg audio file: '{}'",
-                ogg_filepath
-            ));
-            let TODO = "Introduce concept of asset name in our indexfile and get rid of this replacing hack";
-            let name = ogg_filepath
-                .replace(&format!("{}/", self.assets_folder), "")
-                .replace(".ogg", "");
-            let recording = AudioRecording::new(name.clone(), sample_rate_hz, frames);
-            audiorecordings.insert(name, recording);
+        for (resource_name, metadata) in self.audio.file_metadata.iter() {
+            if metadata.channelcount != 2 {
+                continue;
+            }
+            let ogg_data = &self.audio.file_content[resource_name];
+            let recording = AudioRecordingStereo::new_from_ogg_stream_with_loopsection(
+                metadata.resource_name.clone(),
+                metadata.framecount,
+                ogg_data.clone(),
+                metadata.loopsection_start_frameindex.unwrap_or(0),
+                metadata
+                    .loopsection_framecount
+                    .unwrap_or(metadata.framecount),
+            )
+            .unwrap_or_else(|error| {
+                panic!("Cannot create Audiorecording from resource '{}'", error)
+            });
+            audiorecordings.insert(resource_name.clone(), recording);
         }
 
-        log::info!("Loaded music resources");
+        log::info!("Loaded mono audio recordings");
         audiorecordings
     }
 

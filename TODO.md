@@ -1,25 +1,25 @@
 # DONE:
 
-- adds ogg decoding for whole files
+- convert wav files to ogg when assets baking
+- adds audio metadata for assetbaker
+- adds audio streaming of ogg files
 
 # CURRENT
 
-- make new AudioBufferStreamed that holds a OggReader and streams ogg data on demand. Putting it
-  into Audiostate has sadly the consequence that AudioBufferStreamed cannot derive Clone anymore but we can
-  work around that by saving the current frame position in AudioBufferStreamed and 
-  reconstruct+restream to the previousy saved location
-- use bgboss.ogg instead of bgboss.wav in our examples
 
 
 # NEXT:
 
+- add ability to pack/load/play stereo audio files
+
 ## improve asset loading
+- use resources packs instead of raw file download (like we used for audio)
+- use prelude graphics pack that loads quickly to show splashscreen
 - refactor gamememory/audio/draw/asset initialization to 
   - allow hotloading of assets
   - improve wasm startup speed (load graphic assets first to show splash screen, 
     then later sound assets)
-- automatically convert wav -> ogg? if yes - do we do it always or do we make it dependend on 
-  filesize? 
+- find out why our ogg decoder decodes more frames than exist in ogg file
 
 ## audio system
 - distribute rendering of chunks over multiple frames at a constant rate instead of multiple chunks 
@@ -223,3 +223,5 @@
 
 - restored sprite debug scene
 - added 3d sprite and spatial sound example
+
+- adds ogg decoding for whole files

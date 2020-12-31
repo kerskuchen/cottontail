@@ -1,10 +1,10 @@
-use ct_lib_core::transmute_slices;
+use ct_lib_core::{log, transmute_slices};
 use lewton::inside_ogg::OggStreamReader;
 
 use super::math::*;
 
 use core::panic;
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 use std::{
     collections::{HashMap, HashSet},
     io::Cursor,
@@ -225,7 +225,7 @@ impl<FrameType: AudioFrame> AudioRecording<FrameType> {
         //       enough and most sounds are short enough to be completely decoded that way
         let initial_predecoded_framecount = usize::min(framecount, sample_rate_hz);
         result
-            .decode_frames_up_to_frameindex(initial_predecoded_framecount)
+            .decode_frames_up_to_frameindex(initial_predecoded_framecount - 1)
             .map_err(|error| format!("Could not pre-decode ogg audio data: {}", error))?;
 
         Ok(result)
@@ -260,10 +260,6 @@ impl<FrameType: AudioFrame> AudioRecording<FrameType> {
                 .map_err(|error| format!("Could not decode ogg packet: {}", error))?
         {
             let decoded_framecount = decoded_samples[0].len();
-            assert!(
-                decoded_framecount <= self.frames.len() - self.stream_reader_decoded_framecount,
-                "There are more frames in ogg stream than frames in our buffer"
-            );
             match stream_reader.ident_hdr.audio_channels {
                 1 => {
                     for (out_frame, &sample) in self.frames[self.stream_reader_decoded_framecount..]
@@ -288,6 +284,20 @@ impl<FrameType: AudioFrame> AudioRecording<FrameType> {
             }
 
             self.stream_reader_decoded_framecount += decoded_framecount;
+            if self.stream_reader_decoded_framecount == self.frames.len() {
+                log::trace!("Finished decoding '{}'", &self.name);
+            }
+            if self.stream_reader_decoded_framecount > self.frames.len() {
+                log::trace!(
+                    "Decoded {} frames but expected {} frames in '{}'",
+                    self.stream_reader_decoded_framecount,
+                    self.frames.len(),
+                    &self.name
+                );
+            }
+            if self.stream_reader_decoded_framecount >= frame_index {
+                break;
+            }
         }
 
         Ok(())
@@ -305,14 +315,14 @@ trait AudioSourceTrait: Clone {
 
 #[derive(Clone)]
 struct AudioSourceRecordingMono {
-    source_buffer: Rc<AudioRecordingMono>,
+    source_recording: Rc<RefCell<AudioRecordingMono>>,
     play_cursor_buffer_index: usize,
     is_looping: bool,
 }
 impl AudioSourceRecordingMono {
-    fn new(buffer: Rc<AudioRecordingMono>, play_looped: bool) -> AudioSourceRecordingMono {
+    fn new(buffer: Rc<RefCell<AudioRecordingMono>>, play_looped: bool) -> AudioSourceRecordingMono {
         AudioSourceRecordingMono {
-            source_buffer: buffer,
+            source_recording: buffer,
             play_cursor_buffer_index: 0,
             is_looping: play_looped,
         }
@@ -320,16 +330,19 @@ impl AudioSourceRecordingMono {
 }
 impl AudioSourceTrait for AudioSourceRecordingMono {
     fn sample_rate_hz(&self) -> usize {
-        self.source_buffer.sample_rate_hz
+        self.source_recording.borrow().sample_rate_hz
     }
     fn has_finished(&self) -> bool {
-        self.play_cursor_buffer_index >= self.source_buffer.frames.len()
+        self.play_cursor_buffer_index >= self.source_recording.borrow().frames.len()
     }
     fn is_looping(&self) -> bool {
         self.is_looping
     }
     fn completion_ratio(&self) -> Option<f32> {
-        Some(self.play_cursor_buffer_index as f32 / self.source_buffer.frames.len() as f32)
+        Some(
+            self.play_cursor_buffer_index as f32
+                / self.source_recording.borrow().frames.len() as f32,
+        )
     }
 
     fn produce_chunk_mono(&mut self, output: &mut AudioChunkMono) {
@@ -339,20 +352,17 @@ impl AudioSourceTrait for AudioSourceRecordingMono {
         }
 
         output.volume = 1.0;
+        let mut source_recording = self.source_recording.borrow_mut();
         for out_sample in &mut output.samples {
-            let result = self
-                .source_buffer
-                .frames
-                .get(self.play_cursor_buffer_index)
-                .cloned();
+            let result = source_recording.get_frame(self.play_cursor_buffer_index);
 
             self.play_cursor_buffer_index += 1;
             if self.is_looping {
                 if self.play_cursor_buffer_index
-                    >= (self.source_buffer.loopsection_start_frameindex
-                        + self.source_buffer.loopsection_framecount)
+                    >= (source_recording.loopsection_start_frameindex
+                        + source_recording.loopsection_framecount)
                 {
-                    self.play_cursor_buffer_index = self.source_buffer.loopsection_start_frameindex;
+                    self.play_cursor_buffer_index = source_recording.loopsection_start_frameindex;
                 }
             }
             *out_sample = result.unwrap_or(0.0);
@@ -415,7 +425,7 @@ enum AudioSource {
     Sine(AudioSourceSine),
 }
 impl AudioSource {
-    fn new_from_buffer(buffer: Rc<AudioRecordingMono>, play_looped: bool) -> AudioSource {
+    fn new_from_buffer(buffer: Rc<RefCell<AudioRecordingMono>>, play_looped: bool) -> AudioSource {
         AudioSource::RecordingMono(AudioSourceRecordingMono::new(buffer, play_looped))
     }
     fn new_from_sine(sine_frequency: f64, stream_frames_per_second: usize) -> AudioSource {
@@ -1049,8 +1059,8 @@ pub struct Audiostate {
     streams: HashMap<AudioStreamId, AudioStream>,
     streams_to_delete_after_finish: HashSet<AudioStreamId>,
 
-    audio_recordings_mono: HashMap<String, Rc<AudioRecordingMono>>,
-    audio_recordings_stereo: HashMap<String, Rc<AudioRecordingStereo>>,
+    audio_recordings_mono: HashMap<String, Rc<RefCell<AudioRecordingMono>>>,
+    audio_recordings_stereo: HashMap<String, Rc<RefCell<AudioRecordingStereo>>>,
 }
 
 impl Audiostate {
@@ -1102,7 +1112,7 @@ impl Audiostate {
     ) {
         for (name, audiobuffer) in audio_recordings_mono.drain() {
             self.audio_recordings_mono
-                .insert(name, Rc::new(audiobuffer));
+                .insert(name, Rc::new(RefCell::new(audiobuffer)));
         }
     }
     #[inline]
@@ -1112,7 +1122,7 @@ impl Audiostate {
     ) {
         for (name, audiobuffer) in audio_recordings_stereo.drain() {
             self.audio_recordings_stereo
-                .insert(name, Rc::new(audiobuffer));
+                .insert(name, Rc::new(RefCell::new(audiobuffer)));
         }
     }
 
