@@ -2,12 +2,8 @@ pub mod audio;
 pub use audio::*;
 
 use ct_lib_math as math;
-use lewton::{audio::PreviousWindowRight, inside_ogg::OggStreamReader};
+use lewton::inside_ogg::OggStreamReader;
 
-#[inline]
-fn convert_u8_sample_to_f32(sample: u8) -> f32 {
-    (sample as f32 - std::i8::MAX as f32) / -(std::i8::MIN as f32)
-}
 #[inline]
 fn convert_i16_sample_to_f32(sample: i16) -> f32 {
     sample as f32 / -(std::i16::MIN as f32)
@@ -19,7 +15,7 @@ fn convert_i32_sample_to_f32(sample: i32) -> f32 {
 
 /// IMPORTANT: This Assumes mono
 /// Returns samplerate and a vector of samples
-pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, Vec<AudioSample>), String> {
+pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, Vec<AudioFrameMono>), String> {
     let reader = hound::WavReader::new(std::io::Cursor::new(wav_data))
         .map_err(|error| format!("Could not decode wav audio data: {}", error))?;
     if reader.len() == 0 {
@@ -31,8 +27,8 @@ pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, Vec<AudioSample>
     }
     let sample_rate_hz = header.sample_rate as usize;
     let samples = {
-        let samples: Result<Vec<AudioSample>, _> = match header.sample_format {
-            hound::SampleFormat::Float => reader.into_samples::<AudioSample>().collect(),
+        let samples: Result<Vec<AudioFrameMono>, _> = match header.sample_format {
+            hound::SampleFormat::Float => reader.into_samples::<AudioFrameMono>().collect(),
             hound::SampleFormat::Int => match header.bits_per_sample {
                 16 => reader
                     .into_samples::<i16>()
@@ -57,7 +53,9 @@ pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, Vec<AudioSample>
 }
 
 /// Returns samplerate, channelcount and a vector of interleaved samples
-pub fn decode_ogg_from_bytes_stereo(ogg_data: &[u8]) -> Result<(usize, Vec<AudioFrame>), String> {
+pub fn decode_ogg_from_bytes_stereo(
+    ogg_data: &[u8],
+) -> Result<(usize, Vec<AudioFrameStereo>), String> {
     let mut reader = OggStreamReader::new(std::io::Cursor::new(ogg_data))
         .map_err(|error| format!("Could not decode ogg audio data: {}", error))?;
     let sample_rate_hz = reader.ident_hdr.audio_sample_rate as usize;
@@ -76,7 +74,7 @@ pub fn decode_ogg_from_bytes_stereo(ogg_data: &[u8]) -> Result<(usize, Vec<Audio
         for index in 0..framecount {
             let left = unsafe { decoded_samples[0].get_unchecked(index) };
             let right = unsafe { decoded_samples[1].get_unchecked(index) };
-            result_frames.push(AudioFrame::new(*left, *right));
+            result_frames.push(AudioFrameStereo::new(*left, *right));
         }
     }
 
@@ -85,7 +83,11 @@ pub fn decode_ogg_from_bytes_stereo(ogg_data: &[u8]) -> Result<(usize, Vec<Audio
 
 /// Returns samplerate and a vector of samples
 #[cfg(not(target_arch = "wasm32"))]
-pub fn write_audio_samples_to_wav_file(filepath: &str, frames: &[AudioFrame], samplerate: usize) {
+pub fn write_audio_samples_to_wav_file(
+    filepath: &str,
+    frames: &[AudioFrameStereo],
+    samplerate: usize,
+) {
     let header = hound::WavSpec {
         channels: 2,
         sample_rate: samplerate as u32,

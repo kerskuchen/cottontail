@@ -133,7 +133,7 @@ impl GameAssets {
         return true;
     }
 
-    pub fn load_audiorecordings_mono(&self) -> HashMap<String, AudioBufferMono> {
+    pub fn load_audiorecordings_mono(&self) -> HashMap<String, AudioRecordingMono> {
         assert!(self.files_loading_stage == AssetLoadingStage::Finished);
 
         let mut audiorecordings = HashMap::new();
@@ -152,14 +152,7 @@ impl GameAssets {
             let name = wav_filepath
                 .replace(&format!("{}/", self.assets_folder), "")
                 .replace(".wav", "");
-            let framecount = frames.len();
-            let recording = AudioBufferMono {
-                name: name.clone(),
-                sample_rate_hz,
-                frames,
-                loopsection_start_frameindex: 0,
-                loopsection_framecount: framecount,
-            };
+            let recording = AudioRecording::new(name.clone(), sample_rate_hz, frames);
             audiorecordings.insert(name, recording);
         }
 
@@ -167,7 +160,7 @@ impl GameAssets {
         audiorecordings
     }
 
-    pub fn load_audiorecordings_stereo(&self) -> HashMap<String, AudioBufferStereo> {
+    pub fn load_audiorecordings_stereo(&self) -> HashMap<String, AudioRecordingStereo> {
         assert!(self.files_loading_stage == AssetLoadingStage::Finished);
 
         let mut audiorecordings = HashMap::new();
@@ -182,15 +175,8 @@ impl GameAssets {
             let TODO = "Introduce concept of asset name in our indexfile and get rid of this replacing hack";
             let name = ogg_filepath
                 .replace(&format!("{}/", self.assets_folder), "")
-                .replace(".wav", "");
-            let framecount = frames.len();
-            let recording = AudioBufferStereo {
-                name: name.clone(),
-                sample_rate_hz,
-                frames,
-                loopsection_start_frameindex: 0,
-                loopsection_framecount: framecount,
-            };
+                .replace(".ogg", "");
+            let recording = AudioRecording::new(name.clone(), sample_rate_hz, frames);
             audiorecordings.insert(name, recording);
         }
 
