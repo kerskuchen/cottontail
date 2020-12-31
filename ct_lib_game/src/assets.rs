@@ -3,6 +3,8 @@ use log;
 
 use std::collections::HashMap;
 
+pub type ResourceName = String;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AssetLoadingStage {
     Start,
@@ -16,6 +18,45 @@ impl Default for AssetLoadingStage {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioMetadata {
+    pub original_filepath: String,
+    pub resource_name: ResourceName,
+    pub samplerate_hz: usize,
+    pub channelcount: usize,
+    pub framecount: usize,
+    pub compression_quality: Option<usize>,
+}
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct AudioResources {
+    pub file_names: Vec<ResourceName>,
+    pub file_metadata: HashMap<String, AudioMetadata>,
+    pub file_content: HashMap<String, Vec<u8>>,
+}
+
+impl AudioResources {
+    pub fn new() -> AudioResources {
+        AudioResources {
+            file_names: Vec::new(),
+            file_metadata: HashMap::new(),
+            file_content: HashMap::new(),
+        }
+    }
+
+    pub fn add_audio_resource(
+        &mut self,
+        name: ResourceName,
+        metadata: AudioMetadata,
+        content: Vec<u8>,
+    ) {
+        assert!(!self.file_metadata.contains_key(&name));
+
+        self.file_names.push(name.clone());
+        self.file_metadata.insert(name.clone(), metadata);
+        self.file_content.insert(name, content);
+    }
+}
 #[derive(Default)]
 pub struct GameAssets {
     assets_folder: String,
@@ -24,6 +65,8 @@ pub struct GameAssets {
     sprites_3d: HashMap<String, Sprite3D>,
     fonts: HashMap<String, SpriteFont>,
     atlas: SpriteAtlas,
+
+    audio: AudioResources,
 
     files_loading_stage: AssetLoadingStage,
     files_list: Vec<String>,
@@ -46,6 +89,7 @@ impl Clone for GameAssets {
         result.files_loading_stage = self.files_loading_stage.clone();
         result.files_list = self.files_list.clone();
         result.files_bindata = self.files_bindata.clone();
+        result.audio = self.audio.clone();
 
         result
     }
@@ -129,6 +173,10 @@ impl GameAssets {
             self.sprites_3d = self.load_sprites_3d();
             log::info!("Loaded graphic resources");
         }
+        if self.audio.file_names.is_empty() {
+            self.audio = self.load_audio();
+            log::info!("Loaded audio resources");
+        }
 
         return true;
     }
@@ -171,7 +219,15 @@ impl GameAssets {
             .filter(|&path| path.ends_with(".ogg"))
         {
             let ogg_data = &self.files_bindata[ogg_filepath];
-            let (sample_rate_hz, frames) = audio::decode_ogg_from_bytes_stereo(&ogg_data).unwrap();
+            let (sample_rate_hz, channel_count) =
+                audio::decode_ogg_samplerate_channelcount(&ogg_data).expect(&format!(
+                    "Could not decode ogg audio file: '{}'",
+                    ogg_filepath
+                ));
+            let frames = audio::decode_ogg_frames_stereo(&ogg_data).expect(&format!(
+                "Could not decode ogg audio file: '{}'",
+                ogg_filepath
+            ));
             let TODO = "Introduce concept of asset name in our indexfile and get rid of this replacing hack";
             let name = ogg_filepath
                 .replace(&format!("{}/", self.assets_folder), "")
@@ -229,6 +285,11 @@ impl GameAssets {
                 .get(&format!("{}.0", sprite_name))
                 .unwrap_or_else(|| panic!("Sprite with name '{}' does not exist", sprite_name))
         }
+    }
+
+    fn load_audio(&self) -> AudioResources {
+        let filepath = path_join(&self.assets_folder, "audio.data");
+        deserialize_from_binary(&self.files_bindata[&filepath])
     }
 
     fn load_sprites(&self) -> HashMap<String, Sprite> {

@@ -606,7 +606,7 @@ fn sprite_create_from_frame_metadata(
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Generated JSON structs
+// Generated JSON structs (https://transform.tools/json-to-rust-serde)
 
 #[derive(Default, Debug, Clone, PartialEq, Deserialize)]
 struct AsepriteJSON {

@@ -258,6 +258,30 @@ pub fn path_copy_directory_contents_recursive(from_folderpath: &str, to_folderpa
     }
 }
 
+pub fn path_last_modified_time(filepath: &str) -> f64 {
+    let metadata = std::fs::metadata(filepath).unwrap_or_else(|error| {
+        panic!(
+            "Could not retrieve metadata for path {}: {}",
+            filepath, error
+        )
+    });
+    let modified_time = metadata.modified().unwrap_or_else(|error| {
+        panic!(
+            "Could not retrieve last modified time for path {}: {}",
+            filepath, error
+        )
+    });
+    modified_time
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_else(|error| {
+            panic!(
+                "Cannot determine duration since UNIX_EPOCH on last modified time for path {}: {}",
+                filepath, error
+            )
+        })
+        .as_secs_f64()
+}
+
 /// NOTE: Result is prefixed by the given `root_folder` and contains Unix-style file seperators only
 pub fn collect_files_by_extension_recursive(root_folder: &str, extension: &str) -> Vec<String> {
     walkdir::WalkDir::new(root_folder)

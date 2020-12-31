@@ -1,5 +1,6 @@
 mod aseprite;
 
+use audio::{AudioFrameMono, AudioFrameStereo};
 use ct_lib_audio as audio;
 use ct_lib_core as core;
 use ct_lib_draw as draw;
@@ -152,18 +153,144 @@ fn bake_graphics_resources() {
 }
 
 fn bake_audio_resources() {
-    let ogg_paths = collect_files_by_extension_recursive("assets", ".ogg");
-    for ogg_path_source in &ogg_paths {
-        let ogg_path_dest = ogg_path_source.replace("assets", "resources");
-        std::fs::create_dir_all(path_without_filename(&ogg_path_dest)).unwrap();
-        std::fs::copy(ogg_path_source, ogg_path_dest).unwrap();
+    let mut audio_resources = AudioResources::new();
+
+    // OGG FILES
+    for ogg_path in &collect_files_by_extension_recursive("assets", ".ogg") {
+        let resource_name = path_without_extension(ogg_path).replace("assets/", "");
+        let ogg_data = read_file_whole(ogg_path)
+            .unwrap_or_else(|error| panic!("Cannot open ogg file '{}': {}", ogg_path, error));
+
+        let metadata_path = path_without_extension(ogg_path) + ".meta.json";
+        let recreate_metadata = if path_exists(&metadata_path) {
+            let ogg_last_modified_time = path_last_modified_time(ogg_path);
+            let metadata_last_modified_time = path_last_modified_time(&metadata_path);
+            metadata_last_modified_time < ogg_last_modified_time
+        } else {
+            true
+        };
+
+        let metadata = if recreate_metadata {
+            let (samplerate_hz, channelcount) =
+                audio::decode_ogg_samplerate_channelcount(&ogg_data).unwrap_or_else(|error| {
+                    panic!("Cannot decode ogg file '{}': {}", ogg_path, error)
+                });
+            let framecount = match channelcount {
+                1 => {
+                    let frames: Vec<AudioFrameMono> = audio::decode_ogg_frames(&ogg_data)
+                        .unwrap_or_else(|error| {
+                            panic!("Cannot decode ogg file '{}': {}", ogg_path, error)
+                        });
+                    frames.len()
+                }
+                2 => {
+                    let frames: Vec<AudioFrameStereo> = audio::decode_ogg_frames(&ogg_data)
+                        .unwrap_or_else(|error| {
+                            panic!("Cannot decode ogg file '{}': {}", ogg_path, error)
+                        });
+                    frames.len()
+                }
+                _ => {
+                    panic!(
+                        "Unsupported channel count {} in ogg file '{}'",
+                        channelcount, ogg_path
+                    )
+                }
+            };
+            let metadata = AudioMetadata {
+                original_filepath: ogg_path.to_owned(),
+                resource_name: resource_name.clone(),
+                samplerate_hz,
+                channelcount,
+                framecount,
+                compression_quality: None,
+            };
+            serialize_to_json_file(&metadata, &metadata_path);
+            metadata
+        } else {
+            deserialize_from_json_file(&metadata_path)
+        };
+
+        audio_resources.add_audio_resource(resource_name, metadata, ogg_data);
     }
 
-    let wav_paths = collect_files_by_extension_recursive("assets", ".wav");
-    for wav_path_source in &wav_paths {
-        let wav_path_dest = wav_path_source.replace("assets", "resources");
-        std::fs::create_dir_all(path_without_filename(&wav_path_dest)).unwrap();
-        std::fs::copy(wav_path_source, wav_path_dest).unwrap();
+    // WAV FILES
+    for wav_path in &collect_files_by_extension_recursive("assets", ".wav") {
+        let resource_name = path_without_extension(wav_path).replace("assets/", "");
+        let metadata_path = path_without_extension(wav_path) + ".meta.json";
+        let recreate_metadata = if path_exists(&metadata_path) {
+            let wav_last_modified_time = path_last_modified_time(wav_path);
+            let metadata_last_modified_time = path_last_modified_time(&metadata_path);
+            metadata_last_modified_time < wav_last_modified_time
+        } else {
+            true
+        };
+
+        let metadata = if recreate_metadata {
+            let wav_data = read_file_whole(wav_path)
+                .unwrap_or_else(|error| panic!("Cannot open wav file '{}': {}", wav_path, error));
+            let (samplerate_hz, frames) = audio::decode_wav_from_bytes(&wav_data)
+                .unwrap_or_else(|error| panic!("Cannot decode wav file '{}': {}", wav_path, error));
+            let framecount = frames.len();
+            let metadata = AudioMetadata {
+                original_filepath: wav_path.to_owned(),
+                resource_name: resource_name.clone(),
+                samplerate_hz,
+                channelcount: 1,
+                framecount,
+                compression_quality: Some(5),
+            };
+            serialize_to_json_file(&metadata, &metadata_path);
+            metadata
+        } else {
+            deserialize_from_json_file(&metadata_path)
+        };
+
+        let ogg_output_temp_path =
+            path_with_extension(&wav_path, ".ogg").replace("assets", "target/assets_temp/audio");
+        // --quiet
+        // --resample 44100
+        // --converter 0
+        let command = format!(
+            "oggenc2 {} --quality {} --output={}",
+            wav_path,
+            metadata
+                .compression_quality
+                .expect(&format!("No compression quality found for '{}'", wav_path)),
+            ogg_output_temp_path
+        );
+        run_systemcommand_fail_on_error(&command, false);
+
+        assert!(
+            path_exists(&ogg_output_temp_path),
+            "Failed to encode ogg file for '{}' - '{}' is missing",
+            wav_path,
+            ogg_output_temp_path
+        );
+
+        let ogg_data = read_file_whole(&ogg_output_temp_path).unwrap_or_else(|error| {
+            panic!("Cannot open ogg file '{}': {}", ogg_output_temp_path, error)
+        });
+
+        audio_resources.add_audio_resource(resource_name, metadata, ogg_data);
+    }
+
+    serialize_to_binary_file(&audio_resources, "resources/audio.data");
+
+    // Human readable
+    serialize_to_json_file(
+        &audio_resources.file_metadata,
+        "target/assets_temp/audio/audio.json",
+    );
+    // Copy ogg files to a human readable location
+    for metadata in audio_resources.file_metadata.values() {
+        let path = &metadata.original_filepath;
+        if path.ends_with(".wav") {
+            // Wav files are converted to ogg files and which will be already placed in temp folder
+            continue;
+        }
+        let temp_path = path.replace("assets", "target/assets_temp/audio");
+        path_copy_file(path, &temp_path);
     }
 }
 
@@ -626,7 +753,7 @@ fn serialize_sprites(
 ) {
     let human_readable: Vec<AssetSprite> = sprite_map.values().cloned().collect();
     std::fs::write(
-        "resources/sprites.json",
+        "target/assets_temp/graphics/sprites.json",
         serde_json::to_string_pretty(&human_readable).unwrap(),
     )
     .unwrap();
@@ -644,7 +771,7 @@ fn serialize_sprites_3d(
 ) {
     let human_readable: Vec<AssetSprite3D> = sprite_map_3d.values().cloned().collect();
     std::fs::write(
-        "resources/sprites_3d.json",
+        "target/assets_temp/graphics/sprites_3d.json",
         serde_json::to_string_pretty(&human_readable).unwrap(),
     )
     .unwrap();
@@ -662,7 +789,7 @@ fn serialize_fonts(
 ) {
     let human_readable: Vec<AssetFont> = font_map.values().cloned().collect();
     std::fs::write(
-        "resources/fonts.json",
+        "target/assets_temp/graphics/fonts.json",
         serde_json::to_string_pretty(&human_readable).unwrap(),
     )
     .unwrap();
@@ -680,7 +807,7 @@ fn serialize_animations(
 ) {
     let human_readable: Vec<AssetAnimation> = animation_map.values().cloned().collect();
     std::fs::write(
-        "resources/animations.json",
+        "target/assets_temp/graphics/animations.json",
         serde_json::to_string_pretty(&human_readable).unwrap(),
     )
     .unwrap();
@@ -702,7 +829,7 @@ fn serialize_animations_3d(
 ) {
     let human_readable: Vec<AssetAnimation3D> = animation_map_3d.values().cloned().collect();
     std::fs::write(
-        "resources/animations_3d.json",
+        "target/assets_temp/graphics/animations_3d.json",
         serde_json::to_string_pretty(&human_readable).unwrap(),
     )
     .unwrap();
@@ -726,7 +853,7 @@ fn serialize_animations_3d(
 fn serialize_atlas(atlas: &AssetAtlas) {
     // Human readable
     std::fs::write(
-        "resources/atlas.json",
+        "target/assets_temp/graphics/atlas.json",
         serde_json::to_string_pretty(&atlas).unwrap(),
     )
     .unwrap();
@@ -903,6 +1030,8 @@ fn main() {
     }));
 
     recreate_directory("target/assets_temp");
+    recreate_directory("target/assets_temp/audio");
+    recreate_directory("target/assets_temp/graphics");
     recreate_directory("resources");
     recreate_directory("resources_executable");
 
@@ -962,16 +1091,6 @@ fn main() {
     let mut filelist_content = String::new();
     let filelist = collect_files_recursive("resources");
     for filepath in &filelist {
-        if filepath.ends_with(".json") {
-            // NOTE If we have BOTH a resource JSON and corresponding binary DATA file we only add
-            // the DATA file to the index because the JSON file is only for human consumption and
-            // does not need to be downloaded/parsed on app startup
-            let corresponding_data_filepath = path_with_extension(filepath, "data");
-            if path_exists(&corresponding_data_filepath) {
-                continue;
-            }
-        }
-
         filelist_content += &format!("{}\n", filepath);
     }
     std::fs::write("resources/index.txt", filelist_content.as_bytes())
