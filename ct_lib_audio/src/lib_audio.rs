@@ -63,32 +63,6 @@ pub fn decode_ogg_samplerate_channelcount(ogg_data: &[u8]) -> Result<(usize, usi
 }
 
 /// Returns and a vector of interleaved samples
-pub fn decode_ogg_frames_stereo(ogg_data: &[u8]) -> Result<Vec<AudioFrameStereo>, String> {
-    let mut reader = OggStreamReader::new(std::io::Cursor::new(ogg_data))
-        .map_err(|error| format!("Could not decode ogg audio data: {}", error))?;
-    if reader.ident_hdr.audio_channels != 2 {
-        return Err("Only stereo ogg data is supported".to_owned());
-    }
-
-    let mut result_frames = Vec::new();
-    let mut packet_index = 0;
-    while let Some(decoded_samples) = reader
-        .read_dec_packet_generic::<Vec<Vec<f32>>>()
-        .map_err(|error| format!("Could not decode ogg packet {}: {}", packet_index, error))?
-    {
-        packet_index += 1;
-        let framecount = decoded_samples[0].len();
-        for index in 0..framecount {
-            let left = unsafe { decoded_samples[0].get_unchecked(index) };
-            let right = unsafe { decoded_samples[1].get_unchecked(index) };
-            result_frames.push(AudioFrameStereo::new(*left, *right));
-        }
-    }
-
-    Ok(result_frames)
-}
-
-/// Returns and a vector of interleaved samples
 pub fn decode_ogg_frames<FrameType: AudioFrame>(ogg_data: &[u8]) -> Result<Vec<FrameType>, String> {
     let mut reader = OggStreamReader::new(std::io::Cursor::new(ogg_data))
         .map_err(|error| format!("Could not decode ogg audio data: {}", error))?;

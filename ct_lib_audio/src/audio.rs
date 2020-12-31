@@ -20,6 +20,7 @@ pub trait AudioFrame: Copy + Clone + Default {
     fn new_mono(value: f32) -> Self;
     fn new_stereo(left: f32, right: f32) -> Self;
     fn channel_count() -> usize;
+    fn lerp(start: Self, end: Self, percent: f32) -> Self;
 }
 
 impl AudioFrame for AudioFrameMono {
@@ -41,6 +42,10 @@ impl AudioFrame for AudioFrameMono {
     #[inline(always)]
     fn channel_count() -> usize {
         1
+    }
+
+    fn lerp(start: Self, end: Self, percent: f32) -> Self {
+        lerp(start, end, percent)
     }
 }
 
@@ -81,35 +86,34 @@ impl AudioFrame for AudioFrameStereo {
     fn channel_count() -> usize {
         2
     }
+
+    fn lerp(start: Self, end: Self, percent: f32) -> Self {
+        AudioFrameStereo {
+            left: lerp(start.left, end.left, percent),
+            right: lerp(start.right, end.left, percent),
+        }
+    }
 }
 
 pub const AUDIO_CHUNKSIZE_IN_FRAMES: usize = 512;
 
 #[derive(Clone, Copy)]
-struct AudioChunkMono {
+pub struct AudioChunk<FrameType: AudioFrame> {
     volume: f32,
-    samples: [AudioFrameMono; AUDIO_CHUNKSIZE_IN_FRAMES],
+    frames: [FrameType; AUDIO_CHUNKSIZE_IN_FRAMES],
 }
-impl AudioChunkMono {
-    pub fn new() -> AudioChunkMono {
-        AudioChunkMono {
+impl<FrameType: AudioFrame> AudioChunk<FrameType> {
+    pub fn new() -> AudioChunk<FrameType> {
+        AudioChunk {
             volume: 1.0,
-            samples: [0.0; AUDIO_CHUNKSIZE_IN_FRAMES],
+            frames: [FrameType::silence(); AUDIO_CHUNKSIZE_IN_FRAMES],
         }
     }
 }
-#[derive(Clone, Copy)]
-pub struct AudioChunkStereo {
-    volume: f32,
-    frames: [AudioFrameStereo; AUDIO_CHUNKSIZE_IN_FRAMES],
-}
+pub type AudioChunkMono = AudioChunk<AudioFrameMono>;
+pub type AudioChunkStereo = AudioChunk<AudioFrameStereo>;
+
 impl AudioChunkStereo {
-    pub fn new() -> AudioChunkStereo {
-        AudioChunkStereo {
-            volume: 1.0,
-            frames: [AudioFrameStereo::silence(); AUDIO_CHUNKSIZE_IN_FRAMES],
-        }
-    }
     pub fn as_interleaved_f32_slice(&self) -> &[f32] {
         unsafe { transmute_slices(&self.frames) }
     }
@@ -309,8 +313,7 @@ trait AudioSourceTrait: Clone {
     fn has_finished(&self) -> bool;
     fn is_looping(&self) -> bool;
     fn completion_ratio(&self) -> Option<f32>;
-    fn produce_chunk_mono(&mut self, output: &mut AudioChunkMono);
-    fn produce_chunk_stereo(&mut self, output: &mut AudioChunkStereo);
+    fn produce_chunk<FrameType: AudioFrame>(&mut self, output: &mut AudioChunk<FrameType>);
 }
 
 #[derive(Clone)]
@@ -345,7 +348,7 @@ impl AudioSourceTrait for AudioSourceRecordingMono {
         )
     }
 
-    fn produce_chunk_mono(&mut self, output: &mut AudioChunkMono) {
+    fn produce_chunk<FrameType: AudioFrame>(&mut self, output: &mut AudioChunk<FrameType>) {
         if self.has_finished() {
             output.volume = 0.0;
             return;
@@ -353,7 +356,7 @@ impl AudioSourceTrait for AudioSourceRecordingMono {
 
         output.volume = 1.0;
         let mut source_recording = self.source_recording.borrow_mut();
-        for out_sample in &mut output.samples {
+        for out_frame in &mut output.frames {
             let result = source_recording.get_frame(self.play_cursor_buffer_index);
 
             self.play_cursor_buffer_index += 1;
@@ -365,12 +368,8 @@ impl AudioSourceTrait for AudioSourceRecordingMono {
                     self.play_cursor_buffer_index = source_recording.loopsection_start_frameindex;
                 }
             }
-            *out_sample = result.unwrap_or(0.0);
+            *out_frame = FrameType::new_mono(result.unwrap_or(0.0));
         }
-    }
-
-    fn produce_chunk_stereo(&mut self, _output: &mut AudioChunkStereo) {
-        unreachable!()
     }
 }
 
@@ -404,18 +403,14 @@ impl AudioSourceTrait for AudioSourceSine {
         None
     }
 
-    fn produce_chunk_mono(&mut self, output: &mut AudioChunkMono) {
+    fn produce_chunk<FrameType: AudioFrame>(&mut self, output: &mut AudioChunk<FrameType>) {
         output.volume = 1.0;
         let time_increment = audio_frames_to_seconds(1, self.sample_rate_hz);
-        for out_sample in &mut output.samples {
+        for out_frame in &mut output.frames {
             let sine_amplitude = f64::sin(self.sine_time * 2.0 * PI64);
             self.sine_time += self.sine_frequency * time_increment;
-            *out_sample = sine_amplitude as AudioFrameMono;
+            *out_frame = FrameType::new_mono(sine_amplitude as AudioFrameMono);
         }
-    }
-
-    fn produce_chunk_stereo(&mut self, _output: &mut AudioChunkStereo) {
-        unreachable!()
     }
 }
 
@@ -460,20 +455,14 @@ impl AudioSource {
         }
     }
 
-    fn produce_chunk_mono(&mut self, output: &mut AudioChunkMono) {
+    fn produce_chunk<FrameType: AudioFrame>(&mut self, output: &mut AudioChunk<FrameType>) {
         match self {
-            AudioSource::RecordingMono(buffer) => buffer.produce_chunk_mono(output),
-            AudioSource::Sine(sine) => sine.produce_chunk_mono(output),
-        }
-    }
-
-    fn produce_chunk_stereo(&mut self, output: &mut AudioChunkStereo) {
-        match self {
-            AudioSource::RecordingMono(buffer) => buffer.produce_chunk_stereo(output),
-            AudioSource::Sine(sine) => sine.produce_chunk_stereo(output),
+            AudioSource::RecordingMono(buffer) => buffer.produce_chunk(output),
+            AudioSource::Sine(sine) => sine.produce_chunk(output),
         }
     }
 }
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Adapters
 
@@ -515,8 +504,8 @@ impl VolumeAdapter {
             // Slow path - need to ramp up/down volume
             let volume_increase = (self.target - self.current) / AUDIO_CHUNKSIZE_IN_FRAMES as f32;
             let mut volume = self.current;
-            for (in_sample, out_sample) in input.samples.iter().zip(output.samples.iter_mut()) {
-                *out_sample = volume * in_sample;
+            for (in_frame, out_frame) in input.frames.iter().zip(output.frames.iter_mut()) {
+                *out_frame = volume * in_frame;
                 volume += volume_increase;
             }
             // We assign here to prevent rounding errors and assuring the fastpath next time
@@ -552,9 +541,9 @@ impl MonoToStereoAdapter {
             // Fast path - all values are the same for the chunk
             let percent = 0.5 * (self.target + 1.0); // Transform [-1,1] -> [0,1]
             let (volume_left, volume_right) = crossfade_squareroot(1.0, percent);
-            for (in_sample, out_frame) in input.samples.iter().zip(output.frames.iter_mut()) {
-                out_frame.left = volume_left * in_sample;
-                out_frame.right = volume_right * in_sample;
+            for (in_frame_mono, out_frame) in input.frames.iter().zip(output.frames.iter_mut()) {
+                out_frame.left = volume_left * in_frame_mono;
+                out_frame.right = volume_right * in_frame_mono;
             }
         } else {
             // Slow path - need to ramp up/down pan
@@ -563,8 +552,8 @@ impl MonoToStereoAdapter {
             let percent_increase =
                 (percent_target - percent_start) / AUDIO_CHUNKSIZE_IN_FRAMES as f32;
             let mut percent = percent_start;
-            for (in_sample, out_frame) in input.samples.iter().zip(output.frames.iter_mut()) {
-                let (volume_left, volume_right) = crossfade_squareroot(*in_sample, percent);
+            for (in_frame_mono, out_frame) in input.frames.iter().zip(output.frames.iter_mut()) {
+                let (volume_left, volume_right) = crossfade_squareroot(*in_frame_mono, percent);
                 *out_frame = AudioFrameStereo::new(volume_left, volume_right);
                 percent += percent_increase;
             }
@@ -575,24 +564,27 @@ impl MonoToStereoAdapter {
 }
 
 #[derive(Clone)]
-struct ResamplerLinear {
+struct Resampler<FrameType: AudioFrame> {
     source: AudioSource,
-    sample_current: AudioFrameMono,
-    sample_next: AudioFrameMono,
-    sample_time_percent: f32,
+    frame_current: FrameType,
+    frame_next: FrameType,
+    frame_time_percent: f32,
 
-    internal_buffer: AudioChunkMono,
+    internal_buffer: AudioChunk<FrameType>,
     internal_buffer_readpos: usize,
 }
-impl ResamplerLinear {
-    pub fn new(source: AudioSource) -> ResamplerLinear {
-        ResamplerLinear {
-            source,
-            sample_current: 0.0,
-            sample_next: 0.0,
-            sample_time_percent: 0.0,
+pub type ResamplerMono = Resampler<AudioFrameMono>;
+pub type ResamplerStereo = Resampler<AudioFrameStereo>;
 
-            internal_buffer: AudioChunkMono::new(),
+impl<FrameType: AudioFrame> Resampler<FrameType> {
+    pub fn new(source: AudioSource) -> Resampler<FrameType> {
+        Resampler {
+            source,
+            frame_current: FrameType::silence(),
+            frame_next: FrameType::silence(),
+            frame_time_percent: 0.0,
+
+            internal_buffer: AudioChunk::new(),
             internal_buffer_readpos: AUDIO_CHUNKSIZE_IN_FRAMES,
         }
     }
@@ -608,12 +600,12 @@ impl ResamplerLinear {
 
     pub fn has_finished(&self) -> bool {
         self.source.has_finished()
-            && self.internal_buffer_readpos >= self.internal_buffer.samples.len()
+            && self.internal_buffer_readpos >= self.internal_buffer.frames.len()
     }
 
-    pub fn produce_samples(
+    pub fn produce_frames(
         &mut self,
-        output: &mut [AudioFrameMono],
+        output: &mut [FrameType],
         output_sample_rate_hz: f32,
         playback_speed_factor: f32,
     ) {
@@ -634,41 +626,38 @@ impl ResamplerLinear {
             playback_speed_factor * sample_rate_conversion_factor
         };
 
-        for out_sample in output.iter_mut() {
-            self.sample_time_percent += playback_speed_increment;
+        for out_frames in output.iter_mut() {
+            self.frame_time_percent += playback_speed_increment;
 
-            while self.sample_time_percent >= 1.0 {
-                self.sample_current = self.sample_next;
-                self.sample_next = self.get_next_sample();
-                self.sample_time_percent -= 1.0;
+            while self.frame_time_percent >= 1.0 {
+                self.frame_current = self.frame_next;
+                self.frame_next = self.get_next_frame();
+                self.frame_time_percent -= 1.0;
             }
 
-            let interpolated_sample_value = lerp(
-                self.sample_current,
-                self.sample_next,
-                self.sample_time_percent,
-            );
+            let interpolated_sample_value =
+                FrameType::lerp(self.frame_current, self.frame_next, self.frame_time_percent);
 
-            *out_sample = interpolated_sample_value;
+            *out_frames = interpolated_sample_value;
         }
     }
 
-    fn get_next_sample(&mut self) -> AudioFrameMono {
-        if self.internal_buffer_readpos >= self.internal_buffer.samples.len() {
+    fn get_next_frame(&mut self) -> FrameType {
+        if self.internal_buffer_readpos >= self.internal_buffer.frames.len() {
             // We have depleted our internal buffer and need to replenish it from our source
 
             if self.source.has_finished() {
                 self.internal_buffer.volume = 0.0;
-                return 0.0;
+                return FrameType::silence();
             } else {
-                self.source.produce_chunk_mono(&mut self.internal_buffer);
+                self.source.produce_chunk(&mut self.internal_buffer);
                 self.internal_buffer_readpos = 0;
             }
         }
 
         let sample = unsafe {
             self.internal_buffer
-                .samples
+                .frames
                 .get_unchecked(self.internal_buffer_readpos)
         };
         self.internal_buffer_readpos += 1;
@@ -698,16 +687,16 @@ struct AudioStream {
     frames_left_till_start: usize,
     has_finished: bool,
 
+    playback_speed_resampler: ResamplerMono,
     /// Must be > 0
     playback_speed_base: f32,
-    playback_speed_resampler: ResamplerLinear,
 
-    volume_base: f32,
     volume_adapter: VolumeAdapter,
+    volume_base: f32,
 
+    pan_adapter: MonoToStereoAdapter,
     /// Only used when we don't have spatial params
     pan_base: f32,
-    pan_adapter: MonoToStereoAdapter,
 
     output_mono_raw: AudioChunkMono,
     output_mono_with_volume: AudioChunkMono,
@@ -732,14 +721,14 @@ impl AudioStream {
             frames_left_till_start: delay_framecount,
             has_finished: false,
 
+            playback_speed_resampler: Resampler::new(source),
             playback_speed_base: playback_speed_percent,
-            playback_speed_resampler: ResamplerLinear::new(source),
 
-            volume_base: volume,
             volume_adapter: VolumeAdapter::new(volume),
+            volume_base: volume,
 
-            pan_base: pan,
             pan_adapter: MonoToStereoAdapter::new(0.0),
+            pan_base: pan,
 
             output_mono_raw: AudioChunkMono::new(),
             output_mono_with_volume: AudioChunkMono::new(),
@@ -784,7 +773,7 @@ impl AudioStream {
         }
 
         // Write remaining delay frames
-        for sample in &mut self.output_mono_raw.samples[0..silence_framecount] {
+        for sample in &mut self.output_mono_raw.frames[0..silence_framecount] {
             *sample = 0.0;
         }
 
@@ -803,8 +792,8 @@ impl AudioStream {
             };
 
         // Resampler stage
-        self.playback_speed_resampler.produce_samples(
-            &mut self.output_mono_raw.samples[silence_framecount..],
+        self.playback_speed_resampler.produce_frames(
+            &mut self.output_mono_raw.frames[silence_framecount..],
             output_params.audio_sample_rate_hz as f32,
             final_playback_speed_factor,
         );
