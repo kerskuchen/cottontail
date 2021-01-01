@@ -183,7 +183,7 @@ impl GameAssets {
         return true;
     }
 
-    pub fn load_audiorecordings_mono(&self) -> HashMap<String, AudioRecordingMono> {
+    pub fn load_audiorecordings_mono(&self) -> HashMap<String, AudioRecording> {
         assert!(self.files_loading_stage == AssetLoadingStage::Finished);
 
         let mut audiorecordings = HashMap::new();
@@ -193,7 +193,7 @@ impl GameAssets {
                 continue;
             }
             let ogg_data = &self.audio.file_content[resource_name];
-            let recording = AudioRecordingMono::new_from_ogg_stream_with_loopsection(
+            let recording = AudioRecording::new_from_ogg_stream_with_loopsection(
                 metadata.resource_name.clone(),
                 metadata.framecount,
                 ogg_data.clone(),
@@ -212,7 +212,7 @@ impl GameAssets {
         audiorecordings
     }
 
-    pub fn load_audiorecordings_stereo(&self) -> HashMap<String, AudioRecordingStereo> {
+    pub fn load_audiorecordings_stereo(&self) -> HashMap<String, AudioRecording> {
         assert!(self.files_loading_stage == AssetLoadingStage::Finished);
 
         let mut audiorecordings = HashMap::new();
@@ -222,7 +222,7 @@ impl GameAssets {
                 continue;
             }
             let ogg_data = &self.audio.file_content[resource_name];
-            let recording = AudioRecordingStereo::new_from_ogg_stream_with_loopsection(
+            let recording = AudioRecording::new_from_ogg_stream_with_loopsection(
                 metadata.resource_name.clone(),
                 metadata.framecount,
                 ogg_data.clone(),

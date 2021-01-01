@@ -1,6 +1,5 @@
 mod aseprite;
 
-use audio::{AudioFrameMono, AudioFrameStereo};
 use ct_lib_audio as audio;
 use ct_lib_core as core;
 use ct_lib_draw as draw;
@@ -171,32 +170,11 @@ fn bake_audio_resources() {
         };
 
         let metadata = if recreate_metadata {
-            let (samplerate_hz, channelcount) =
-                audio::decode_ogg_samplerate_channelcount(&ogg_data).unwrap_or_else(|error| {
-                    panic!("Cannot decode ogg file '{}': {}", ogg_path, error)
-                });
-            let framecount = match channelcount {
-                1 => {
-                    let frames: Vec<AudioFrameMono> = audio::decode_ogg_frames(&ogg_data)
-                        .unwrap_or_else(|error| {
-                            panic!("Cannot decode ogg file '{}': {}", ogg_path, error)
-                        });
-                    frames.len()
-                }
-                2 => {
-                    let frames: Vec<AudioFrameStereo> = audio::decode_ogg_frames(&ogg_data)
-                        .unwrap_or_else(|error| {
-                            panic!("Cannot decode ogg file '{}': {}", ogg_path, error)
-                        });
-                    frames.len()
-                }
-                _ => {
-                    panic!(
-                        "Unsupported channel count {} in ogg file '{}'",
-                        channelcount, ogg_path
-                    )
-                }
-            };
+            let (samplerate_hz, audiochunk) = audio::decode_ogg_data(&ogg_data)
+                .unwrap_or_else(|error| panic!("Cannot decode ogg file '{}': {}", ogg_path, error));
+            let channelcount = audiochunk.channelcount();
+            let framecount = audiochunk.len();
+
             let metadata = AudioMetadata {
                 original_filepath: ogg_path.to_owned(),
                 resource_name: resource_name.clone(),

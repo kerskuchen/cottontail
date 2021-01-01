@@ -363,9 +363,10 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
             }
 
             while audio_output.get_num_frames_to_submit() > 0 {
-                let mut audiochunk = AudioChunkStereo::new();
+                let mut audiochunk = AudioChunk::new_stereo();
                 audio.render_audio_chunk(&mut audiochunk);
-                audio_output.submit_frames(audiochunk.as_interleaved_f32_slice());
+                let (samples_left, samples_right) = audiochunk.get_stereo_samples();
+                audio_output.submit_frames(samples_left, samples_right);
             }
 
             draw.finish_frame();

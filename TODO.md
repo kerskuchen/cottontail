@@ -1,12 +1,8 @@
 # DONE:
 
-- convert wav files to ogg when assets baking
-- adds audio metadata for assetbaker
-- adds audio streaming of ogg files
-
 # CURRENT
 
-
+- converting from interleaved processing to flat buffers per channel
 
 # NEXT:
 
@@ -225,3 +221,7 @@
 - added 3d sprite and spatial sound example
 
 - adds ogg decoding for whole files
+
+- convert wav files to ogg when assets baking
+- adds audio metadata for assetbaker
+- adds audio streaming of ogg files

@@ -214,9 +214,10 @@ impl AudioOutput {
         }
     }
 
-    pub fn submit_frames(&mut self, audio_chunk: &[f32]) {
-        for frame in audio_chunk.chunks_exact(2) {
-            if let Err(_) = self.frames_queue.push((frame[0], frame[1])) {
+    pub fn submit_frames(&mut self, samples_left: &[f32], samples_right: &[f32]) {
+        assert!(samples_left.len() == samples_right.len());
+        for (left, right) in samples_left.iter().zip(samples_right.iter()) {
+            if let Err(_) = self.frames_queue.push((*left, *right)) {
                 log::warn!("Audiobuffer: Could not push frame to queue - queue full?");
             }
         }
