@@ -468,7 +468,7 @@ impl AudioRecording {
         };
 
         let mut result = AudioRecording {
-            name,
+            name: name.clone(),
             sample_rate_hz,
             framechunk,
             stream_reader: Some(stream_reader),
@@ -478,11 +478,18 @@ impl AudioRecording {
         };
 
         // NOTE: We pre-decode up to 1 seconds worth of audio frames directly because it is fast
-        //       enough and most sounds are short enough to be completely decoded that way
+        //       enough and most sounds are short enough to be completely decoded that way. Also
+        //       it checks if a given stream is even decodable so that we can crash as soon as
+        //       possible if it is not
         let initial_predecoded_framecount = usize::min(framecount, sample_rate_hz);
         result
             .decode_frames_till(initial_predecoded_framecount)
-            .map_err(|error| format!("Could not pre-decode ogg audio data: {}", error))?;
+            .map_err(|error| {
+                format!(
+                    "Could not pre-decode ogg audio data of stream '{}': {}",
+                    name, error
+                )
+            })?;
 
         Ok(result)
     }
@@ -1043,8 +1050,8 @@ struct AudioStream {
     /// Only used when we don't have spatial params
     pan_base: f32,
 
-    output_resampler: AudioChunk,
-    output_stereo: AudioChunk,
+    chunk_internal: AudioChunk,
+    chunk_output: AudioChunk,
 
     spatial_params: Option<SpatialParams>,
 }
@@ -1059,7 +1066,7 @@ impl AudioStream {
         pan: f32,
         spatial_params: Option<SpatialParams>,
     ) -> AudioStream {
-        let output_resampler = match source.channels() {
+        let chunk_internal = match source.channels() {
             AudioChannels::Mono => AudioChunk::new_mono(),
             AudioChannels::Stereo => AudioChunk::new_stereo(),
         };
@@ -1078,8 +1085,8 @@ impl AudioStream {
             pan_adapter: MonoToStereoAdapter::new(0.0),
             pan_base: pan,
 
-            output_resampler,
-            output_stereo: AudioChunk::new_stereo(),
+            chunk_internal,
+            chunk_output: AudioChunk::new_stereo(),
 
             spatial_params,
         }
@@ -1087,13 +1094,13 @@ impl AudioStream {
 
     pub fn produce_output_chunk(&mut self, output_params: AudioRenderParams) {
         // Reset volume for output chunks
-        self.output_resampler.volume = 1.0;
-        self.output_stereo.volume = 1.0;
+        self.chunk_internal.volume = 1.0;
+        self.chunk_output.volume = 1.0;
 
         // Fast path - we are finished
         if self.has_finished {
-            self.output_resampler.volume = 0.0;
-            self.output_stereo.volume = 0.0;
+            self.chunk_internal.volume = 0.0;
+            self.chunk_output.volume = 0.0;
             return;
         }
 
@@ -1111,13 +1118,13 @@ impl AudioStream {
 
         // Fast path - our stream won't start this chunk
         if silence_framecount == AUDIO_CHUNKSIZE_IN_FRAMES {
-            self.output_resampler.volume = 0.0;
-            self.output_stereo.volume = 0.0;
+            self.chunk_internal.volume = 0.0;
+            self.chunk_output.volume = 0.0;
             return;
         }
 
         // Write remaining delay frames as silence
-        self.output_resampler
+        self.chunk_internal
             .fill_silence_offset_framecount(0, silence_framecount);
 
         // Calculate spatial settings if necessary
@@ -1136,7 +1143,7 @@ impl AudioStream {
 
         // Resampler stage
         self.playback_speed_resampler.produce_frames(
-            &mut self.output_resampler,
+            &mut self.chunk_internal,
             silence_framecount,
             output_params.audio_sample_rate_hz as f32,
             final_playback_speed_factor,
@@ -1145,27 +1152,25 @@ impl AudioStream {
 
         // Volume stage
         self.volume_adapter.set_volume(final_volume);
-        self.volume_adapter
-            .process_chunk(&mut self.output_resampler);
+        self.volume_adapter.process_chunk(&mut self.chunk_internal);
 
         // Mono -> stereo stage
-        match self.output_resampler.channels {
+        match self.chunk_internal.channels {
             AudioChannels::Mono => {
                 self.pan_adapter.set_pan(final_pan);
                 self.pan_adapter
-                    .process_chunk(&self.output_resampler, &mut self.output_stereo);
+                    .process_chunk(&self.chunk_internal, &mut self.chunk_output);
             }
             AudioChannels::Stereo => {
-                // No conversion needed
-                let TODO = "Something more clever here";
-                self.output_stereo
-                    .copy_from_chunk_complete(&self.output_resampler);
+                // No conversion needed - just copy to output
+                self.chunk_output
+                    .copy_from_chunk_complete(&self.chunk_internal);
             }
         }
     }
 
     pub fn get_output_chunk(&self) -> &AudioChunk {
-        &self.output_stereo
+        &self.chunk_output
     }
 
     pub fn has_started(&self) -> bool {
@@ -1494,7 +1499,7 @@ impl Audiostate {
         playback_speed: f32,
         pan: f32,
     ) -> AudioStreamId {
-        let id = self.get_next_stream_id();
+        let id = self.create_next_stream_id();
         let start_delay_framecount = self.start_time_to_delay_framecount(schedule_time_seconds);
         let source = if recording_name == "sine" {
             AudioSource::new_from_sine(440.0, self.output_render_params.audio_sample_rate_hz)
@@ -1554,7 +1559,7 @@ impl Audiostate {
         falloff_distance_start: f32,
         falloff_distance_end: f32,
     ) -> AudioStreamId {
-        let id = self.get_next_stream_id();
+        let id = self.create_next_stream_id();
         let start_delay_framecount = self.start_time_to_delay_framecount(schedule_time_seconds);
         let stream = {
             let initial_pan = SpatialParams::calculate_spatial_pan(
@@ -1729,7 +1734,7 @@ impl Audiostate {
     }
 
     #[inline]
-    fn get_next_stream_id(&mut self) -> AudioStreamId {
+    fn create_next_stream_id(&mut self) -> AudioStreamId {
         self.next_stream_id += 1;
         self.next_stream_id
     }
