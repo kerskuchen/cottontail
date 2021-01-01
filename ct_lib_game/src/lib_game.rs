@@ -209,59 +209,52 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 SplashscreenState::StartedFadingIn => {}
                 SplashscreenState::IsFadingIn => {}
                 SplashscreenState::FinishedFadingIn => {
-                    {
-                        let audio_recordings_mono = self.assets.load_audiorecordings_mono();
-                        let audio_recordings_stereo = self.assets.load_audiorecordings_stereo();
+                    let audio_recordings = self.assets.load_audiorecordings();
+                    audio.add_audio_recordings(audio_recordings);
 
-                        audio.add_audio_recordings_mono(audio_recordings_mono);
-                        audio.add_audio_recordings_stereo(audio_recordings_stereo);
-                    }
+                    assert!(self.game.is_none());
+                    assert!(self.globals.is_none());
 
-                    {
-                        assert!(self.game.is_none());
-                        assert!(self.globals.is_none());
+                    let window_config = GameStateType::get_window_config();
+                    let random = Random::new_from_seed((input.deltatime * 1000000.0) as u64);
+                    let camera = GameCamera::new(
+                        Vec2::zero(),
+                        window_config.canvas_width,
+                        window_config.canvas_height,
+                        false,
+                    );
+                    let cursors = Cursors::new(
+                        &camera.cam,
+                        &input.mouse,
+                        &input.touch,
+                        input.screen_framebuffer_width,
+                        input.screen_framebuffer_height,
+                        window_config.canvas_width,
+                        window_config.canvas_height,
+                    );
 
-                        let window_config = GameStateType::get_window_config();
-                        let random = Random::new_from_seed((input.deltatime * 1000000.0) as u64);
-                        let camera = GameCamera::new(
-                            Vec2::zero(),
-                            window_config.canvas_width,
-                            window_config.canvas_height,
-                            false,
-                        );
-                        let cursors = Cursors::new(
-                            &camera.cam,
-                            &input.mouse,
-                            &input.touch,
-                            input.screen_framebuffer_width,
-                            input.screen_framebuffer_height,
-                            window_config.canvas_width,
-                            window_config.canvas_height,
-                        );
+                    let mut globals = Globals {
+                        random,
+                        camera,
+                        cursors,
 
-                        let mut globals = Globals {
-                            random,
-                            camera,
-                            cursors,
+                        debug_deltatime_speed_factor: 1.0,
+                        deltatime_speed_factor: 1.0,
+                        deltatime: input.deltatime,
+                        is_paused: false,
 
-                            debug_deltatime_speed_factor: 1.0,
-                            deltatime_speed_factor: 1.0,
-                            deltatime: input.deltatime,
-                            is_paused: false,
+                        canvas_width: window_config.canvas_width as f32,
+                        canvas_height: window_config.canvas_height as f32,
+                    };
 
-                            canvas_width: window_config.canvas_width as f32,
-                            canvas_height: window_config.canvas_height as f32,
-                        };
-
-                        self.game = Some(GameStateType::new(
-                            draw,
-                            audio,
-                            &self.assets,
-                            &input,
-                            &mut globals,
-                        ));
-                        self.globals = Some(globals);
-                    }
+                    self.game = Some(GameStateType::new(
+                        draw,
+                        audio,
+                        &self.assets,
+                        &input,
+                        &mut globals,
+                    ));
+                    self.globals = Some(globals);
                 }
 
                 SplashscreenState::Sustain => {}

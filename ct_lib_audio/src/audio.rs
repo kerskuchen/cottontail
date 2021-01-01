@@ -1285,8 +1285,7 @@ pub struct Audiostate {
     streams: HashMap<AudioStreamId, AudioStream>,
     streams_to_delete_after_finish: HashSet<AudioStreamId>,
 
-    audio_recordings_mono: HashMap<String, Rc<RefCell<AudioRecording>>>,
-    audio_recordings_stereo: HashMap<String, Rc<RefCell<AudioRecording>>>,
+    audio_recordings: HashMap<String, Rc<RefCell<AudioRecording>>>,
 }
 
 impl Audiostate {
@@ -1313,8 +1312,7 @@ impl Audiostate {
             streams: HashMap::new(),
             streams_to_delete_after_finish: HashSet::new(),
 
-            audio_recordings_mono: HashMap::new(),
-            audio_recordings_stereo: HashMap::new(),
+            audio_recordings: HashMap::new(),
         }
     }
 
@@ -1332,22 +1330,9 @@ impl Audiostate {
     }
 
     #[inline]
-    pub fn add_audio_recordings_mono(
-        &mut self,
-        mut audio_recordings_mono: HashMap<String, AudioRecording>,
-    ) {
-        for (name, audiobuffer) in audio_recordings_mono.drain() {
-            self.audio_recordings_mono
-                .insert(name, Rc::new(RefCell::new(audiobuffer)));
-        }
-    }
-    #[inline]
-    pub fn add_audio_recordings_stereo(
-        &mut self,
-        mut audio_recordings_stereo: HashMap<String, AudioRecording>,
-    ) {
-        for (name, audiobuffer) in audio_recordings_stereo.drain() {
-            self.audio_recordings_stereo
+    pub fn add_audio_recordings(&mut self, mut audio_recordings: HashMap<String, AudioRecording>) {
+        for (name, audiobuffer) in audio_recordings.drain() {
+            self.audio_recordings
                 .insert(name, Rc::new(RefCell::new(audiobuffer)));
         }
     }
@@ -1398,7 +1383,7 @@ impl Audiostate {
             AudioSource::new_from_sine(440.0, self.output_render_params.audio_sample_rate_hz)
         } else {
             let buffer = self
-                .audio_recordings_mono
+                .audio_recordings
                 .get(recording_name)
                 .unwrap_or_else(|| panic!("Recording '{}' not found", recording_name));
             AudioSource::new_from_recording(buffer.clone(), play_looped)
@@ -1462,7 +1447,7 @@ impl Audiostate {
             );
             let source = {
                 let buffer = self
-                    .audio_recordings_mono
+                    .audio_recordings
                     .get(recording_name)
                     .unwrap_or_else(|| panic!("Recording '{}' not found", recording_name));
                 AudioSource::new_from_recording(buffer.clone(), play_looped)

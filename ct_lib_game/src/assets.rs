@@ -183,15 +183,12 @@ impl GameAssets {
         return true;
     }
 
-    pub fn load_audiorecordings_mono(&self) -> HashMap<String, AudioRecording> {
+    pub fn load_audiorecordings(&self) -> HashMap<String, AudioRecording> {
         assert!(self.files_loading_stage == AssetLoadingStage::Finished);
 
         let mut audiorecordings = HashMap::new();
 
         for (resource_name, metadata) in self.audio.file_metadata.iter() {
-            if metadata.channelcount != 1 {
-                continue;
-            }
             let ogg_data = &self.audio.file_content[resource_name];
             let recording = AudioRecording::new_from_ogg_stream_with_loopsection(
                 metadata.resource_name.clone(),
@@ -208,36 +205,7 @@ impl GameAssets {
             audiorecordings.insert(resource_name.clone(), recording);
         }
 
-        log::info!("Loaded mono audio recordings");
-        audiorecordings
-    }
-
-    pub fn load_audiorecordings_stereo(&self) -> HashMap<String, AudioRecording> {
-        assert!(self.files_loading_stage == AssetLoadingStage::Finished);
-
-        let mut audiorecordings = HashMap::new();
-
-        for (resource_name, metadata) in self.audio.file_metadata.iter() {
-            if metadata.channelcount != 2 {
-                continue;
-            }
-            let ogg_data = &self.audio.file_content[resource_name];
-            let recording = AudioRecording::new_from_ogg_stream_with_loopsection(
-                metadata.resource_name.clone(),
-                metadata.framecount,
-                ogg_data.clone(),
-                metadata.loopsection_start_frameindex.unwrap_or(0),
-                metadata
-                    .loopsection_framecount
-                    .unwrap_or(metadata.framecount),
-            )
-            .unwrap_or_else(|error| {
-                panic!("Cannot create Audiorecording from resource '{}'", error)
-            });
-            audiorecordings.insert(resource_name.clone(), recording);
-        }
-
-        log::info!("Loaded stereo audio recordings");
+        log::info!("Loaded audio recordings");
         audiorecordings
     }
 

@@ -1,12 +1,14 @@
 # DONE:
 
+- converting from interleaved processing to flat buffers per channel
+
 # CURRENT
 
-- converting from interleaved processing to flat buffers per channel
+- add ability to pack/load/play stereo audio files
 
 # NEXT:
 
-- add ability to pack/load/play stereo audio files
+- find out why shift key does not work
 
 ## improve asset loading
 - use resources packs instead of raw file download (like we used for audio)
