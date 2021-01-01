@@ -1,13 +1,14 @@
 # DONE:
 
 - converting from interleaved processing to flat buffers per channel
+- add ability to pack/load/play stereo audio files
 
 # CURRENT
 
-- add ability to pack/load/play stereo audio files
 
 # NEXT:
 
+- get rid of audio stuttering on mobile
 - find out why shift key does not work
 
 ## improve asset loading
@@ -23,7 +24,6 @@
 - distribute rendering of chunks over multiple frames at a constant rate instead of multiple chunks 
   in one frame to fill up the queue (important on wasm because we have bigger buffers there but even
   less time per frame)
-- Support ogg streaming 
 - add final output resampler to resample internal hz rate to output hz rate (useful if we want 
   to render internally at 22050hz but output at 44100hz) and also use global 
   playback speed factor in final resampler

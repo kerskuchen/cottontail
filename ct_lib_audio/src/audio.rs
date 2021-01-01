@@ -160,6 +160,13 @@ impl AudioChunk {
     pub fn copy_from_chunk_complete(&mut self, other: &AudioChunk) {
         assert!(self.channels == other.channels);
         assert!(self.len() == other.len());
+
+        // Fastpath - other chunk is silent
+        if other.volume == 0.0 {
+            self.volume = 0.0;
+            return;
+        }
+
         AudioChunk::copy_chunks(other, self, 0, 0, other.len());
     }
 
