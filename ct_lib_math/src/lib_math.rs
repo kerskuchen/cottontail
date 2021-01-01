@@ -89,8 +89,8 @@ pub fn crossfade_linear(factor: f32, percent: f32) -> (f32, f32) {
 /// Based on squareroot panning (http://gdsp.hf.ntnu.no/lessons/1/5/)
 #[inline]
 pub fn crossfade_squareroot(factor: f32, percent: f32) -> (f32, f32) {
-    let left = factor * f32::sqrt(percent);
-    let right = factor * f32::sqrt(1.0 - percent);
+    let left = factor * f32::sqrt(1.0 - percent);
+    let right = factor * f32::sqrt(percent);
     (left, right)
 }
 
