@@ -381,7 +381,7 @@ pub fn audio_seconds_to_frames(time: f64, audio_samplerate_hz: usize) -> f64 {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Audiorecordings and sources
+// Audiorecordings
 
 pub struct AudioRecording {
     pub name: String,
@@ -393,14 +393,14 @@ pub struct AudioRecording {
 
     /// Defaults to 0
     pub loopsection_start_frameindex: usize,
-    /// Defaults to frames.len()
+    /// Defaults to framechunk.len()
     pub loopsection_framecount: usize,
 }
 
 impl AudioRecording {
-    pub fn new(name: String, sample_rate_hz: usize, frames: AudioChunk) -> AudioRecording {
-        let framecount = frames.len();
-        AudioRecording::new_with_loopsection(name, sample_rate_hz, frames, 0, framecount)
+    pub fn new(name: String, sample_rate_hz: usize, chunk: AudioChunk) -> AudioRecording {
+        let framecount = chunk.len();
+        AudioRecording::new_with_loopsection(name, sample_rate_hz, chunk, 0, framecount)
     }
 
     pub fn new_with_loopsection(
@@ -565,6 +565,9 @@ impl AudioRecording {
         Ok(())
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Audiosources
 
 trait AudioSourceTrait: Clone {
     fn sample_rate_hz(&self) -> usize;
@@ -812,20 +815,22 @@ struct ResamplerMono {
     frame_next: AudioSample,
     frame_time_percent: f32,
 
-    internal_buffer: AudioChunk,
-    internal_buffer_readpos: usize,
+    internal_chunk: AudioChunk,
+    internal_chunk_readpos: usize,
 }
 
 impl ResamplerMono {
     pub fn new(source: AudioSource) -> ResamplerMono {
+        let internal_chunk = AudioChunk::new_mono();
+        let internal_chunk_readpos = internal_chunk.len();
         ResamplerMono {
             source,
             frame_current: 0.0,
             frame_next: 0.0,
             frame_time_percent: 0.0,
 
-            internal_buffer: AudioChunk::new_mono(),
-            internal_buffer_readpos: AUDIO_CHUNKSIZE_IN_FRAMES,
+            internal_chunk,
+            internal_chunk_readpos,
         }
     }
 
@@ -839,8 +844,7 @@ impl ResamplerMono {
     }
 
     pub fn has_finished(&self) -> bool {
-        self.source.has_finished()
-            && self.internal_buffer_readpos >= self.internal_buffer.frames.len()
+        self.source.has_finished() && self.internal_chunk_readpos >= self.internal_chunk.len()
     }
 
     pub fn produce_frames(
@@ -851,7 +855,7 @@ impl ResamplerMono {
     ) {
         assert!(playback_speed_factor > EPSILON);
         debug_assert!(
-            self.internal_buffer.volume == 1.0 || self.internal_buffer.volume == 0.0,
+            self.internal_chunk.volume == 1.0 || self.internal_chunk.volume == 0.0,
             "Resampler does not support sources that produce buffers with volume between 0 and 1"
         );
 
@@ -883,24 +887,24 @@ impl ResamplerMono {
     }
 
     fn get_next_frame(&mut self) -> AudioSample {
-        if self.internal_buffer_readpos >= self.internal_buffer.frames.len() {
+        if self.internal_chunk_readpos >= self.internal_chunk.len() {
             // We have depleted our internal buffer and need to replenish it from our source
 
             if self.source.has_finished() {
-                self.internal_buffer.volume = 0.0;
+                self.internal_chunk.volume = 0.0;
                 return 0.0;
             } else {
-                self.source.produce_chunk(&mut self.internal_buffer);
-                self.internal_buffer_readpos = 0;
+                self.source.produce_chunk(&mut self.internal_chunk);
+                self.internal_chunk_readpos = 0;
             }
         }
 
         let sample = unsafe {
-            self.internal_buffer
+            self.internal_chunk
                 .get_mono_samples()
-                .get_unchecked(self.internal_buffer_readpos)
+                .get_unchecked(self.internal_chunk_readpos)
         };
-        self.internal_buffer_readpos += 1;
+        self.internal_chunk_readpos += 1;
         *sample
     }
 }
