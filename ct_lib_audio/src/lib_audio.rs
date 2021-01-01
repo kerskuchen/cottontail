@@ -15,16 +15,13 @@ fn convert_i32_sample_to_f32(sample: i32) -> f32 {
 
 /// IMPORTANT: This Assumes mono
 /// Returns samplerate and a vector of samples
-pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, Vec<AudioSample>), String> {
+pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, AudioChunk), String> {
     let reader = hound::WavReader::new(std::io::Cursor::new(wav_data))
         .map_err(|error| format!("Could not decode wav audio data: {}", error))?;
     if reader.len() == 0 {
         return Err("Wav data is empty".to_owned());
     }
     let header = reader.spec();
-    if header.channels != 1 {
-        return Err("Stereo wav data not supported".to_owned());
-    }
     let sample_rate_hz = header.sample_rate as usize;
     let samples = {
         let samples: Result<Vec<AudioSample>, _> = match header.sample_format {
@@ -49,7 +46,28 @@ pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, Vec<AudioSample>
         samples.map_err(|error| format!("Cannot decode samples: {}", error))?
     };
 
-    Ok((sample_rate_hz, samples))
+    let chunk = match header.channels {
+        1 => AudioChunk::new_mono_from_frames(samples),
+        2 => {
+            let mut samples_left = Vec::with_capacity(samples.len() / 2);
+            let mut samples_right = Vec::with_capacity(samples.len() / 2);
+            samples.chunks_exact(2).into_iter().for_each(|frame| {
+                let left = frame[0];
+                let right = frame[1];
+                samples_left.push(left);
+                samples_right.push(right);
+            });
+            AudioChunk::new_stereo_from_frames(samples_left, samples_right)
+        }
+        _ => {
+            return Err(format!(
+                "Only mono and stereo wav data supported - got {} channels",
+                header.channels
+            ));
+        }
+    };
+
+    Ok((sample_rate_hz, chunk))
 }
 
 /// Returns samplerate and audio chunk
