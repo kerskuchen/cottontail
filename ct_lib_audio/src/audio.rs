@@ -1560,6 +1560,12 @@ impl Audiostate {
     }
 
     #[inline]
+    pub fn stream_set_pan(&mut self, stream_id: AudioStreamId, pan: f32) {
+        let stream = self.get_stream_mut(stream_id);
+        stream.set_pan(pan);
+    }
+
+    #[inline]
     pub fn stream_set_playback_speed(&mut self, stream_id: AudioStreamId, playback_speed: f32) {
         let stream = self.get_stream_mut(stream_id);
         stream.set_playback_speed(playback_speed);
