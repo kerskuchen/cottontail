@@ -147,14 +147,20 @@ impl AudioChunk {
                 let (target_left, target_right) = {
                     let (left, right) = target.get_stereo_samples_mut();
                     (
-                        &mut left[source_offset..source_offset + framecount],
-                        &mut right[source_offset..source_offset + framecount],
+                        &mut left[target_offset..target_offset + framecount],
+                        &mut right[target_offset..target_offset + framecount],
                     )
                 };
                 target_left.copy_from_slice(source_left);
                 target_right.copy_from_slice(source_right);
             }
         }
+    }
+
+    pub fn copy_from_chunk_complete(&mut self, other: &AudioChunk) {
+        assert!(self.channels == other.channels);
+        assert!(self.len() == other.len());
+        AudioChunk::copy_chunks(other, self, 0, 0, other.len());
     }
 
     pub fn copy_from_slice_mono(&mut self, source: &[AudioSample], offset: usize) {
@@ -573,6 +579,7 @@ trait AudioSourceTrait: Clone {
     fn sample_rate_hz(&self) -> usize;
     fn has_finished(&self) -> bool;
     fn is_looping(&self) -> bool;
+    fn channels(&self) -> AudioChannels;
     fn completion_ratio(&self) -> Option<f32>;
     fn produce_chunk(&mut self, out_chunk: &mut AudioChunk);
 }
@@ -669,6 +676,9 @@ impl AudioSourceTrait for AudioSourceRecording {
             }
         }
     }
+    fn channels(&self) -> AudioChannels {
+        self.source_recording.borrow().channels()
+    }
 }
 
 #[derive(Clone)]
@@ -712,16 +722,20 @@ impl AudioSourceTrait for AudioSourceSine {
             *out_frame = sine_amplitude as AudioSample;
         }
     }
+
+    fn channels(&self) -> AudioChannels {
+        AudioChannels::Mono
+    }
 }
 
 #[derive(Clone)]
 enum AudioSource {
-    RecordingMono(AudioSourceRecording),
+    Recording(AudioSourceRecording),
     Sine(AudioSourceSine),
 }
 impl AudioSource {
     fn new_from_recording(buffer: Rc<RefCell<AudioRecording>>, play_looped: bool) -> AudioSource {
-        AudioSource::RecordingMono(AudioSourceRecording::new(buffer, play_looped))
+        AudioSource::Recording(AudioSourceRecording::new(buffer, play_looped))
     }
     fn new_from_sine(sine_frequency: f64, stream_frames_per_second: usize) -> AudioSource {
         AudioSource::Sine(AudioSourceSine::new(
@@ -729,36 +743,44 @@ impl AudioSource {
             stream_frames_per_second,
         ))
     }
-
+}
+impl AudioSourceTrait for AudioSource {
     fn sample_rate_hz(&self) -> usize {
         match self {
-            AudioSource::RecordingMono(buffer) => buffer.sample_rate_hz(),
+            AudioSource::Recording(buffer) => buffer.sample_rate_hz(),
             AudioSource::Sine(sine) => sine.sample_rate_hz(),
         }
     }
     fn has_finished(&self) -> bool {
         match self {
-            AudioSource::RecordingMono(buffer) => buffer.has_finished(),
+            AudioSource::Recording(buffer) => buffer.has_finished(),
             AudioSource::Sine(sine) => sine.has_finished(),
         }
     }
     fn is_looping(&self) -> bool {
         match self {
-            AudioSource::RecordingMono(buffer) => buffer.is_looping(),
+            AudioSource::Recording(buffer) => buffer.is_looping(),
             AudioSource::Sine(sine) => sine.is_looping(),
         }
     }
     fn completion_ratio(&self) -> Option<f32> {
         match self {
-            AudioSource::RecordingMono(buffer) => buffer.completion_ratio(),
+            AudioSource::Recording(buffer) => buffer.completion_ratio(),
             AudioSource::Sine(sine) => sine.completion_ratio(),
         }
     }
 
     fn produce_chunk(&mut self, out_chunk: &mut AudioChunk) {
         match self {
-            AudioSource::RecordingMono(buffer) => buffer.produce_chunk(out_chunk),
+            AudioSource::Recording(buffer) => buffer.produce_chunk(out_chunk),
             AudioSource::Sine(sine) => sine.produce_chunk(out_chunk),
+        }
+    }
+
+    fn channels(&self) -> AudioChannels {
+        match self {
+            AudioSource::Recording(buffer) => buffer.channels(),
+            AudioSource::Sine(sine) => sine.channels(),
         }
     }
 }
@@ -809,24 +831,27 @@ impl MonoToStereoAdapter {
 }
 
 #[derive(Clone)]
-struct ResamplerMono {
+struct Resampler {
     source: AudioSource,
-    frame_current: AudioSample,
-    frame_next: AudioSample,
+    frame_current: (AudioSample, AudioSample),
+    frame_next: (AudioSample, AudioSample),
     frame_time_percent: f32,
 
     internal_chunk: AudioChunk,
     internal_chunk_readpos: usize,
 }
 
-impl ResamplerMono {
-    pub fn new(source: AudioSource) -> ResamplerMono {
-        let internal_chunk = AudioChunk::new_mono();
+impl Resampler {
+    pub fn new(source: AudioSource) -> Resampler {
+        let internal_chunk = match source.channels() {
+            AudioChannels::Mono => AudioChunk::new_mono(),
+            AudioChannels::Stereo => AudioChunk::new_stereo(),
+        };
         let internal_chunk_readpos = internal_chunk.len();
-        ResamplerMono {
+        Resampler {
             source,
-            frame_current: 0.0,
-            frame_next: 0.0,
+            frame_current: (0.0, 0.0),
+            frame_next: (0.0, 0.0),
             frame_time_percent: 0.0,
 
             internal_chunk,
@@ -849,10 +874,13 @@ impl ResamplerMono {
 
     pub fn produce_frames(
         &mut self,
-        output: &mut [AudioSample],
+        output: &mut AudioChunk,
+        out_write_offset: usize,
         output_sample_rate_hz: f32,
         playback_speed_factor: f32,
     ) {
+        assert!(output.channels == self.internal_chunk.channels);
+        assert!(out_write_offset < output.len());
         assert!(playback_speed_factor > EPSILON);
         debug_assert!(
             self.internal_chunk.volume == 1.0 || self.internal_chunk.volume == 0.0,
@@ -870,23 +898,62 @@ impl ResamplerMono {
             playback_speed_factor * sample_rate_conversion_factor
         };
 
-        for out_frames in output.iter_mut() {
-            self.frame_time_percent += playback_speed_increment;
+        match output.channels {
+            AudioChannels::Mono => {
+                for out_frames in &mut output.get_mono_samples_mut()[out_write_offset..] {
+                    self.frame_time_percent += playback_speed_increment;
 
-            while self.frame_time_percent >= 1.0 {
-                self.frame_current = self.frame_next;
-                self.frame_next = self.get_next_frame();
-                self.frame_time_percent -= 1.0;
+                    while self.frame_time_percent >= 1.0 {
+                        self.frame_current = self.frame_next;
+                        self.frame_next = (self.get_next_frame_mono(), 0.0);
+                        self.frame_time_percent -= 1.0;
+                    }
+
+                    let interpolated_sample_value = lerp(
+                        self.frame_current.0,
+                        self.frame_next.0,
+                        self.frame_time_percent,
+                    );
+
+                    *out_frames = interpolated_sample_value;
+                }
             }
+            AudioChannels::Stereo => {
+                let (out_samples_left, out_samples_right) = output.get_stereo_samples_mut();
+                let out_samples_left = &mut out_samples_left[out_write_offset..];
+                let out_samples_right = &mut out_samples_right[out_write_offset..];
 
-            let interpolated_sample_value =
-                lerp(self.frame_current, self.frame_next, self.frame_time_percent);
+                for (out_left, out_right) in out_samples_left
+                    .iter_mut()
+                    .zip(out_samples_right.iter_mut())
+                {
+                    self.frame_time_percent += playback_speed_increment;
 
-            *out_frames = interpolated_sample_value;
+                    while self.frame_time_percent >= 1.0 {
+                        self.frame_current = self.frame_next;
+                        self.frame_next = self.get_next_frame_stereo();
+                        self.frame_time_percent -= 1.0;
+                    }
+
+                    let interpolated_sample_left = lerp(
+                        self.frame_current.0,
+                        self.frame_next.0,
+                        self.frame_time_percent,
+                    );
+                    let interpolated_sample_right = lerp(
+                        self.frame_current.1,
+                        self.frame_next.1,
+                        self.frame_time_percent,
+                    );
+
+                    *out_left = interpolated_sample_left;
+                    *out_right = interpolated_sample_right;
+                }
+            }
         }
     }
 
-    fn get_next_frame(&mut self) -> AudioSample {
+    fn get_next_frame_mono(&mut self) -> AudioSample {
         if self.internal_chunk_readpos >= self.internal_chunk.len() {
             // We have depleted our internal buffer and need to replenish it from our source
 
@@ -906,6 +973,33 @@ impl ResamplerMono {
         };
         self.internal_chunk_readpos += 1;
         *sample
+    }
+
+    fn get_next_frame_stereo(&mut self) -> (AudioSample, AudioSample) {
+        if self.internal_chunk_readpos >= self.internal_chunk.len() {
+            // We have depleted our internal buffer and need to replenish it from our source
+
+            if self.source.has_finished() {
+                self.internal_chunk.volume = 0.0;
+                return (0.0, 0.0);
+            } else {
+                self.source.produce_chunk(&mut self.internal_chunk);
+                self.internal_chunk_readpos = 0;
+            }
+        }
+
+        let sample_left = *unsafe {
+            self.internal_chunk
+                .get_stereo_samples_left()
+                .get_unchecked(self.internal_chunk_readpos)
+        };
+        let sample_right = *unsafe {
+            self.internal_chunk
+                .get_stereo_samples_right()
+                .get_unchecked(self.internal_chunk_readpos)
+        };
+        self.internal_chunk_readpos += 1;
+        (sample_left, sample_right)
     }
 }
 
@@ -931,7 +1025,7 @@ struct AudioStream {
     frames_left_till_start: usize,
     has_finished: bool,
 
-    playback_speed_resampler: ResamplerMono,
+    playback_speed_resampler: Resampler,
     /// Must be > 0
     playback_speed_base: f32,
 
@@ -942,7 +1036,7 @@ struct AudioStream {
     /// Only used when we don't have spatial params
     pan_base: f32,
 
-    output_mono: AudioChunk,
+    output_resampler: AudioChunk,
     output_stereo: AudioChunk,
 
     spatial_params: Option<SpatialParams>,
@@ -958,13 +1052,17 @@ impl AudioStream {
         pan: f32,
         spatial_params: Option<SpatialParams>,
     ) -> AudioStream {
+        let output_resampler = match source.channels() {
+            AudioChannels::Mono => AudioChunk::new_mono(),
+            AudioChannels::Stereo => AudioChunk::new_stereo(),
+        };
         AudioStream {
             name,
 
             frames_left_till_start: delay_framecount,
             has_finished: false,
 
-            playback_speed_resampler: ResamplerMono::new(source),
+            playback_speed_resampler: Resampler::new(source),
             playback_speed_base: playback_speed_percent,
 
             volume_adapter: VolumeAdapter::new(volume),
@@ -973,7 +1071,7 @@ impl AudioStream {
             pan_adapter: MonoToStereoAdapter::new(0.0),
             pan_base: pan,
 
-            output_mono: AudioChunk::new_mono(),
+            output_resampler,
             output_stereo: AudioChunk::new_stereo(),
 
             spatial_params,
@@ -982,12 +1080,12 @@ impl AudioStream {
 
     pub fn produce_output_chunk(&mut self, output_params: AudioRenderParams) {
         // Reset volume for output chunks
-        self.output_mono.volume = 1.0;
+        self.output_resampler.volume = 1.0;
         self.output_stereo.volume = 1.0;
 
         // Fast path - we are finished
         if self.has_finished {
-            self.output_mono.volume = 0.0;
+            self.output_resampler.volume = 0.0;
             self.output_stereo.volume = 0.0;
             return;
         }
@@ -1006,13 +1104,13 @@ impl AudioStream {
 
         // Fast path - our stream won't start this chunk
         if silence_framecount == AUDIO_CHUNKSIZE_IN_FRAMES {
-            self.output_mono.volume = 0.0;
+            self.output_resampler.volume = 0.0;
             self.output_stereo.volume = 0.0;
             return;
         }
 
         // Write remaining delay frames as silence
-        self.output_mono
+        self.output_resampler
             .fill_silence_offset_framecount(0, silence_framecount);
 
         // Calculate spatial settings if necessary
@@ -1031,7 +1129,8 @@ impl AudioStream {
 
         // Resampler stage
         self.playback_speed_resampler.produce_frames(
-            &mut self.output_mono.get_mono_samples_mut()[silence_framecount..],
+            &mut self.output_resampler,
+            silence_framecount,
             output_params.audio_sample_rate_hz as f32,
             final_playback_speed_factor,
         );
@@ -1039,12 +1138,23 @@ impl AudioStream {
 
         // Volume stage
         self.volume_adapter.set_volume(final_volume);
-        self.volume_adapter.process_chunk(&mut self.output_mono);
+        self.volume_adapter
+            .process_chunk(&mut self.output_resampler);
 
         // Mono -> stereo stage
-        self.pan_adapter.set_pan(final_pan);
-        self.pan_adapter
-            .process_chunk(&self.output_mono, &mut self.output_stereo);
+        match self.output_resampler.channels {
+            AudioChannels::Mono => {
+                self.pan_adapter.set_pan(final_pan);
+                self.pan_adapter
+                    .process_chunk(&self.output_resampler, &mut self.output_stereo);
+            }
+            AudioChannels::Stereo => {
+                // No conversion needed
+                let TODO = "Something more clever here";
+                self.output_stereo
+                    .copy_from_chunk_complete(&self.output_resampler);
+            }
+        }
     }
 
     pub fn get_output_chunk(&self) -> &AudioChunk {
