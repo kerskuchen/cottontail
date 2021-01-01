@@ -468,7 +468,7 @@ impl AudioRecording {
         //       enough and most sounds are short enough to be completely decoded that way
         let initial_predecoded_framecount = usize::min(framecount, sample_rate_hz);
         result
-            .decode_frames_up_to_frameindex(initial_predecoded_framecount - 1)
+            .decode_frames_till(initial_predecoded_framecount)
             .map_err(|error| format!("Could not pre-decode ogg audio data: {}", error))?;
 
         Ok(result)
@@ -492,7 +492,7 @@ impl AudioRecording {
         assert!(source_start_frameindex < self.framechunk.len());
         assert!(source_start_frameindex + framecount <= self.framechunk.len());
 
-        self.decode_frames_up_to_frameindex(source_start_frameindex)
+        self.decode_frames_till(source_start_frameindex + framecount)
             .unwrap();
 
         AudioChunk::copy_chunks(
@@ -504,9 +504,10 @@ impl AudioRecording {
         );
     }
 
-    pub fn decode_frames_up_to_frameindex(&mut self, frame_index: usize) -> Result<(), String> {
-        assert!(frame_index < self.framechunk.len());
-        if frame_index < self.stream_reader_decoded_framecount {
+    // NOTE: `frameindex` is allowed to be out of range and will default to maximum possible value
+    pub fn decode_frames_till(&mut self, frameindex: usize) -> Result<(), String> {
+        let frameindex = usize::min(frameindex, self.framechunk.len());
+        if frameindex < self.stream_reader_decoded_framecount {
             // Nothing to do
             return Ok(());
         }
@@ -556,7 +557,7 @@ impl AudioRecording {
             if self.stream_reader_decoded_framecount == self.framechunk.len() {
                 log::trace!("Finished decoding '{}'", &self.name);
             }
-            if self.stream_reader_decoded_framecount >= frame_index {
+            if self.stream_reader_decoded_framecount >= frameindex {
                 break;
             }
         }
@@ -641,7 +642,8 @@ impl AudioSourceTrait for AudioSourceRecording {
                 self.play_cursor_buffer_index += write_framecount;
                 framecount_remaining_to_output -= write_framecount;
 
-                if self.play_cursor_buffer_index >= loopsection_end {
+                assert!(self.play_cursor_buffer_index <= loopsection_end);
+                if self.play_cursor_buffer_index == loopsection_end {
                     self.play_cursor_buffer_index = source.loopsection_start_frameindex;
                 }
             }

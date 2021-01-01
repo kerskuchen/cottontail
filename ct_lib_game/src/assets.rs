@@ -237,7 +237,7 @@ impl GameAssets {
             audiorecordings.insert(resource_name.clone(), recording);
         }
 
-        log::info!("Loaded mono audio recordings");
+        log::info!("Loaded stereo audio recordings");
         audiorecordings
     }
 
