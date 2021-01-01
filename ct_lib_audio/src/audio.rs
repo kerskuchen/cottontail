@@ -355,9 +355,9 @@ impl AudioChunk {
             .iter()
             .zip(samples_left.iter_mut().zip(samples_right.iter_mut()))
         {
-            let (volume_left, volume_right) = crossfade_squareroot(*sample_mono, percent_current);
-            *out_left = volume_left * *sample_mono;
-            *out_right = volume_right * *sample_mono;
+            let (sample_left, sample_right) = crossfade_squareroot(*sample_mono, percent_current);
+            *out_left = sample_left;
+            *out_right = sample_right;
             percent_current += percent_increment;
         }
     }
