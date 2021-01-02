@@ -11,9 +11,6 @@
 
 # NEXT:
 
-- get rid of audio stuttering on mobile
-- find out why shift key does not work
-
 ## improve asset baking/loading
 - use resources packs instead of raw file download (like we used for audio)
 - use prelude graphics pack that loads quickly to show splashscreen
@@ -32,6 +29,8 @@
 - Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and 
   implement it (drawing the depthbuffer and various debug grids should be useful). Throw out the rest 
 - add ability to add new shaders from drawstate
+- can we make the sorting faster? alternatively can we get rid of sorting for non-translucent 
+  drawobjects by dividing them up into two drawbatches?
 
 ## improve examples
 - find a good way to switch/disable audio when switching scenes
@@ -119,7 +118,6 @@
 
 ## wasm performance
 - Find more ways to make wasm perform better
-- test out 22050khz audio?
 - current hotspots are:
   - sorting drawables (they are pretty big to sort, maybe we can use references as payload?)
   - drawing rects by drawing bresenham lines 

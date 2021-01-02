@@ -1229,6 +1229,7 @@ struct AudioRenderParams {
     /// The samplerate of our audio recordings
     pub internal_sample_rate_hz: usize,
     pub global_playback_speed: f32,
+    pub global_volume: f32,
 
     pub listener_pos: Vec2,
     pub listener_vel: Vec2,
@@ -1379,6 +1380,10 @@ impl AudioStream {
 
     pub fn get_output_chunk(&self) -> &AudioChunk {
         &self.chunk_output
+    }
+
+    pub fn get_output_chunk_mut(&mut self) -> &mut AudioChunk {
+        &mut self.chunk_output
     }
 
     pub fn has_started(&self) -> bool {
@@ -1648,10 +1653,11 @@ impl Audiostate {
             render_params: AudioRenderParams {
                 internal_sample_rate_hz,
                 global_playback_speed: 1.0,
+                global_volume: 1.0,
                 listener_pos: Vec2::zero(),
                 listener_vel: Vec2::zero(),
-                distance_for_max_pan,
                 doppler_effect_medium_velocity_abs_max,
+                distance_for_max_pan,
             },
 
             next_stream_id: 0,
@@ -1705,6 +1711,11 @@ impl Audiostate {
     /// IMPORTANT: This needs to be called exactly once per frame to have correct time reporting
     pub fn update_deltatime(&mut self, deltatime: f32) {
         self.audio_time_smoothed += deltatime as f64;
+    }
+
+    #[inline]
+    pub fn set_global_volume(&mut self, volume: f32) {
+        self.render_params.global_volume = volume;
     }
 
     #[inline]
@@ -1956,7 +1967,8 @@ impl Audiostate {
         self.internal_chunk.reset();
         for stream in self.streams.values_mut() {
             stream.produce_output_chunk(self.render_params);
-            let rendered_chunk = stream.get_output_chunk();
+            let mut rendered_chunk = stream.get_output_chunk_mut();
+            rendered_chunk.volume *= self.render_params.global_volume;
             self.internal_chunk.add_from_chunk(rendered_chunk);
         }
 
