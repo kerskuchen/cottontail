@@ -1226,8 +1226,10 @@ impl Resampler {
 
 #[derive(Clone, Copy)]
 struct AudioRenderParams {
-    pub audio_sample_rate_hz: usize,
+    /// The samplerate of our audio recordings
+    pub internal_sample_rate_hz: usize,
     pub global_playback_speed: f32,
+
     pub listener_pos: Vec2,
     pub listener_vel: Vec2,
     pub doppler_effect_medium_velocity_abs_max: f32,
@@ -1618,7 +1620,7 @@ pub struct Audiostate {
     audio_time: f64,
     audio_time_smoothed: f64,
 
-    output_render_params: AudioRenderParams,
+    render_params: AudioRenderParams,
 
     /// This can never be zero when used with `get_next_stream_id` method
     next_stream_id: AudioStreamId,
@@ -1634,7 +1636,7 @@ pub struct Audiostate {
 
 impl Audiostate {
     pub fn new(
-        audio_sample_rate_hz: usize,
+        internal_sample_rate_hz: usize,
         distance_for_max_pan: f32,
         doppler_effect_medium_velocity_abs_max: f32,
     ) -> Audiostate {
@@ -1643,8 +1645,8 @@ impl Audiostate {
             audio_time: 0.0,
             audio_time_smoothed: 0.0,
 
-            output_render_params: AudioRenderParams {
-                audio_sample_rate_hz,
+            render_params: AudioRenderParams {
+                internal_sample_rate_hz,
                 global_playback_speed: 1.0,
                 listener_pos: Vec2::zero(),
                 listener_vel: Vec2::zero(),
@@ -1667,9 +1669,9 @@ impl Audiostate {
     pub fn reset(&mut self) {
         self.next_frame_index_to_output = 0;
 
-        self.output_render_params.global_playback_speed = 1.0;
-        self.output_render_params.listener_pos = Vec2::zero();
-        self.output_render_params.listener_vel = Vec2::zero();
+        self.render_params.global_playback_speed = 1.0;
+        self.render_params.listener_pos = Vec2::zero();
+        self.render_params.listener_vel = Vec2::zero();
 
         self.next_stream_id = 0;
         self.streams = HashMap::new();
@@ -1678,9 +1680,16 @@ impl Audiostate {
 
     #[inline]
     pub fn add_audio_recordings(&mut self, mut audio_recordings: HashMap<String, AudioRecording>) {
-        for (name, audiobuffer) in audio_recordings.drain() {
+        for (name, recording) in audio_recordings.drain() {
+            assert!(
+                recording.sample_rate_hz == self.render_params.internal_sample_rate_hz,
+                "Resource '{}' has sample_rate {}Hz - expected {}Hz",
+                name,
+                recording.sample_rate_hz,
+                self.render_params.internal_sample_rate_hz
+            );
             self.audio_recordings
-                .insert(name, Rc::new(RefCell::new(audiobuffer)));
+                .insert(name, Rc::new(RefCell::new(recording)));
         }
     }
 
@@ -1700,17 +1709,17 @@ impl Audiostate {
 
     #[inline]
     pub fn set_global_playback_speed_factor(&mut self, global_playback_speed: f32) {
-        self.output_render_params.global_playback_speed = global_playback_speed;
+        self.render_params.global_playback_speed = global_playback_speed;
     }
 
     #[inline]
     pub fn set_listener_pos(&mut self, listener_pos: Vec2) {
-        self.output_render_params.listener_pos = listener_pos;
+        self.render_params.listener_pos = listener_pos;
     }
 
     #[inline]
     pub fn set_listener_vel(&mut self, listener_vel: Vec2) {
-        self.output_render_params.listener_vel = listener_vel;
+        self.render_params.listener_vel = listener_vel;
     }
 
     #[must_use]
@@ -1727,7 +1736,7 @@ impl Audiostate {
         let id = self.create_next_stream_id();
         let start_delay_framecount = self.start_time_to_delay_framecount(schedule_time_seconds);
         let source = if recording_name == "sine" {
-            AudioSource::new_from_sine(440.0, self.output_render_params.audio_sample_rate_hz)
+            AudioSource::new_from_sine(440.0, self.render_params.internal_sample_rate_hz)
         } else {
             let buffer = self
                 .audio_recordings
@@ -1789,8 +1798,8 @@ impl Audiostate {
         let stream = {
             let initial_pan = SpatialParams::calculate_spatial_pan(
                 pos,
-                self.output_render_params.listener_pos,
-                self.output_render_params.distance_for_max_pan,
+                self.render_params.listener_pos,
+                self.render_params.distance_for_max_pan,
             );
             let source = {
                 let buffer = self
@@ -1905,11 +1914,11 @@ impl Audiostate {
 
     /// It is assumed that `out_chunk` is filled with silence
     #[inline]
-    pub fn render_audio_chunk(&mut self, out_chunk: &mut AudioChunk) {
+    pub fn render_audio_chunk(&mut self, out_chunk: &mut AudioChunk, output_sample_rate_hz: usize) {
         let playback_speed_factor = Resampler::calculate_playback_speed_ratio(
-            self.output_render_params.audio_sample_rate_hz,
-            self.output_render_params.audio_sample_rate_hz,
-            self.output_render_params.global_playback_speed,
+            self.render_params.internal_sample_rate_hz,
+            output_sample_rate_hz,
+            self.render_params.global_playback_speed,
         );
         let mut resampler_write_offset = 0;
         loop {
@@ -1946,7 +1955,7 @@ impl Audiostate {
         // Render samples
         self.internal_chunk.reset();
         for stream in self.streams.values_mut() {
-            stream.produce_output_chunk(self.output_render_params);
+            stream.produce_output_chunk(self.render_params);
             let rendered_chunk = stream.get_output_chunk();
             self.internal_chunk.add_from_chunk(rendered_chunk);
         }
@@ -1955,7 +1964,7 @@ impl Audiostate {
         self.next_frame_index_to_output += AUDIO_CHUNKSIZE_IN_FRAMES as AudioFrameIndex;
         let new_audio_time = audio_frames_to_seconds(
             self.next_frame_index_to_output,
-            self.output_render_params.audio_sample_rate_hz,
+            self.render_params.internal_sample_rate_hz,
         );
         if self.audio_time != new_audio_time {
             self.audio_time = new_audio_time;
@@ -1966,7 +1975,7 @@ impl Audiostate {
     fn start_time_to_delay_framecount(&self, schedule_time_seconds: f64) -> usize {
         let start_frame_index = audio_seconds_to_frames(
             schedule_time_seconds,
-            self.output_render_params.audio_sample_rate_hz,
+            self.render_params.internal_sample_rate_hz,
         )
         .round() as AudioFrameIndex;
 

@@ -170,16 +170,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 );
                 self.draw = Some(draw);
             }
-            if self.audio.is_none() {
-                let window_config = GameStateType::get_window_config();
-                self.audio = Some(Audiostate::new(
-                    input.audio_playback_rate_hz,
-                    window_config.canvas_width as f32 / 2.0,
-                    10_000.0,
-                ));
-            }
             let draw = self.draw.as_mut().unwrap();
-            let audio = self.audio.as_mut().unwrap();
 
             draw.begin_frame();
 
@@ -209,7 +200,18 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 SplashscreenState::StartedFadingIn => {}
                 SplashscreenState::IsFadingIn => {}
                 SplashscreenState::FinishedFadingIn => {
+                    assert!(self.audio.is_none());
+
                     let audio_recordings = self.assets.load_audiorecordings();
+                    if self.audio.is_none() {
+                        let window_config = GameStateType::get_window_config();
+                        self.audio = Some(Audiostate::new(
+                            self.assets.audio.resource_sample_rate_hz,
+                            window_config.canvas_width as f32 / 2.0,
+                            10_000.0,
+                        ));
+                    }
+                    let audio = self.audio.as_mut().unwrap();
                     audio.add_audio_recordings(audio_recordings);
 
                     assert!(self.game.is_none());
@@ -309,6 +311,8 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                     input.deltatime * deltatime_speed_factor
                 };
                 globals.deltatime = deltatime;
+
+                let audio = self.audio.as_mut().unwrap();
                 audio.set_global_playback_speed_factor(deltatime_speed_factor);
                 audio.update_deltatime(deltatime);
 
@@ -355,11 +359,13 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 );
             }
 
-            while audio_output.get_num_frames_to_submit() > 0 {
-                let mut audiochunk = AudioChunk::new_stereo();
-                audio.render_audio_chunk(&mut audiochunk);
-                let (samples_left, samples_right) = audiochunk.get_stereo_samples();
-                audio_output.submit_frames(samples_left, samples_right);
+            if let Some(audio) = self.audio.as_mut() {
+                while audio_output.get_num_frames_to_submit() > 0 {
+                    let mut audiochunk = AudioChunk::new_stereo();
+                    audio.render_audio_chunk(&mut audiochunk, input.audio_playback_rate_hz);
+                    let (samples_left, samples_right) = audiochunk.get_stereo_samples();
+                    audio_output.submit_frames(samples_left, samples_right);
+                }
             }
 
             draw.finish_frame();

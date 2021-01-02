@@ -32,6 +32,7 @@ pub struct AudioMetadata {
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct AudioResources {
+    pub resource_sample_rate_hz: usize,
     pub file_names: Vec<ResourceName>,
     pub file_metadata: HashMap<String, AudioMetadata>,
     pub file_content: HashMap<String, Vec<u8>>,
@@ -40,6 +41,7 @@ pub struct AudioResources {
 impl AudioResources {
     pub fn new() -> AudioResources {
         AudioResources {
+            resource_sample_rate_hz: 0,
             file_names: Vec::new(),
             file_metadata: HashMap::new(),
             file_content: HashMap::new(),
@@ -53,6 +55,22 @@ impl AudioResources {
         content: Vec<u8>,
     ) {
         assert!(!self.file_metadata.contains_key(&name));
+        if self.resource_sample_rate_hz == 0 {
+            self.resource_sample_rate_hz = metadata.samplerate_hz;
+            assert!(
+                self.resource_sample_rate_hz != 0,
+                "Samplerate of asset '{}' is 0Hz",
+                &metadata.resource_name
+            )
+        } else {
+            assert!(
+                self.resource_sample_rate_hz == metadata.samplerate_hz,
+                "Samplerate of asset '{}' is {}Hz - expected {}Hz",
+                &metadata.resource_name,
+                metadata.samplerate_hz,
+                self.resource_sample_rate_hz
+            );
+        }
 
         self.file_names.push(name.clone());
         self.file_metadata.insert(name.clone(), metadata);
@@ -68,7 +86,7 @@ pub struct GameAssets {
     fonts: HashMap<String, SpriteFont>,
     atlas: SpriteAtlas,
 
-    audio: AudioResources,
+    pub audio: AudioResources,
 
     files_loading_stage: AssetLoadingStage,
     files_list: Vec<String>,

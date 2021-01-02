@@ -1,7 +1,9 @@
 # DONE:
 
-- converting from interleaved processing to flat buffers per channel
-- add ability to pack/load/play stereo audio files
+- make resampler independent of audio source
+- add final output resampler to resample internal hz rate to output hz rate (useful if we want 
+  to render internally at 22050hz but output at 44100hz) and also use global 
+  playback speed factor in final resampler
 
 # CURRENT
 
@@ -11,7 +13,8 @@
 - get rid of audio stuttering on mobile
 - find out why shift key does not work
 
-## improve asset loading
+## improve asset baking/loading
+- automatically resample audio files to 44100Hz (desktop) and 22050Hz (wasm)
 - use resources packs instead of raw file download (like we used for audio)
 - use prelude graphics pack that loads quickly to show splashscreen
 - refactor gamememory/audio/draw/asset initialization to 
@@ -24,9 +27,6 @@
 - distribute rendering of chunks over multiple frames at a constant rate instead of multiple chunks 
   in one frame to fill up the queue (important on wasm because we have bigger buffers there but even
   less time per frame)
-- add final output resampler to resample internal hz rate to output hz rate (useful if we want 
-  to render internally at 22050hz but output at 44100hz) and also use global 
-  playback speed factor in final resampler
 
 ## renderer flexibility + speed + cleanup
 - Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and 
@@ -227,3 +227,6 @@
 - convert wav files to ogg when assets baking
 - adds audio metadata for assetbaker
 - adds audio streaming of ogg files
+
+- converting from interleaved processing to flat buffers per channel
+- add ability to pack/load/play stereo audio files
