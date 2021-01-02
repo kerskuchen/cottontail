@@ -13,8 +13,7 @@ fn convert_i32_sample_to_f32(sample: i32) -> f32 {
     sample as f32 / -(std::i32::MIN as f32)
 }
 
-/// IMPORTANT: This Assumes mono
-/// Returns samplerate and a vector of samples
+/// Returns samplerate and audio chunk
 pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, AudioChunk), String> {
     let reader = hound::WavReader::new(std::io::Cursor::new(wav_data))
         .map_err(|error| format!("Could not decode wav audio data: {}", error))?;
@@ -71,7 +70,7 @@ pub fn decode_wav_from_bytes(wav_data: &[u8]) -> Result<(usize, AudioChunk), Str
 }
 
 /// Returns samplerate and audio chunk
-pub fn decode_ogg_data(ogg_data: &[u8]) -> Result<(usize, AudioChunk), String> {
+pub fn decode_ogg_data_from_bytes(ogg_data: &[u8]) -> Result<(usize, AudioChunk), String> {
     let mut reader = OggStreamReader::new(std::io::Cursor::new(ogg_data))
         .map_err(|error| format!("Could not decode ogg audio data: {}", error))?;
     let sample_rate_hz = reader.ident_hdr.audio_sample_rate as usize;
@@ -114,6 +113,21 @@ pub fn decode_ogg_data(ogg_data: &[u8]) -> Result<(usize, AudioChunk), String> {
     };
 
     Ok((sample_rate_hz, chunk))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn decode_audio_file(filepath: &str) -> Result<(usize, AudioChunk), String> {
+    let data = ct_lib_core::read_file_whole(filepath)?;
+    if filepath.ends_with(".wav") {
+        decode_wav_from_bytes(&data)
+    } else if filepath.ends_with(".ogg") {
+        decode_ogg_data_from_bytes(&data)
+    } else {
+        Err(format!(
+            "File '{}' has unknown format (only .wav and .ogg supported)",
+            filepath
+        ))
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

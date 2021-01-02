@@ -1,5 +1,6 @@
 mod aseprite;
 
+use audio::write_audio_samples_to_wav_file;
 use ct_lib_audio as audio;
 use ct_lib_core as core;
 use ct_lib_draw as draw;
@@ -151,127 +152,158 @@ fn bake_graphics_resources() {
     result_sheet.pack_and_serialize();
 }
 
-fn bake_audio_resources() {
-    let mut audio_resources = AudioResources::new();
+fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {
+    let mut audio_resources = AudioResources::new(audio_sample_rate_hz);
 
-    // OGG FILES
-    for ogg_path in &collect_files_by_extension_recursive("assets", ".ogg") {
-        let resource_name = path_without_extension(ogg_path).replace("assets/", "");
-        let ogg_data = read_file_whole(ogg_path)
-            .unwrap_or_else(|error| panic!("Cannot open ogg file '{}': {}", ogg_path, error));
+    for filepath in &collect_files_recursive("assets") {
+        if !filepath.ends_with(".wav") && !filepath.ends_with(".ogg") {
+            continue;
+        }
 
-        let metadata_path = path_without_extension(ogg_path) + ".meta.json";
+        let resource_name = path_without_extension(filepath).replace("assets/", "");
+        let metadata_path = path_without_extension(filepath) + ".meta.json";
         let recreate_metadata = if path_exists(&metadata_path) {
-            let ogg_last_modified_time = path_last_modified_time(ogg_path);
+            let last_modified_time = path_last_modified_time(filepath);
             let metadata_last_modified_time = path_last_modified_time(&metadata_path);
-            metadata_last_modified_time < ogg_last_modified_time
+            metadata_last_modified_time < last_modified_time
         } else {
             true
         };
 
-        let metadata = if recreate_metadata {
-            let (samplerate_hz, audiochunk) = audio::decode_ogg_data(&ogg_data)
-                .unwrap_or_else(|error| panic!("Cannot decode ogg file '{}': {}", ogg_path, error));
+        let metadata_original = if recreate_metadata {
+            let (samplerate_hz, audiochunk) =
+                audio::decode_audio_file(filepath).unwrap_or_else(|error| {
+                    panic!("Cannot decode audio file '{}': {}", filepath, error)
+                });
             let channelcount = audiochunk.channelcount();
             let framecount = audiochunk.len();
 
-            let metadata = AudioMetadata {
-                original_filepath: ogg_path.to_owned(),
+            let original = AudioMetadata {
+                original_filepath: filepath.to_owned(),
                 resource_name: resource_name.clone(),
                 samplerate_hz,
                 channelcount,
                 framecount,
-                compression_quality: None,
+                compression_quality: 5,
                 loopsection_start_frameindex: None,
                 loopsection_framecount: None,
             };
-            serialize_to_json_file(&metadata, &metadata_path);
-            metadata
+            serialize_to_json_file(&original, &metadata_path);
+            original
         } else {
             deserialize_from_json_file(&metadata_path)
         };
 
-        audio_resources.add_audio_resource(resource_name, metadata, ogg_data);
-    }
+        let metadata = metadata_original.clone_with_new_sample_rate(audio_sample_rate_hz);
 
-    // WAV FILES
-    for wav_path in &collect_files_by_extension_recursive("assets", ".wav") {
-        let resource_name = path_without_extension(wav_path).replace("assets/", "");
-        let metadata_path = path_without_extension(wav_path) + ".meta.json";
-        let recreate_metadata = if path_exists(&metadata_path) {
-            let wav_last_modified_time = path_last_modified_time(wav_path);
-            let metadata_last_modified_time = path_last_modified_time(&metadata_path);
-            metadata_last_modified_time < wav_last_modified_time
+        let ogg_data = if filepath.ends_with(".ogg") {
+            // Check if we need to resample our ogg file
+            if metadata.samplerate_hz == metadata_original.samplerate_hz {
+                read_file_whole(filepath).unwrap_or_else(|error| {
+                    panic!("Cannot open ogg file '{}': {}", filepath, error)
+                })
+            } else {
+                let (original_samplerate_hz, audiochunk) = audio::decode_audio_file(filepath)
+                    .unwrap_or_else(|error| {
+                        panic!("Cannot decode audio file '{}': {}", filepath, error)
+                    });
+                let wav_output_temp_path = path_with_extension(&filepath, ".wav").replace(
+                    "assets",
+                    &format!("target/assets_temp/{}", resource_pack_name),
+                );
+                write_audio_samples_to_wav_file(
+                    &wav_output_temp_path,
+                    &audiochunk,
+                    original_samplerate_hz,
+                );
+
+                let ogg_output_temp_path = filepath.replace(
+                    "assets",
+                    &format!("target/assets_temp/{}", resource_pack_name),
+                );
+                let command = format!(
+                    "oggenc2 {} --quality {} --resample {} --converter 0 --output={}",
+                    wav_output_temp_path,
+                    metadata.compression_quality,
+                    audio_sample_rate_hz,
+                    ogg_output_temp_path
+                );
+                run_systemcommand_fail_on_error(&command, false);
+
+                assert!(
+                    path_exists(&ogg_output_temp_path),
+                    "Failed to encode ogg file for '{}' - '{}' is missing",
+                    filepath,
+                    ogg_output_temp_path
+                );
+
+                read_file_whole(&ogg_output_temp_path).unwrap_or_else(|error| {
+                    panic!("Cannot open ogg file '{}': {}", ogg_output_temp_path, error)
+                })
+            }
         } else {
-            true
+            // Create resampled ogg file out of our wav file
+            let ogg_output_temp_path = path_with_extension(&filepath, ".ogg").replace(
+                "assets",
+                &format!("target/assets_temp/{}", resource_pack_name),
+            );
+            let command = format!(
+                "oggenc2 {} --quality {} --resample {} --converter 0 --output={}",
+                filepath, metadata.compression_quality, audio_sample_rate_hz, ogg_output_temp_path
+            );
+            run_systemcommand_fail_on_error(&command, false);
+
+            assert!(
+                path_exists(&ogg_output_temp_path),
+                "Failed to encode ogg file for '{}' - '{}' is missing",
+                filepath,
+                ogg_output_temp_path
+            );
+
+            read_file_whole(&ogg_output_temp_path).unwrap_or_else(|error| {
+                panic!("Cannot open ogg file '{}': {}", ogg_output_temp_path, error)
+            })
         };
 
-        let metadata = if recreate_metadata {
-            let wav_data = read_file_whole(wav_path)
-                .unwrap_or_else(|error| panic!("Cannot open wav file '{}': {}", wav_path, error));
-            let (samplerate_hz, frames) = audio::decode_wav_from_bytes(&wav_data)
-                .unwrap_or_else(|error| panic!("Cannot decode wav file '{}': {}", wav_path, error));
-            let framecount = frames.len();
-            let metadata = AudioMetadata {
-                original_filepath: wav_path.to_owned(),
-                resource_name: resource_name.clone(),
-                samplerate_hz,
-                channelcount: 1,
-                framecount,
-                compression_quality: Some(5),
-                loopsection_start_frameindex: None,
-                loopsection_framecount: None,
-            };
-            serialize_to_json_file(&metadata, &metadata_path);
-            metadata
-        } else {
-            deserialize_from_json_file(&metadata_path)
-        };
-
-        let ogg_output_temp_path =
-            path_with_extension(&wav_path, ".ogg").replace("assets", "target/assets_temp/audio");
-        // --quiet
-        // --resample 44100
-        // --converter 0
-        let command = format!(
-            "oggenc2 {} --quality {} --output={}",
-            wav_path,
-            metadata
-                .compression_quality
-                .expect(&format!("No compression quality found for '{}'", wav_path)),
-            ogg_output_temp_path
-        );
-        run_systemcommand_fail_on_error(&command, false);
-
-        assert!(
-            path_exists(&ogg_output_temp_path),
-            "Failed to encode ogg file for '{}' - '{}' is missing",
-            wav_path,
-            ogg_output_temp_path
-        );
-
-        let ogg_data = read_file_whole(&ogg_output_temp_path).unwrap_or_else(|error| {
-            panic!("Cannot open ogg file '{}': {}", ogg_output_temp_path, error)
-        });
-
-        audio_resources.add_audio_resource(resource_name, metadata, ogg_data);
+        audio_resources.add_audio_resource(resource_name, metadata_original, metadata, ogg_data);
     }
 
-    serialize_to_binary_file(&audio_resources, "resources/audio.data");
+    serialize_to_binary_file(
+        &audio_resources,
+        &format!("resources/{}.data", resource_pack_name,),
+    );
 
     // Human readable
     serialize_to_json_file(
-        &audio_resources.file_metadata,
-        "target/assets_temp/audio/audio.json",
+        &audio_resources.metadata,
+        &format!(
+            "target/assets_temp/{}/{}.json",
+            resource_pack_name, resource_pack_name
+        ),
     );
     // Copy ogg files to a human readable location
-    for metadata in audio_resources.file_metadata.values() {
+    for resource_name in &audio_resources.names {
+        let metadata = audio_resources.metadata.get(resource_name).unwrap();
+        let metadata_original = audio_resources
+            .metadata_original
+            .get(resource_name)
+            .unwrap();
+
         let path = &metadata.original_filepath;
         if path.ends_with(".wav") {
             // Wav files are converted to ogg files and which will be already placed in temp folder
             continue;
         }
-        let temp_path = path.replace("assets", "target/assets_temp/audio");
+
+        if metadata.samplerate_hz != metadata_original.samplerate_hz {
+            // We resampled our .ogg file and already placed it into the temp folder
+            continue;
+        }
+
+        let temp_path = path.replace(
+            "assets",
+            &format!("target/assets_temp/{}", resource_pack_name),
+        );
         path_copy_file(path, &temp_path);
     }
 }
@@ -1029,7 +1061,8 @@ fn main() {
         }
 
         bake_graphics_resources();
-        bake_audio_resources();
+        bake_audio_resources("audio", 44100);
+        bake_audio_resources("audio_wasm", 22050);
     }
 
     if path_exists("assets_copy") {

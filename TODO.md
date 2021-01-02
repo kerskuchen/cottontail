@@ -4,6 +4,7 @@
 - add final output resampler to resample internal hz rate to output hz rate (useful if we want 
   to render internally at 22050hz but output at 44100hz) and also use global 
   playback speed factor in final resampler
+- automatically resample audio files to 44100Hz (desktop) and 22050Hz (wasm)
 
 # CURRENT
 
@@ -14,7 +15,6 @@
 - find out why shift key does not work
 
 ## improve asset baking/loading
-- automatically resample audio files to 44100Hz (desktop) and 22050Hz (wasm)
 - use resources packs instead of raw file download (like we used for audio)
 - use prelude graphics pack that loads quickly to show splashscreen
 - refactor gamememory/audio/draw/asset initialization to 

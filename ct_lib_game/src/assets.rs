@@ -20,61 +20,76 @@ impl Default for AssetLoadingStage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioMetadata {
-    pub original_filepath: String,
     pub resource_name: ResourceName,
+    pub original_filepath: String,
     pub samplerate_hz: usize,
-    pub channelcount: usize,
     pub framecount: usize,
-    pub compression_quality: Option<usize>,
+    pub channelcount: usize,
+    pub compression_quality: usize,
     pub loopsection_start_frameindex: Option<usize>,
     pub loopsection_framecount: Option<usize>,
+}
+
+impl AudioMetadata {
+    pub fn clone_with_new_sample_rate(&self, audio_sample_rate_hz: usize) -> AudioMetadata {
+        if self.samplerate_hz == audio_sample_rate_hz {
+            return self.clone();
+        }
+
+        let sample_rate_ratio = audio_sample_rate_hz as f64 / self.samplerate_hz as f64;
+
+        let mut result = self.clone();
+        result.samplerate_hz = audio_sample_rate_hz;
+        result.framecount = (self.framecount as f64 * sample_rate_ratio).ceil() as usize;
+        if result.loopsection_framecount.is_some() {
+            result.loopsection_start_frameindex = Some(
+                (self.loopsection_start_frameindex.unwrap() as f64 * sample_rate_ratio).ceil()
+                    as usize,
+            );
+        }
+        if result.loopsection_framecount.is_some() {
+            result.loopsection_framecount = Some(
+                (self.loopsection_framecount.unwrap() as f64 * sample_rate_ratio).ceil() as usize,
+            );
+        }
+
+        result
+    }
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct AudioResources {
     pub resource_sample_rate_hz: usize,
-    pub file_names: Vec<ResourceName>,
-    pub file_metadata: HashMap<String, AudioMetadata>,
-    pub file_content: HashMap<String, Vec<u8>>,
+    pub names: Vec<ResourceName>,
+    pub metadata: HashMap<String, AudioMetadata>,
+    pub metadata_original: HashMap<String, AudioMetadata>,
+    pub content: HashMap<String, Vec<u8>>,
 }
 
 impl AudioResources {
-    pub fn new() -> AudioResources {
+    pub fn new(resource_sample_rate_hz: usize) -> AudioResources {
         AudioResources {
-            resource_sample_rate_hz: 0,
-            file_names: Vec::new(),
-            file_metadata: HashMap::new(),
-            file_content: HashMap::new(),
+            resource_sample_rate_hz,
+            names: Vec::new(),
+            metadata: HashMap::new(),
+            metadata_original: HashMap::new(),
+            content: HashMap::new(),
         }
     }
 
     pub fn add_audio_resource(
         &mut self,
         name: ResourceName,
+        metadata_original: AudioMetadata,
         metadata: AudioMetadata,
         content: Vec<u8>,
     ) {
-        assert!(!self.file_metadata.contains_key(&name));
-        if self.resource_sample_rate_hz == 0 {
-            self.resource_sample_rate_hz = metadata.samplerate_hz;
-            assert!(
-                self.resource_sample_rate_hz != 0,
-                "Samplerate of asset '{}' is 0Hz",
-                &metadata.resource_name
-            )
-        } else {
-            assert!(
-                self.resource_sample_rate_hz == metadata.samplerate_hz,
-                "Samplerate of asset '{}' is {}Hz - expected {}Hz",
-                &metadata.resource_name,
-                metadata.samplerate_hz,
-                self.resource_sample_rate_hz
-            );
-        }
-
-        self.file_names.push(name.clone());
-        self.file_metadata.insert(name.clone(), metadata);
-        self.file_content.insert(name, content);
+        assert!(!self.metadata.contains_key(&name));
+        self.names.push(name.clone());
+        self.metadata.insert(name.clone(), metadata);
+        self.metadata_original
+            .insert(name.clone(), metadata_original);
+        self.content.insert(name, content);
     }
 }
 #[derive(Default)]
@@ -206,8 +221,8 @@ impl GameAssets {
 
         let mut audiorecordings = HashMap::new();
 
-        for (resource_name, metadata) in self.audio.file_metadata.iter() {
-            let ogg_data = &self.audio.file_content[resource_name];
+        for (resource_name, metadata) in self.audio.metadata.iter() {
+            let ogg_data = &self.audio.content[resource_name];
             let recording = AudioRecording::new_from_ogg_stream_with_loopsection(
                 metadata.resource_name.clone(),
                 metadata.framecount,
@@ -274,6 +289,13 @@ impl GameAssets {
         }
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn load_audio(&self) -> AudioResources {
+        let filepath = path_join(&self.assets_folder, "audio_wasm.data");
+        deserialize_from_binary(&self.files_bindata[&filepath])
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn load_audio(&self) -> AudioResources {
         let filepath = path_join(&self.assets_folder, "audio.data");
         deserialize_from_binary(&self.files_bindata[&filepath])
