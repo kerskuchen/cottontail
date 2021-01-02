@@ -920,39 +920,46 @@ impl Resampler {
         source: &mut AudioSource,
         output: &mut AudioChunk,
         out_write_offset: usize,
-        output_sample_rate_hz: usize,
         playback_speed_factor: f32,
     ) -> bool {
         let mut resampler_write_offset = out_write_offset;
         loop {
             if self.internal_buffer_depleted() {
                 if source.has_finished() {
-                    self.produce_tail(
-                        output,
-                        resampler_write_offset,
-                        source.sample_rate_hz(),
-                        output_sample_rate_hz,
-                        playback_speed_factor,
-                    );
+                    self.produce_tail(output, resampler_write_offset, playback_speed_factor);
                     break;
                 } else {
                     source.produce_chunk(&mut self.internal_chunk);
                     self.internal_chunk_readpos = 0;
                 }
             }
-            resampler_write_offset += self.produce_frames(
-                output,
-                resampler_write_offset,
-                source.sample_rate_hz(),
-                output_sample_rate_hz,
-                playback_speed_factor,
-            );
+            resampler_write_offset +=
+                self.produce_frames(output, resampler_write_offset, playback_speed_factor);
 
             if resampler_write_offset >= output.len() {
                 break;
             }
         }
         source.has_finished() && self.has_finished()
+    }
+
+    pub fn calculate_sample_rate_conversion_factor(
+        input_sample_rate_hz: usize,
+        output_sample_rate_hz: usize,
+    ) -> f32 {
+        input_sample_rate_hz as f32 / output_sample_rate_hz as f32
+    }
+
+    pub fn calculate_playback_speed_ratio(
+        input_sample_rate_hz: usize,
+        output_sample_rate_hz: usize,
+        playback_speed_factor: f32,
+    ) -> f32 {
+        playback_speed_factor
+            * Resampler::calculate_sample_rate_conversion_factor(
+                input_sample_rate_hz,
+                output_sample_rate_hz,
+            )
     }
 
     pub fn playcursor_pos(&self) -> usize {
@@ -993,30 +1000,20 @@ impl Resampler {
         &mut self,
         output: &mut AudioChunk,
         out_write_offset: usize,
-        input_sample_rate_hz: usize,
-        output_sample_rate_hz: usize,
         playback_speed_factor: f32,
     ) {
         assert!(output.channels == self.internal_chunk.channels);
         assert!(out_write_offset < output.len());
         assert!(playback_speed_factor > EPSILON);
-        assert!(input_sample_rate_hz > 0);
-        assert!(output_sample_rate_hz > 0);
         assert!(
             self.internal_chunk.volume == 1.0 || self.internal_chunk.volume == 0.0,
             "Resampler does not support sources that produce buffers with volume between 0 and 1"
         );
 
-        let playback_speed_increment = {
-            let sample_rate_conversion_factor =
-                input_sample_rate_hz as f32 / output_sample_rate_hz as f32;
-            playback_speed_factor * sample_rate_conversion_factor
-        };
-
         match output.channels {
             AudioChannels::Mono => {
                 for out_frames in &mut output.get_mono_samples_mut()[out_write_offset..] {
-                    self.frame_time_percent += playback_speed_increment;
+                    self.frame_time_percent += playback_speed_factor;
 
                     while self.frame_time_percent >= 1.0 {
                         self.frame_current = self.frame_next;
@@ -1050,7 +1047,7 @@ impl Resampler {
                     .iter_mut()
                     .zip(out_samples_right.iter_mut())
                 {
-                    self.frame_time_percent += playback_speed_increment;
+                    self.frame_time_percent += playback_speed_factor;
 
                     while self.frame_time_percent >= 1.0 {
                         self.frame_current = self.frame_next;
@@ -1094,15 +1091,11 @@ impl Resampler {
         &mut self,
         output: &mut AudioChunk,
         out_write_offset: usize,
-        input_sample_rate_hz: usize,
-        output_sample_rate_hz: usize,
         playback_speed_factor: f32,
     ) -> usize {
         assert!(output.channels == self.internal_chunk.channels);
         assert!(out_write_offset < output.len());
         assert!(playback_speed_factor > EPSILON);
-        assert!(input_sample_rate_hz > 0);
-        assert!(output_sample_rate_hz > 0);
         assert!(
             self.internal_chunk.volume == 1.0 || self.internal_chunk.volume == 0.0,
             "Resampler does not support sources that produce buffers with volume between 0 and 1"
@@ -1112,14 +1105,7 @@ impl Resampler {
             return 0;
         }
 
-        let playback_speed_increment = {
-            let sample_rate_conversion_factor =
-                input_sample_rate_hz as f32 / output_sample_rate_hz as f32;
-            playback_speed_factor * sample_rate_conversion_factor
-        };
-
         let mut num_frames_written = 0;
-
         match output.channels {
             AudioChannels::Mono => {
                 for out_frames in &mut output.get_mono_samples_mut()[out_write_offset..] {
@@ -1127,7 +1113,7 @@ impl Resampler {
                         return num_frames_written;
                     }
 
-                    self.frame_time_percent += playback_speed_increment;
+                    self.frame_time_percent += playback_speed_factor;
 
                     while self.frame_time_percent >= 1.0 {
                         if self.internal_buffer_depleted() {
@@ -1170,7 +1156,7 @@ impl Resampler {
                         return num_frames_written;
                     }
 
-                    self.frame_time_percent += playback_speed_increment;
+                    self.frame_time_percent += playback_speed_factor;
 
                     while self.frame_time_percent >= 1.0 {
                         if self.internal_buffer_depleted() {
@@ -1347,7 +1333,6 @@ impl AudioStream {
             &mut self.source,
             &mut self.chunk_internal,
             silence_framecount,
-            output_params.audio_sample_rate_hz,
             final_playback_speed_factor,
         );
 
