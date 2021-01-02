@@ -118,6 +118,26 @@ impl AudioChunk {
         &mut self.frames[1]
     }
 
+    pub fn reset(&mut self) {
+        self.volume = 1.0;
+
+        match self.channels {
+            AudioChannels::Mono => {
+                for sample in self.get_mono_samples_mut().iter_mut() {
+                    *sample = 0.0
+                }
+            }
+            AudioChannels::Stereo => {
+                for sample_left in self.get_stereo_samples_left_mut().iter_mut() {
+                    *sample_left = 0.0
+                }
+                for sample_right in self.get_stereo_samples_right_mut().iter_mut() {
+                    *sample_right = 0.0
+                }
+            }
+        }
+    }
+
     pub fn add_from_chunk(&mut self, other: &AudioChunk) {
         assert!(self.channels == other.channels);
         assert!(self.len() == other.len());
@@ -1607,6 +1627,9 @@ pub struct Audiostate {
     streams_to_delete_after_finish: HashSet<AudioStreamId>,
 
     audio_recordings: HashMap<String, Rc<RefCell<AudioRecording>>>,
+
+    resampler: Resampler,
+    internal_chunk: AudioChunk,
 }
 
 impl Audiostate {
@@ -1634,6 +1657,9 @@ impl Audiostate {
             streams_to_delete_after_finish: HashSet::new(),
 
             audio_recordings: HashMap::new(),
+
+            resampler: Resampler::new_stereo(),
+            internal_chunk: AudioChunk::new_stereo(),
         }
     }
 
@@ -1880,6 +1906,31 @@ impl Audiostate {
     /// It is assumed that `out_chunk` is filled with silence
     #[inline]
     pub fn render_audio_chunk(&mut self, out_chunk: &mut AudioChunk) {
+        let playback_speed_factor = Resampler::calculate_playback_speed_ratio(
+            self.output_render_params.audio_sample_rate_hz,
+            self.output_render_params.audio_sample_rate_hz,
+            self.output_render_params.global_playback_speed,
+        );
+        let mut resampler_write_offset = 0;
+        loop {
+            if self.resampler.internal_buffer_depleted() {
+                self.render_audio_chunk_internal();
+                self.resampler.assign_input_chunk(&self.internal_chunk);
+            }
+            resampler_write_offset += self.resampler.produce_frames(
+                out_chunk,
+                resampler_write_offset,
+                playback_speed_factor,
+            );
+
+            if resampler_write_offset >= out_chunk.len() {
+                break;
+            }
+        }
+    }
+
+    #[inline]
+    pub fn render_audio_chunk_internal(&mut self) {
         // Remove streams that have finished
         let mut streams_removed = vec![];
         for &stream_id in &self.streams_to_delete_after_finish {
@@ -1893,10 +1944,11 @@ impl Audiostate {
         }
 
         // Render samples
+        self.internal_chunk.reset();
         for stream in self.streams.values_mut() {
             stream.produce_output_chunk(self.output_render_params);
             let rendered_chunk = stream.get_output_chunk();
-            out_chunk.add_from_chunk(rendered_chunk);
+            self.internal_chunk.add_from_chunk(rendered_chunk);
         }
 
         // Update internal timers
