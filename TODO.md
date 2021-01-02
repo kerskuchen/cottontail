@@ -11,6 +11,11 @@
 
 # NEXT:
 
+## audio system
+- distribute rendering of chunks over multiple frames at a constant rate instead of multiple chunks 
+  in one frame to fill up the queue (important on wasm because we have bigger buffers there but even
+  less time per frame)
+
 ## improve asset baking/loading
 - use resources packs instead of raw file download (like we used for audio)
 - use prelude graphics pack that loads quickly to show splashscreen
@@ -19,11 +24,6 @@
   - improve wasm startup speed (load graphic assets first to show splash screen, 
     then later sound assets)
 - find out why our ogg decoder decodes more frames than exist in ogg file
-
-## audio system
-- distribute rendering of chunks over multiple frames at a constant rate instead of multiple chunks 
-  in one frame to fill up the queue (important on wasm because we have bigger buffers there but even
-  less time per frame)
 
 ## renderer flexibility + speed + cleanup
 - Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and 
@@ -71,7 +71,7 @@
   not work in this case
 - sometimes when going fullscreen on mobile the canvas does not fully fill the part where the 
   statusbar would be. if we pull down the status bar the canvas grows to full size.
-- Allow app to save files locally (browserdb?)
+- Allow app to save files locally in wasm (browserdb?)
   - get rid of savegame folder on windows and just use appdata
 - gamepad support for wasm
 - Find out why gamepad shoulder trigger axes does not work. Directly accessing the state 
@@ -81,6 +81,12 @@
   wrong). (ie. we could use the values of the last ten frames as basis for snapping)
 
 ## better project structure and generator
+- assess which thirdpary tools we use for building/asset packing and document them and how to get them
+  - oggenc2
+  - ResourceHacker
+  - .. ?
+  make assetbaker and buildtools crash with useful error message when those thirdparty tools do not
+  exist and how to get them
 - add more vscode tasks for wasm builds
 - Get rid of crates that are not necessary or replace them with smaller/faster ones 
   - nanoserde, oorandom, minimp3, ...
@@ -101,8 +107,8 @@
 # user experience
 - make app pause on onfocus/lost events more robust
 - show focus lost overlay "press here to continue"
-- give appcode a hint and some time to wind down and save state etc.
-- let appcode respond with an ACK that it won't need to update anymore
+- give appcode a hint and some time to wind down and save state etc. on focus lost
+- let appcode respond with an ACK that it won't need to update anymore on focus lost
 - add icon, title and tags to html (look at other projects we did)
 - check out the output of https://realfavicongenerator.net/
 - add splash screen on first run as html canvas background image + some "run game" icon
