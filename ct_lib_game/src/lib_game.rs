@@ -85,6 +85,8 @@ pub struct AppContext<GameStateType: GameStateInterface> {
     pub audio: Option<Audiostate>,
     pub splashscreen: Option<SplashScreen>,
     pub globals: Option<Globals>,
+
+    audio_chunk_timer: f32,
 }
 
 impl<GameStateType: GameStateInterface> Default for AppContext<GameStateType> {
@@ -96,6 +98,7 @@ impl<GameStateType: GameStateInterface> Default for AppContext<GameStateType> {
             audio: None,
             splashscreen: None,
             globals: None,
+            audio_chunk_timer: 0.0,
         }
     }
 }
@@ -360,11 +363,39 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
             }
 
             if let Some(audio) = self.audio.as_mut() {
-                while audio_output.get_num_frames_to_submit() > 0 {
-                    let mut audiochunk = AudioChunk::new_stereo();
+                self.audio_chunk_timer += input.deltatime;
+
+                let mut num_chunks_rendered = 0;
+                let mut audiochunk = AudioChunk::new_stereo();
+                let audiochunk_length_in_seconds =
+                    audiochunk.length_in_seconds(input.audio_playback_rate_hz) as f32;
+                let audio_buffersize_in_frames = audio_output.get_audiobuffer_size_in_frames();
+
+                // Render some chunks per frame to keep the load per frame somewhat stable
+                while self.audio_chunk_timer >= audiochunk_length_in_seconds {
+                    self.audio_chunk_timer -= audiochunk_length_in_seconds;
+                    if audio_output.get_num_frames_in_queue() >= 2 * audio_buffersize_in_frames {
+                        // We don't want to fill too much or else the latency is gonna be big.
+                        // Filling it that much is also a symptom of our deltatime being too much
+                        // out of sync with our realtime
+                        log::warn!("Too many audiochunks queued up");
+                        continue;
+                    }
                     audio.render_audio_chunk(&mut audiochunk, input.audio_playback_rate_hz);
                     let (samples_left, samples_right) = audiochunk.get_stereo_samples();
                     audio_output.submit_frames(samples_left, samples_right);
+                    num_chunks_rendered += 1;
+                    audiochunk.reset();
+                }
+
+                // We need to always have a full audiobuffer worth of frames queued up.
+                // If our steady submitting of chunks above was not enough we fill up the queue
+                while audio_output.get_num_frames_in_queue() < audio_buffersize_in_frames {
+                    audio.render_audio_chunk(&mut audiochunk, input.audio_playback_rate_hz);
+                    let (samples_left, samples_right) = audiochunk.get_stereo_samples();
+                    audio_output.submit_frames(samples_left, samples_right);
+                    num_chunks_rendered += 1;
+                    audiochunk.reset();
                 }
             }
 

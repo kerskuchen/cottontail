@@ -68,6 +68,10 @@ impl AudioChunk {
         self.frames[0].len()
     }
 
+    pub fn length_in_seconds(&self, audio_samplerate_hz: usize) -> f64 {
+        audio_frames_to_seconds(self.len() as i64, audio_samplerate_hz)
+    }
+
     pub fn channelcount(&self) -> usize {
         match self.channels {
             AudioChannels::Mono => 1,

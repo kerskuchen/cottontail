@@ -5,6 +5,9 @@
   to render internally at 22050hz but output at 44100hz) and also use global 
   playback speed factor in final resampler
 - automatically resample audio files to 44100Hz (desktop) and 22050Hz (wasm)
+- distribute rendering of chunks over multiple frames at a constant rate instead of multiple chunks 
+  in one frame to fill up the queue (important on wasm because we have bigger buffers there but even
+  less time per frame)
 
 # CURRENT
 
@@ -12,9 +15,6 @@
 # NEXT:
 
 ## audio system
-- distribute rendering of chunks over multiple frames at a constant rate instead of multiple chunks 
-  in one frame to fill up the queue (important on wasm because we have bigger buffers there but even
-  less time per frame)
 
 ## improve asset baking/loading
 - use resources packs instead of raw file download (like we used for audio)
@@ -35,6 +35,7 @@
 ## improve examples
 - find a good way to switch/disable audio when switching scenes
 - restore gui/credits displaying as an example scene
+- convert debug scene to example in a dedicated examples folder with its own assets and build scripts
 
 ## writing games easier
 - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
@@ -81,21 +82,24 @@
   wrong). (ie. we could use the values of the last ten frames as basis for snapping)
 
 ## better project structure and generator
+- put all our generated project template files into a single directory and just copy it and replace 
+  all containing strings in all templates. This could simplify our generator code immensely. maybe
+  that way we can replace our system with (https://github.com/ffizer/ffizer)?
+- look for ways to simplify project creation and building
+- add new html/batchfiles and everything we added recently to the templates
 - assess which thirdpary tools we use for building/asset packing and document them and how to get them
   - oggenc2
   - ResourceHacker
   - .. ?
   make assetbaker and buildtools crash with useful error message when those thirdparty tools do not
   exist and how to get them
+- rename cottontail crates that are tools into ct_tool_...?
 - add more vscode tasks for wasm builds
 - Get rid of crates that are not necessary or replace them with smaller/faster ones 
   - nanoserde, oorandom, minimp3, ...
   - get rid of sdl in favor of something more simple?
 - look how other projects like bevy handle project templates
-- convert debug scene to example in a dedicated examples folder with its own assets and build scripts
 - rename game -> app
-- look for ways to simplify project creation and building
-- add new html/batchfiles and everything we added recently to the templates
 - Update version info resource with the crate version
 - Zip up final executable and add version from crate
 - We need to certify our Windows executable with a real certificate

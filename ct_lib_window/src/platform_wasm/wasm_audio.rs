@@ -8,7 +8,6 @@ use super::html_get_document;
 
 const AUDIO_SAMPLE_RATE: usize = 44100;
 const AUDIO_BUFFER_FRAMECOUNT: usize = 2048;
-const AUDIO_QUEUE_FRAMECOUNT: usize = 2 * AUDIO_BUFFER_FRAMECOUNT;
 const AUDIO_NUM_CHANNELS: usize = 2;
 const AUDIO_CHANNEL_LEFT: usize = 0;
 const AUDIO_CHANNEL_RIGHT: usize = 1;
@@ -205,13 +204,12 @@ impl AudioOutput {
         }
     }
 
-    pub fn get_num_frames_to_submit(&self) -> usize {
-        let framecount_queued = self.frames_queue.len();
-        if framecount_queued < AUDIO_QUEUE_FRAMECOUNT {
-            AUDIO_QUEUE_FRAMECOUNT - framecount_queued
-        } else {
-            0
-        }
+    pub fn get_num_frames_in_queue(&self) -> usize {
+        self.frames_queue.len()
+    }
+
+    pub fn get_audiobuffer_size_in_frames(&self) -> usize {
+        AUDIO_BUFFER_FRAMECOUNT
     }
 
     pub fn submit_frames(&mut self, samples_left: &[f32], samples_right: &[f32]) {

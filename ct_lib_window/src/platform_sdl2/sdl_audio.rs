@@ -2,7 +2,6 @@ use ct_lib_core::log;
 
 const AUDIO_SAMPLE_RATE: usize = 44100;
 const AUDIO_BUFFER_FRAMECOUNT: usize = 1024;
-const AUDIO_QUEUE_FRAMECOUNT: usize = 2 * AUDIO_BUFFER_FRAMECOUNT;
 const AUDIO_NUM_CHANNELS: usize = 2;
 
 #[derive(Eq, PartialEq)]
@@ -129,13 +128,12 @@ impl AudioOutput {
         // Do nothing here
     }
 
-    pub fn get_num_frames_to_submit(&self) -> usize {
-        let framecount_queued = self.frames_queue.len();
-        if framecount_queued < AUDIO_QUEUE_FRAMECOUNT {
-            AUDIO_QUEUE_FRAMECOUNT - framecount_queued
-        } else {
-            0
-        }
+    pub fn get_num_frames_in_queue(&self) -> usize {
+        self.frames_queue.len()
+    }
+
+    pub fn get_audiobuffer_size_in_frames(&self) -> usize {
+        AUDIO_BUFFER_FRAMECOUNT
     }
 
     pub fn submit_frames(&mut self, samples_left: &[f32], samples_right: &[f32]) {
