@@ -96,7 +96,7 @@ fn get_or_generate_project_details(project_name: String) -> ProjectDetailsMerged
 }
 
 /// Renders a given mustache template file and writes it to a given file using provided template values
-fn template_copy(
+fn copy_template(
     template_filepath: &str,
     output_filepath: &str,
     template_values: &ProjectDetailsMerged,
@@ -130,21 +130,7 @@ fn template_copy(
     ));
 }
 
-/// Renders a given mustache template file and writes its to a given directory using provided
-/// template values.
-/// NOTE: The `template__` file prefix will be removed automatically when writing out the file
-fn template_copy_to_dir(
-    template_filepath: &str,
-    output_dir: &str,
-    template_values: &ProjectDetailsMerged,
-) {
-    return;
-    let output_filename = path_to_filename(template_filepath).replace("template__", "");
-    let output_filepath = path_join(output_dir, &output_filename);
-    template_copy(template_filepath, &output_filepath, template_values);
-}
-
-fn refresh_file_template(
+fn refresh_or_copy_file_template_if_necessary(
     template_filepath: &str,
     root_source: &str,
     root_dest: &str,
@@ -182,7 +168,7 @@ fn refresh_file_template(
                     );
         }
     }
-    template_copy(
+    copy_template(
         &template_filepath,
         &output_filepath_accumulator,
         &project_details,
@@ -214,37 +200,15 @@ fn project_refresh() {
     };
     let project_details = get_or_generate_project_details(project_name.clone());
 
-    // ---------------------------------------------------------------------------------------------
-    // Executable setup
-
-    if !path_exists("launcher/Cargo.toml") {
-        template_copy_to_dir(
-            "cottontail/ct_makeproject/templates_executable/template__Cargo.toml",
-            "launcher",
-            &project_details,
-        );
-    }
-    if !path_exists("launcher/main_launcher.rs") {
-        template_copy_to_dir(
-            "cottontail/ct_makeproject/templates_executable/template__main_launcher.rs",
-            "launcher/src",
-            &project_details,
-        );
-    }
-    // NOTE: This should overwrite always
-    template_copy_to_dir(
-        "cottontail/ct_makeproject/templates_executable/template__main_launcher_info.rs",
-        "launcher/src",
-        &project_details,
-    );
-
-    // ---------------------------------------------------------------------------------------------
-    // Assets setup
-
     let root_source = "./cottontail/ct_makeproject/project_template/";
     let root_dest = "./";
     for filepath in &collect_files_recursive(root_source) {
-        refresh_file_template(&filepath, root_source, root_dest, &project_details);
+        refresh_or_copy_file_template_if_necessary(
+            &filepath,
+            root_source,
+            root_dest,
+            &project_details,
+        );
     }
 
     println!("FINISHED REFRESHING PROJECT INFO");
