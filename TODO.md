@@ -1,13 +1,9 @@
 # DONE:
 
-- make resampler independent of audio source
-- add final output resampler to resample internal hz rate to output hz rate (useful if we want 
-  to render internally at 22050hz but output at 44100hz) and also use global 
-  playback speed factor in final resampler
-- automatically resample audio files to 44100Hz (desktop) and 22050Hz (wasm)
-- distribute rendering of chunks over multiple frames at a constant rate instead of multiple chunks 
-  in one frame to fill up the queue (important on wasm because we have bigger buffers there but even
-  less time per frame)
+- put all our generated project template files into a single directory and just copy it and replace 
+  all containing strings in all templates. This could simplify our generator code immensely. maybe
+  that way we can replace our system with (https://github.com/ffizer/ffizer)?
+  NOTE: We rolled our own because there was not much needed to do for this simple change
 
 # CURRENT
 
@@ -82,9 +78,6 @@
   wrong). (ie. we could use the values of the last ten frames as basis for snapping)
 
 ## better project structure and generator
-- put all our generated project template files into a single directory and just copy it and replace 
-  all containing strings in all templates. This could simplify our generator code immensely. maybe
-  that way we can replace our system with (https://github.com/ffizer/ffizer)?
 - look for ways to simplify project creation and building
 - add new html/batchfiles and everything we added recently to the templates
 - assess which thirdpary tools we use for building/asset packing and document them and how to get them
@@ -238,3 +231,12 @@
 
 - converting from interleaved processing to flat buffers per channel
 - add ability to pack/load/play stereo audio files
+
+- make resampler independent of audio source
+- add final output resampler to resample internal hz rate to output hz rate (useful if we want 
+  to render internally at 22050hz but output at 44100hz) and also use global 
+  playback speed factor in final resampler
+- automatically resample audio files to 44100Hz (desktop) and 22050Hz (wasm)
+- distribute rendering of chunks over multiple frames at a constant rate instead of multiple chunks 
+  in one frame to fill up the queue (important on wasm because we have bigger buffers there but even
+  less time per frame)
