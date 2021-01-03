@@ -104,30 +104,30 @@ fn copy_template(
     if path_to_filename(template_filepath).starts_with("template#")
         || path_to_filename(template_filepath).starts_with("template_norefresh#")
     {
-        println!("Copy template {} -> {}", template_filepath, output_filepath);
+        println!("Template {} -> {}", template_filepath, output_filepath);
+
+        let template = mustache::compile_path(template_filepath).expect(&format!(
+            "Could not load template file '{}'",
+            template_filepath,
+        ));
+        let rendered_template = template.render_to_string(&template_values).expect(&format!(
+            "Failed to render template file '{}'",
+            template_filepath,
+        ));
+
+        let output_dir = path_without_filename(output_filepath);
+        std::fs::create_dir_all(&output_dir)
+            .expect(&format!("Could not create path {}", &output_dir));
+
+        std::fs::write(output_filepath, rendered_template).expect(&format!(
+            "Could not write template '{}' to '{}'",
+            template_filepath, output_filepath
+        ));
     } else {
-        // Regular file
-        println!("Copy file {} -> {}", template_filepath, output_filepath);
-        //path_copy_file(template_filepath, output_filepath);
+        // Regular file - just copy it
+        println!("File {} -> {}", template_filepath, output_filepath);
+        path_copy_file(template_filepath, output_filepath);
     }
-
-    return;
-    let template = mustache::compile_path(template_filepath).expect(&format!(
-        "Could not load template file '{}'",
-        template_filepath,
-    ));
-    let rendered_template = template.render_to_string(&template_values).expect(&format!(
-        "Failed to render template file '{}'",
-        template_filepath,
-    ));
-
-    let output_dir = path_without_filename(output_filepath);
-    std::fs::create_dir_all(&output_dir).expect(&format!("Could not create path {}", &output_dir));
-
-    std::fs::write(output_filepath, rendered_template).expect(&format!(
-        "Could not write template '{}' to '{}'",
-        template_filepath, output_filepath
-    ));
 }
 
 fn refresh_or_copy_file_template_if_necessary(
