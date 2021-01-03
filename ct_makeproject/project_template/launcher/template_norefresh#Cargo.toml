@@ -9,10 +9,14 @@ default-run = "launcher"
 path = "src/main_launcher.rs"
 name = "launcher"
 
-[dependencies.ct_lib]
-path = "../cottontail/ct_lib"
-
-[dependencies.ct_lib_window]
-path = "../cottontail/ct_lib_window"
-
 [dependencies]
+ct_lib_window = { path = "../cottontail/ct_lib_window"}
+ct_lib_game = { path = "../cottontail/ct_lib_game"}
+ct_lib_core = { path = "../cottontail/ct_lib_core"}
+ct_lib_math = { path = "../cottontail/ct_lib_math"}
+ct_lib_draw = { path = "../cottontail/ct_lib_draw"}
+ct_lib_image = { path = "../cottontail/ct_lib_image"}
+ct_lib_audio = { path = "../cottontail/ct_lib_audio"}
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.69"
