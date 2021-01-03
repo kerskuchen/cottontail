@@ -1,9 +1,6 @@
 [workspace]
 members = [
-    "cottontail/ct_lib",
-    "cottontail/ct_lib_window",
-    "cottontail/ct_assetbaker",
-    "cottontail/ct_makeproject",
+    "cottontail/*",
     "launcher",
 ]
 
@@ -11,11 +8,15 @@ members = [
 [profile.dev.package."*"]
 opt-level = 3
 
-# NOTE: The following optimizes ct_lib_math 
-# [profile.dev.package.ct_lib_math]
+# NOTE: The following optimizes ct_lib_audio for debug builds
+# [profile.dev.package.ct_lib_audio]
 # opt-level = 3
 
 # NOTE: The following overrides the whole project 
 # [profile.dev]
 # opt-level = 0
 # debug = true
+
+# NOTE: Enables link-time-optimization on final release binary
+# [profile.release]
+# lto = true
