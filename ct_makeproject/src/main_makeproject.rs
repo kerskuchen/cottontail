@@ -35,8 +35,8 @@ fn create_default_project_details(project_name: String) -> (ProjectDetails, Proj
         mobile_display_orientation,
     );
 
-    let mut details_local: ProjectDetailsLocal = IndexMap::new();
-    details_local.insert("windows_certificate_path".to_owned(), "".to_owned());
+    let details_local: ProjectDetailsLocal = IndexMap::new();
+    // NOTE: We can put something here in the future
 
     (details, details_local)
 }
@@ -90,11 +90,13 @@ fn get_or_generate_project_details(project_name: String) -> ProjectDetailsMerged
         serde_json::to_string_pretty(&project_details).unwrap(),
     )
     .expect("Failed to write project details to 'project_details.json'");
-    std::fs::write(
-        "project_details_local.json",
-        serde_json::to_string_pretty(&project_details_local).unwrap(),
-    )
-    .expect("Failed to write project details to 'project_details_local.json'");
+    if !project_details_local.is_empty() {
+        std::fs::write(
+            "project_details_local.json",
+            serde_json::to_string_pretty(&project_details_local).unwrap(),
+        )
+        .expect("Failed to write project details to 'project_details_local.json'");
+    }
 
     project_details.extend(project_details_local);
 
