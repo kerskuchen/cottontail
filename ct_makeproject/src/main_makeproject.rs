@@ -101,6 +101,8 @@ fn template_copy(
     output_filepath: &str,
     template_values: &ProjectDetailsMerged,
 ) {
+    println!("Copy template {} -> {}", template_filepath, output_filepath);
+    return;
     let template = mustache::compile_path(template_filepath).expect(&format!(
         "Could not load template file '{}'",
         template_filepath,
@@ -127,6 +129,7 @@ fn template_copy_to_dir(
     output_dir: &str,
     template_values: &ProjectDetailsMerged,
 ) {
+    return;
     let output_filename = path_to_filename(template_filepath).replace("template__", "");
     let output_filepath = path_join(output_dir, &output_filename);
     template_copy(template_filepath, &output_filepath, template_values);
@@ -216,33 +219,47 @@ fn project_refresh() {
     // ---------------------------------------------------------------------------------------------
     // Assets setup
 
-    for template_filepath in
-        &["cottontail/ct_makeproject/templates_assets/template__assets_autobake.bat"]
-    {
-        template_copy_to_dir(template_filepath, "./", &project_details);
-    }
-    if !path_exists("assets") {
-        for template_filepath in
-            &["cottontail/ct_makeproject/templates_assets/template__credits.txt"]
-        {
-            template_copy_to_dir(template_filepath, "assets", &project_details);
+    let root_source = "./cottontail/ct_makeproject/project_template/";
+    let root_dest = "./";
+    for filepath in &collect_files_recursive(root_source) {
+        fn refresh_file_template(
+            template_filepath: &str,
+            root_source: &str,
+            root_dest: &str,
+            project_details: &IndexMap<String, String>,
+        ) {
+            let components: Vec<String> = template_filepath
+                .replace(root_source, "")
+                .split("/")
+                .map(|component| component.to_owned())
+                .collect();
+
+            let mut output_filepath = root_dest.to_owned();
+            for component in &components {
+                output_filepath = path_join(
+                    &output_filepath,
+                    &component
+                        .replace("template#no-refresh#", "")
+                        .replace("template#", ""),
+                );
+
+                if component.starts_with("template#no-refresh#") {
+                    if path_exists(&output_filepath) {
+                        // We don't copy this file because it already exists or one of its
+                        // parent directories exist
+                        return;
+                    }
+                } else if component.starts_with("template#") {
+                    assert!(
+                        path_is_file(&output_filepath),
+                        "'template#' without 'no-refresh# can only be used for files - '{}'",
+                        template_filepath
+                    );
+                }
+            }
+            template_copy(&template_filepath, &output_filepath, &project_details);
         }
-        path_copy_directory_contents_recursive(
-            "cottontail/ct_makeproject/templates_assets/assets",
-            "assets",
-        );
-    }
-    if !path_exists("assets_copy") {
-        path_copy_directory_contents_recursive(
-            "cottontail/ct_makeproject/templates_assets/assets_copy",
-            "assets_copy",
-        );
-    }
-    if !path_exists("assets_executable") {
-        path_copy_directory_contents_recursive(
-            "cottontail/ct_makeproject/templates_assets/assets_executable",
-            "assets_executable",
-        );
+        refresh_file_template(&filepath, root_source, root_dest, &project_details);
     }
 
     // ---------------------------------------------------------------------------------------------

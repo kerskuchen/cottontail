@@ -135,6 +135,14 @@ pub fn path_exists(path: &str) -> bool {
     Path::new(path).exists()
 }
 
+pub fn path_is_file(path: &str) -> bool {
+    Path::new(path).is_file()
+}
+
+pub fn path_is_directory(path: &str) -> bool {
+    Path::new(path).is_file()
+}
+
 pub fn path_canonicalize(path: &str) -> Result<String, String> {
     let canonicalized = std::path::Path::new(path)
         .canonicalize()
@@ -298,8 +306,40 @@ pub fn collect_files_by_extension_recursive(root_folder: &str, extension: &str) 
 }
 
 /// NOTE: Result is prefixed by the given `root_folder` and contains Unix-style file seperators only
-pub fn collect_files_recursive(root_folder: &str) -> Vec<String> {
+pub fn collect_directories(root_folder: &str) -> Vec<String> {
+    collect_directories_with_depth(root_folder, 1)
+}
+
+/// NOTE: Result is prefixed by the given `root_folder` and contains Unix-style file seperators only
+pub fn collect_directories_recursive(root_folder: &str) -> Vec<String> {
+    collect_directories_with_depth(root_folder, std::usize::MAX)
+}
+
+/// NOTE: Result is prefixed by the given `root_folder` and contains Unix-style file seperators only
+pub fn collect_directories_with_depth(root_folder: &str, max_depth: usize) -> Vec<String> {
     walkdir::WalkDir::new(root_folder)
+        .max_depth(max_depth)
+        .into_iter()
+        .filter_map(|maybe_entry| maybe_entry.ok())
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| entry.path().to_string_owned_or_panic().replace("\\", "/"))
+        .collect()
+}
+
+/// NOTE: Result is prefixed by the given `root_folder` and contains Unix-style file seperators only
+pub fn collect_files(root_folder: &str) -> Vec<String> {
+    collect_files_with_depth(root_folder, 1)
+}
+
+/// NOTE: Result is prefixed by the given `root_folder` and contains Unix-style file seperators only
+pub fn collect_files_recursive(root_folder: &str) -> Vec<String> {
+    collect_files_with_depth(root_folder, std::usize::MAX)
+}
+
+/// NOTE: Result is prefixed by the given `root_folder` and contains Unix-style file seperators only
+pub fn collect_files_with_depth(root_folder: &str, max_depth: usize) -> Vec<String> {
+    walkdir::WalkDir::new(root_folder)
+        .max_depth(max_depth)
         .into_iter()
         .filter_map(|maybe_entry| maybe_entry.ok())
         .filter(|entry| !entry.path().is_dir())
