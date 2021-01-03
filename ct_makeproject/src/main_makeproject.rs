@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use ct_lib_core::serde_json;
 use ct_lib_core::*;
 use ct_lib_core::{indexmap::IndexMap, panic_set_hook_wait_for_keypress};
@@ -101,7 +103,7 @@ fn get_or_generate_project_details(project_name: String) -> ProjectDetailsMerged
 }
 
 /// Renders a given mustache template file and writes it to a given file using provided template values
-fn copy_template(
+fn instantiate_template(
     template_filepath: &str,
     output_filepath: &str,
     template_values: &ProjectDetailsMerged,
@@ -135,12 +137,13 @@ fn copy_template(
     }
 }
 
-fn refresh_or_copy_file_template_if_necessary(
+// NOTE: This returns `None` if the template cannot be instantiated at the output path due to
+//       'norefresh' restrictions
+fn get_template_instatiation_path(
     template_filepath: &str,
     root_source: &str,
     root_dest: &str,
-    project_details: &IndexMap<String, String>,
-) {
+) -> Option<String> {
     let components: Vec<String> = template_filepath
         .replace(root_source, "")
         .split("/")
@@ -160,9 +163,9 @@ fn refresh_or_copy_file_template_if_necessary(
 
         if component.starts_with("template_norefresh#") {
             if path_exists(&output_filepath_accumulator) {
-                // We don't copy this file because it already exists or one of its
-                // parent directories exist
-                return;
+                // We cant' instantiate this template because it or one of its parent directories
+                // already exist but the template has the 'norefresh' restriction
+                return None;
             }
         } else if component.starts_with("template#") {
             assert!(
@@ -173,11 +176,7 @@ fn refresh_or_copy_file_template_if_necessary(
                     );
         }
     }
-    copy_template(
-        &template_filepath,
-        &output_filepath_accumulator,
-        &project_details,
-    );
+    Some(output_filepath_accumulator)
 }
 
 fn project_refresh() {
@@ -207,13 +206,23 @@ fn project_refresh() {
 
     let root_source = "./cottontail/ct_makeproject/project_template/";
     let root_dest = "./";
-    for filepath in &collect_files_recursive(root_source) {
-        refresh_or_copy_file_template_if_necessary(
-            &filepath,
-            root_source,
-            root_dest,
-            &project_details,
-        );
+    let template_paths: Vec<_> = collect_files_recursive(root_source)
+        .into_iter()
+        .map(|template_path| {
+            (
+                template_path.clone(),
+                get_template_instatiation_path(&template_path, root_source, root_dest),
+            )
+        })
+        .filter(|(_template_path, dest_path)| dest_path.is_some())
+        .map(|(template_path, dest_path)| (template_path, dest_path.unwrap()))
+        .collect();
+
+    // IMPORTANT: We defer the actual template instantiation till after we collected all valid
+    //            destination paths to avoid creating directories inbetween instantiations.
+    //            This would conflict with the 'norefresh' flags of the templates
+    for (template_path, dest_path) in template_paths {
+        instantiate_template(&template_path, &dest_path, &project_details);
     }
 
     println!("FINISHED REFRESHING PROJECT INFO");
