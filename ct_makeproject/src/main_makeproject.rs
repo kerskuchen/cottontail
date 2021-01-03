@@ -101,7 +101,16 @@ fn template_copy(
     output_filepath: &str,
     template_values: &ProjectDetailsMerged,
 ) {
-    println!("Copy template {} -> {}", template_filepath, output_filepath);
+    if path_to_filename(template_filepath).starts_with("template#")
+        || path_to_filename(template_filepath).starts_with("template_norefresh#")
+    {
+        println!("Copy template {} -> {}", template_filepath, output_filepath);
+    } else {
+        // Regular file
+        println!("Copy file {} -> {}", template_filepath, output_filepath);
+        //path_copy_file(template_filepath, output_filepath);
+    }
+
     return;
     let template = mustache::compile_path(template_filepath).expect(&format!(
         "Could not load template file '{}'",
@@ -135,6 +144,51 @@ fn template_copy_to_dir(
     template_copy(template_filepath, &output_filepath, template_values);
 }
 
+fn refresh_file_template(
+    template_filepath: &str,
+    root_source: &str,
+    root_dest: &str,
+    project_details: &IndexMap<String, String>,
+) {
+    let components: Vec<String> = template_filepath
+        .replace(root_source, "")
+        .split("/")
+        .map(|component| component.to_owned())
+        .collect();
+
+    let mut output_filepath_accumulator = root_dest.to_owned();
+    let mut original_filepath_accumulator = root_source.to_owned();
+    for component in &components {
+        original_filepath_accumulator = path_join(&original_filepath_accumulator, &component);
+        output_filepath_accumulator = path_join(
+            &output_filepath_accumulator,
+            &component
+                .replace("template_norefresh#", "")
+                .replace("template#", ""),
+        );
+
+        if component.starts_with("template_norefresh#") {
+            if path_exists(&output_filepath_accumulator) {
+                // We don't copy this file because it already exists or one of its
+                // parent directories exist
+                return;
+            }
+        } else if component.starts_with("template#") {
+            assert!(
+                        path_is_file(&original_filepath_accumulator),
+                        "'template#' can only be used for files (use 'template_norefresh#' for directories) - '{}' part in '{}'",
+                        original_filepath_accumulator,
+                        template_filepath
+                    );
+        }
+    }
+    template_copy(
+        &template_filepath,
+        &output_filepath_accumulator,
+        &project_details,
+    );
+}
+
 fn project_refresh() {
     // Get project details
     let project_name = {
@@ -159,38 +213,6 @@ fn project_refresh() {
         }
     };
     let project_details = get_or_generate_project_details(project_name.clone());
-
-    // ---------------------------------------------------------------------------------------------
-    // Repository setup
-
-    for template_filepath in &[
-        "cottontail/ct_makeproject/templates_repository/template__.gitattributes",
-        "cottontail/ct_makeproject/templates_repository/template__.gitignore",
-        "cottontail/ct_makeproject/templates_repository/template__project_refresh.bat",
-    ] {
-        template_copy_to_dir(template_filepath, "./", &project_details);
-    }
-    if !path_exists("LICENSE.txt") {
-        template_copy_to_dir(
-            "cottontail/ct_makeproject/templates_repository/template__LICENSE.txt",
-            "./",
-            &project_details,
-        );
-    }
-    if !path_exists("Cargo.toml") {
-        template_copy_to_dir(
-            "cottontail/ct_makeproject/templates_repository/template__Cargo.toml",
-            "./",
-            &project_details,
-        );
-    }
-    if !path_exists("README.md") || std::fs::metadata("README.md").unwrap().len() == 0 {
-        template_copy_to_dir(
-            "cottontail/ct_makeproject/templates_repository/template__README.md",
-            "./",
-            &project_details,
-        );
-    }
 
     // ---------------------------------------------------------------------------------------------
     // Executable setup
@@ -222,85 +244,8 @@ fn project_refresh() {
     let root_source = "./cottontail/ct_makeproject/project_template/";
     let root_dest = "./";
     for filepath in &collect_files_recursive(root_source) {
-        fn refresh_file_template(
-            template_filepath: &str,
-            root_source: &str,
-            root_dest: &str,
-            project_details: &IndexMap<String, String>,
-        ) {
-            let components: Vec<String> = template_filepath
-                .replace(root_source, "")
-                .split("/")
-                .map(|component| component.to_owned())
-                .collect();
-
-            let mut output_filepath = root_dest.to_owned();
-            for component in &components {
-                output_filepath = path_join(
-                    &output_filepath,
-                    &component
-                        .replace("template#no-refresh#", "")
-                        .replace("template#", ""),
-                );
-
-                if component.starts_with("template#no-refresh#") {
-                    if path_exists(&output_filepath) {
-                        // We don't copy this file because it already exists or one of its
-                        // parent directories exist
-                        return;
-                    }
-                } else if component.starts_with("template#") {
-                    assert!(
-                        path_is_file(&output_filepath),
-                        "'template#' without 'no-refresh# can only be used for files - '{}'",
-                        template_filepath
-                    );
-                }
-            }
-            template_copy(&template_filepath, &output_filepath, &project_details);
-        }
         refresh_file_template(&filepath, root_source, root_dest, &project_details);
     }
-
-    // ---------------------------------------------------------------------------------------------
-    // Windows project setup
-
-    template_copy_to_dir(
-        "cottontail/ct_makeproject/templates_windows/template__versioninfo.rc",
-        "./assets_executable/",
-        &project_details,
-    );
-    template_copy_to_dir(
-        "cottontail/ct_makeproject/templates_windows/template__windows_build_shipping.bat",
-        "./",
-        &project_details,
-    );
-    if !project_details
-        .get("windows_certificate_path")
-        .as_ref()
-        .unwrap()
-        .is_empty()
-    {
-        template_copy_to_dir(
-            "cottontail/ct_makeproject/templates_windows/template__windows_sign_executable.bat",
-            "./",
-            &project_details,
-        );
-    }
-
-    // ---------------------------------------------------------------------------------------------
-    // VSCode setup
-
-    template_copy_to_dir(
-        "cottontail/ct_makeproject/templates_vscode/template__tasks.json",
-        "./.vscode/",
-        &project_details,
-    );
-    template_copy_to_dir(
-        "cottontail/ct_makeproject/templates_vscode/template__launch.json",
-        "./.vscode/",
-        &project_details,
-    );
 
     println!("FINISHED REFRESHING PROJECT INFO");
 }
