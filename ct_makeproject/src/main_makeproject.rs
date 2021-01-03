@@ -269,7 +269,7 @@ fn project_refresh() {
     for template_filepath in
         &["cottontail/ct_makeproject/templates_assets/template__assets_autobake.bat"]
     {
-        template_copy_to_dir(template_filepath, "./", &project_details, true);
+        template_copy_to_dir(template_filepath, "./", &project_details, false);
     }
     if !path_exists("assets") {
         for template_filepath in
