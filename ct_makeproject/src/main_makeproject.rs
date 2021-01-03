@@ -207,7 +207,6 @@ fn project_refresh() {
     for template_filepath in &[
         "cottontail/ct_makeproject/templates_repository/template__.gitattributes",
         "cottontail/ct_makeproject/templates_repository/template__.gitignore",
-        "cottontail/ct_makeproject/templates_repository/template__git_update_cottontail.bat",
         "cottontail/ct_makeproject/templates_repository/template__project_refresh.bat",
     ] {
         template_copy_to_dir(template_filepath, "./", &project_details, true);
