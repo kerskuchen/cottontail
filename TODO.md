@@ -7,13 +7,16 @@
   NOTE: We rolled our own because there was not much needed to do for this simple change
 - add new html/batchfiles and everything we added recently to the templates
 - adds debug draw grid helper function
+- adds debug crosshair drawing
 
 # CURRENT
 
 
+
 # NEXT:
 
-## audio system
+- find out why our screenspace grid does not line up with our canvas space / worldspace objects
+
 
 ## improve asset baking/loading
 - remove the need to have a 'untextured.png' in assets folder

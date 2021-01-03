@@ -533,7 +533,7 @@ impl Camera {
     }
 
     #[inline]
-    pub fn bounds_pixelsnapped(&mut self) -> Rect {
+    pub fn bounds_pixelsnapped(&self) -> Rect {
         if self.is_centered {
             Rect::from_bounds_left_top_right_bottom(
                 self.pos_pixelsnapped.x - 0.5 * self.dim_frustum.x,
@@ -2191,7 +2191,7 @@ pub fn debug_draw_grid(
 ) {
     assert!(line_thickness > 0);
 
-    let frustum = camera.bounds();
+    let frustum = camera.bounds_pixelsnapped();
     let top = f32::floor(frustum.top() / world_grid_size) * world_grid_size;
     let bottom = f32::ceil(frustum.bottom() / world_grid_size) * world_grid_size;
     let left = f32::floor(frustum.left() / world_grid_size) * world_grid_size;
@@ -2239,4 +2239,58 @@ pub fn debug_draw_grid(
 
         y += world_grid_size;
     }
+}
+
+pub fn debug_draw_crosshair(
+    draw: &mut Drawstate,
+    camera: &Camera,
+    pos_world: Vec2,
+    screen_width: f32,
+    screen_height: f32,
+    line_thickness: f32,
+    color: Color,
+
+    depth: f32,
+) {
+    let frustum = camera.bounds_pixelsnapped();
+
+    let start = Vec2::new(frustum.left(), pos_world.y);
+    let end = Vec2::new(frustum.right(), pos_world.y);
+
+    let start = camera.worldpoint_to_canvaspoint(start);
+    let end = camera.worldpoint_to_canvaspoint(end);
+
+    let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+    let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+
+    draw.draw_line_with_thickness(
+        start,
+        end,
+        line_thickness,
+        true,
+        depth,
+        color,
+        ADDITIVITY_NONE,
+        DrawSpace::Screen,
+    );
+
+    let start = Vec2::new(pos_world.x, frustum.top());
+    let end = Vec2::new(pos_world.x, frustum.bottom());
+
+    let start = camera.worldpoint_to_canvaspoint(start);
+    let end = camera.worldpoint_to_canvaspoint(end);
+
+    let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+    let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+
+    draw.draw_line_with_thickness(
+        start,
+        end,
+        line_thickness,
+        true,
+        depth,
+        color,
+        ADDITIVITY_NONE,
+        DrawSpace::Screen,
+    );
 }

@@ -2010,26 +2010,7 @@ pub fn debugLine(ds: &mut Drawstate, from: Vec2, to: Vec2, col: Color, depth: De
 
 
 
-pub fn debugCrosshair(ds: &mut Drawstate, cam: Camera, pos: Vec2, col: Color, thickness: f32)
-{
-    glLineWidth(thickness);
-    f32 camLeft = floorf(cam.pos.x - 0.5f * cam.dim.w);
-    f32 camRight = ceilf(cam.pos.x + 0.5f * cam.dim.w);
-    f32 camBottom = floorf(cam.pos.y - 0.5f * cam.dim.h);
-    f32 camTop = ceilf(cam.pos.y + 0.5f * cam.dim.h);
 
-    Drawbatch batch = drawbatch_begin(ds.debug_drawBuffer, DRAWMODE_LINES);
-
-    Vec2 fromH = { camLeft, pos.y };
-    Vec2 toH = Vec2_new(camRight, pos.y);
-    drawbatch_pushLine(&batch, ds, fromH, toH, 0.0f, col, thickness);
-
-    Vec2 fromV = { pos.x, camBottom };
-    Vec2 toV = { pos.x, camTop };
-    drawbatch_pushLine(&batch, ds, fromV, toV, 0.0f, col, thickness);
-
-    drawbatch_submit(&batch, ds, ds.atlas);
-}
 
 pub fn debugCamFrustum(ds: &mut Drawstate, cam: Camera*, col: Color, thickness: f32)
 {
