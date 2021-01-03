@@ -2185,12 +2185,13 @@ pub fn debug_draw_grid(
     world_grid_size: f32,
     screen_width: f32,
     screen_height: f32,
-    line_thickness: f32,
+    line_thickness: i32,
     color: Color,
     depth: f32,
 ) {
+    assert!(line_thickness > 0);
+
     let frustum = camera.bounds();
-    let line_thickness = f32::max(line_thickness.round(), 1.0);
     let top = f32::floor(frustum.top() / world_grid_size) * world_grid_size;
     let bottom = f32::ceil(frustum.bottom() / world_grid_size) * world_grid_size;
     let left = f32::floor(frustum.left() / world_grid_size) * world_grid_size;
@@ -2198,8 +2199,8 @@ pub fn debug_draw_grid(
 
     let mut x = left;
     while x <= right {
-        let start = Vec2::new(x, bottom);
-        let end = Vec2::new(x, top);
+        let start = Vec2::new(x, top);
+        let end = Vec2::new(x, bottom);
 
         let start = camera.worldpoint_to_canvaspoint(start);
         let end = camera.worldpoint_to_canvaspoint(end);
@@ -2207,16 +2208,14 @@ pub fn debug_draw_grid(
         let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
         let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
 
-        draw.draw_line_with_thickness(
-            start,
-            end,
-            line_thickness,
-            false,
-            depth,
-            color,
-            ADDITIVITY_NONE,
-            DrawSpace::Screen,
+        let rect = Rect::from_bounds_left_top_right_bottom(
+            start.x,
+            start.y,
+            start.x + line_thickness as f32,
+            end.y,
         );
+        draw.draw_rect(rect, true, depth, color, ADDITIVITY_NONE, DrawSpace::Screen);
+
         x += world_grid_size;
     }
     let mut y = top;
@@ -2230,16 +2229,14 @@ pub fn debug_draw_grid(
         let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
         let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
 
-        draw.draw_line_with_thickness(
-            start,
-            end,
-            line_thickness,
-            false,
-            depth,
-            color,
-            ADDITIVITY_NONE,
-            DrawSpace::Screen,
+        let rect = Rect::from_bounds_left_top_right_bottom(
+            start.x,
+            start.y,
+            end.x,
+            start.y + line_thickness as f32,
         );
+        draw.draw_rect(rect, true, depth, color, ADDITIVITY_NONE, DrawSpace::Screen);
+
         y += world_grid_size;
     }
 }
