@@ -38,7 +38,7 @@ impl PixelSnapped for Worldpoint {
     ///
     /// For example pixel-snapping the cameras position before drawing prevents pixel-jittering
     /// artifacts on visible objects if the camera is moving at sub-pixel distances.
-    #[inline]
+    #[inline(always)]
     fn pixel_snapped(self) -> Worldpoint {
         Worldpoint {
             x: f32::floor(self.x),
@@ -48,7 +48,7 @@ impl PixelSnapped for Worldpoint {
 }
 
 impl PixelSnapped for Transform {
-    #[inline]
+    #[inline(always)]
     fn pixel_snapped(self) -> Transform {
         Transform {
             pos: self.pos.pixel_snapped(),
@@ -59,7 +59,7 @@ impl PixelSnapped for Transform {
 }
 
 impl PixelSnapped for Rect {
-    #[inline]
+    #[inline(always)]
     fn pixel_snapped(self) -> Rect {
         Rect::from_pos_dim(self.pos.pixel_snapped(), self.dim.round())
     }

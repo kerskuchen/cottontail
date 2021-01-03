@@ -2009,30 +2009,6 @@ pub fn debugLine(ds: &mut Drawstate, from: Vec2, to: Vec2, col: Color, depth: De
 }
 
 
-pub fn debugGrid(ds: &mut Drawstate, cam: Camera, stepSize: f32, intensity: f32, thickness: f32)
-{
-    glLineWidth(thickness);
-    f32 camLeft = floorf((cam.pos.x - 0.5f * cam.dim.w) / stepSize) * stepSize;
-    f32 camRight = ceilf((cam.pos.x + 0.5f * cam.dim.w) / stepSize) * stepSize;
-    f32 camBottom = floorf((cam.pos.y - 0.5f * cam.dim.h) / stepSize) * stepSize;
-    f32 camTop = ceilf((cam.pos.y + 0.5f * cam.dim.h) / stepSize) * stepSize;
-
-    Drawbatch batch = drawbatch_begin(ds.debug_drawBuffer, DRAWMODE_LINES);
-    for (f32 x = camLeft; x <= camRight; x += stepSize)
-    {
-        Vec2 from = Vec2_new(x, camBottom);
-        Vec2 to = Vec2_new(x, camTop);
-        drawbatch_pushLine(&batch, ds, from, to, 0.0f, color_grey(intensity), thickness);
-    }
-    for (f32 y = camBottom; y <= camTop; y += stepSize)
-    {
-        Vec2 from = Vec2_new(camLeft, y);
-        Vec2 to = Vec2_new(camRight, y);
-        drawbatch_pushLine(&batch, ds, from, to, 0.0f, color_grey(intensity), thickness);
-    }
-
-    drawbatch_submit(&batch, ds, ds.atlas);
-}
 
 pub fn debugCrosshair(ds: &mut Drawstate, cam: Camera, pos: Vec2, col: Color, thickness: f32)
 {

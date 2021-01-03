@@ -1,9 +1,12 @@
 # DONE:
 
+- adds automatic download of tools in batchfiles (where possible)
 - put all our generated project template files into a single directory and just copy it and replace 
   all containing strings in all templates. This could simplify our generator code immensely. maybe
   that way we can replace our system with (https://github.com/ffizer/ffizer)?
   NOTE: We rolled our own because there was not much needed to do for this simple change
+- add new html/batchfiles and everything we added recently to the templates
+- adds debug draw grid helper function
 
 # CURRENT
 
@@ -25,9 +28,9 @@
 ## renderer flexibility + speed + cleanup
 - Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and 
   implement it (drawing the depthbuffer and various debug grids should be useful). Throw out the rest 
-- add ability to add new shaders from drawstate
 - can we make the sorting faster? alternatively can we get rid of sorting for non-translucent 
   drawobjects by dividing them up into two drawbatches?
+- add ability to add new shaders from drawstate
 
 ## improve examples
 - find a good way to switch/disable audio when switching scenes
@@ -80,18 +83,17 @@
 
 ## better project structure and generator
 - look for ways to simplify project creation and building
-- add new html/batchfiles and everything we added recently to the templates
 - assess which thirdpary tools we use for building/asset packing and document them and how to get them
+  - aseprite
   - oggenc2
   - ResourceHacker
   - .. ?
   make assetbaker and buildtools crash with useful error message when those thirdparty tools do not
   exist and how to get them
-- rename cottontail crates that are tools into ct_tool_...?
 - add more vscode tasks for wasm builds
 - Get rid of crates that are not necessary or replace them with smaller/faster ones 
   - nanoserde, oorandom, minimp3, ...
-  - get rid of sdl in favor of something more simple?
+  - get rid of sdl in favor of something more simple that does not require a separate dll to ship?
 - look how other projects like bevy handle project templates
 - rename game -> app
 - Update version info resource with the crate version

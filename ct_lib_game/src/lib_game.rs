@@ -365,7 +365,6 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
             if let Some(audio) = self.audio.as_mut() {
                 self.audio_chunk_timer += input.deltatime;
 
-                let mut num_chunks_rendered = 0;
                 let mut audiochunk = AudioChunk::new_stereo();
                 let audiochunk_length_in_seconds =
                     audiochunk.length_in_seconds(input.audio_playback_rate_hz) as f32;
@@ -384,7 +383,6 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                     audio.render_audio_chunk(&mut audiochunk, input.audio_playback_rate_hz);
                     let (samples_left, samples_right) = audiochunk.get_stereo_samples();
                     audio_output.submit_frames(samples_left, samples_right);
-                    num_chunks_rendered += 1;
                     audiochunk.reset();
                 }
 
@@ -394,7 +392,6 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                     audio.render_audio_chunk(&mut audiochunk, input.audio_playback_rate_hz);
                     let (samples_left, samples_right) = audiochunk.get_stereo_samples();
                     audio_output.submit_frames(samples_left, samples_right);
-                    num_chunks_rendered += 1;
                     audiochunk.reset();
                 }
             }
@@ -427,14 +424,14 @@ pub fn start_mainloop<GameStateType: 'static + GameStateInterface>() {
 /// zoom < 1.0 -> zooming out
 #[derive(Clone, Default)]
 pub struct Camera {
-    pos: Vec2,
-    pos_pixelsnapped: Vec2,
-    dim_frustum: Vec2,
-    dim_canvas: Vec2,
-    zoom_level: f32,
-    z_near: f32,
-    z_far: f32,
-    is_centered: bool,
+    pub pos: Vec2,
+    pub pos_pixelsnapped: Vec2,
+    pub dim_frustum: Vec2,
+    pub dim_canvas: Vec2,
+    pub zoom_level: f32,
+    pub z_near: f32,
+    pub z_far: f32,
+    pub is_centered: bool,
 }
 
 // Coordinates
@@ -555,7 +552,7 @@ impl Camera {
     }
 
     #[inline]
-    pub fn bounds(&mut self) -> Rect {
+    pub fn bounds(&self) -> Rect {
         if self.is_centered {
             Rect::from_bounds_left_top_right_bottom(
                 self.pos.x - 0.5 * self.dim_frustum.x,
@@ -612,17 +609,17 @@ impl Camera {
 pub struct GameCamera {
     pub cam: Camera,
 
-    pos: Vec2,
-    pos_target: Vec2,
-    use_pixel_perfect_smoothing: bool,
+    pub pos: Vec2,
+    pub pos_target: Vec2,
+    pub use_pixel_perfect_smoothing: bool,
 
-    drag_margin_left: f32,
-    drag_margin_top: f32,
-    drag_margin_right: f32,
-    drag_margin_bottom: f32,
+    pub drag_margin_left: f32,
+    pub drag_margin_top: f32,
+    pub drag_margin_right: f32,
+    pub drag_margin_bottom: f32,
 
-    screenshake_offset: Vec2,
-    screenshakers: Vec<ModulatorScreenShake>,
+    pub screenshake_offset: Vec2,
+    pub screenshakers: Vec<ModulatorScreenShake>,
 }
 
 impl GameCamera {
@@ -708,6 +705,26 @@ impl GameCamera {
     pub fn set_target_pos(&mut self, target_pos: Vec2, use_pixel_perfect_smoothing: bool) {
         self.use_pixel_perfect_smoothing = use_pixel_perfect_smoothing;
         self.pos_target = target_pos;
+    }
+
+    /// Zooms the camera to or away from a given world point.
+    ///
+    /// new_zoom_level > old_zoom_level -> magnify
+    /// new_zoom_level < old_zoom_level -> minify
+    #[inline]
+    pub fn zoom_to_world_point(&mut self, worldpoint: Worldpoint, new_zoom_level: f32) {
+        let old_zoom_level = self.cam.zoom_level;
+        self.cam.zoom_level = new_zoom_level;
+        self.cam.dim_frustum = self.cam.dim_canvas / new_zoom_level;
+        self.pos = (self.pos - worldpoint) * (old_zoom_level / new_zoom_level) + worldpoint;
+        self.pos_target = self.pos;
+    }
+
+    /// Pans the camera using cursor movement distance on the canvas
+    #[inline]
+    pub fn pan(&mut self, canvas_move_distance: Canvasvec) {
+        self.pos -= canvas_move_distance / self.cam.zoom_level;
+        self.pos_target = self.pos;
     }
 
     #[inline]
@@ -937,19 +954,15 @@ pub fn game_handle_mouse_camera_zooming_panning(
     mouse_coords: &CursorCoords,
 ) {
     if mouse.button_middle.is_pressed {
-        camera.cam.pan(mouse_coords.delta_canvas);
+        camera.pan(mouse_coords.delta_canvas);
     }
     if mouse.has_wheel_event {
         if mouse.wheel_delta > 0 {
             let new_zoom_level = f32::min(camera.cam.zoom_level * 2.0, 8.0);
-            camera
-                .cam
-                .zoom_to_world_point(mouse_coords.pos_world, new_zoom_level);
+            camera.zoom_to_world_point(mouse_coords.pos_world, new_zoom_level);
         } else if mouse.wheel_delta < 0 {
             let new_zoom_level = f32::max(camera.cam.zoom_level / 2.0, 1.0 / 32.0);
-            camera
-                .cam
-                .zoom_to_world_point(mouse_coords.pos_world, new_zoom_level);
+            camera.zoom_to_world_point(mouse_coords.pos_world, new_zoom_level);
         }
     }
 }
@@ -2159,5 +2172,74 @@ impl Afterimage {
                 self.additivity.swap_remove(index);
             }
         }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Debug drawing
+
+#[inline]
+pub fn debug_draw_grid(
+    draw: &mut Drawstate,
+    camera: &Camera,
+    world_grid_size: f32,
+    screen_width: f32,
+    screen_height: f32,
+    line_thickness: f32,
+    color: Color,
+    depth: f32,
+) {
+    let frustum = camera.bounds();
+    let line_thickness = f32::max(line_thickness.round(), 1.0);
+    let top = f32::floor(frustum.top() / world_grid_size) * world_grid_size;
+    let bottom = f32::ceil(frustum.bottom() / world_grid_size) * world_grid_size;
+    let left = f32::floor(frustum.left() / world_grid_size) * world_grid_size;
+    let right = f32::ceil(frustum.right() / world_grid_size) * world_grid_size;
+
+    let mut x = left;
+    while x <= right {
+        let start = Vec2::new(x, bottom);
+        let end = Vec2::new(x, top);
+
+        let start = camera.worldpoint_to_canvaspoint(start);
+        let end = camera.worldpoint_to_canvaspoint(end);
+
+        let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+        let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+
+        draw.draw_line_with_thickness(
+            start,
+            end,
+            line_thickness,
+            false,
+            depth,
+            color,
+            ADDITIVITY_NONE,
+            DrawSpace::Screen,
+        );
+        x += world_grid_size;
+    }
+    let mut y = top;
+    while y <= bottom {
+        let start = Vec2::new(left, y);
+        let end = Vec2::new(right, y);
+
+        let start = camera.worldpoint_to_canvaspoint(start);
+        let end = camera.worldpoint_to_canvaspoint(end);
+
+        let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+        let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+
+        draw.draw_line_with_thickness(
+            start,
+            end,
+            line_thickness,
+            false,
+            depth,
+            color,
+            ADDITIVITY_NONE,
+            DrawSpace::Screen,
+        );
+        y += world_grid_size;
     }
 }
