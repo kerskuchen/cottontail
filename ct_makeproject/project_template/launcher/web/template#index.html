@@ -1,0 +1,81 @@
+<html>
+
+<head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type" />
+    <title>{{project_display_name}}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <!-- TODO
+    <link rel="apple-touch-icon" sizes="48x48" href="resources/icon_48.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="resources/icon_72.png">
+    <link rel="apple-touch-icon" sizes="128x128" href="resources/icon_128.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="resources/icon_144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="resources/icon_152.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="resources/icon_192.png">
+    <link rel="apple-touch-icon" sizes="256x256" href="resources/icon_256.png">
+    <link rel="apple-touch-icon" sizes="512x512" href="resources/icon_512.png"> 
+    -->
+    <!-- TODO 
+    <link rel="shortcut icon" href="resources/favicon.ico">
+    -->
+    <link rel="manifest" href="manifest.json">
+    <style type="text/css">
+        html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: darkslategrey;
+
+            display: flex;
+            display: -webkit-flex;
+
+            justify-content: center;
+            -webkit-justify-content: center;
+
+            align-items: center;
+            -webkit-align-items: center;
+
+            flex-direction: column;
+            -webkit-flex-direction: column;
+
+            overflow: hidden;
+        }
+
+        #canvas {
+            margin: 0;
+            padding: 0;
+
+            background-color: dimgrey;
+            display: block;
+            outline: none;
+
+            width: 100%;
+            height: 100%;
+
+            image-rendering: optimizeSpeed;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: pixelated;
+            -ms-interpolation-mode: nearest-neighbor;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas" tabindex=0 oncontextmenu="event.preventDefault()" />
+    <script type="module">
+        import init from './index.js';
+        async function run() {
+            await init();
+        }
+        run();
+    </script>
+</body>
+
+</html>

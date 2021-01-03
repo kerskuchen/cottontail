@@ -1,0 +1,10 @@
+{
+  "resource_name": "bgboss",
+  "original_filepath": "assets/bgboss.wav",
+  "samplerate_hz": 44100,
+  "framecount": 75600,
+  "channelcount": 2,
+  "compression_quality": 5,
+  "loopsection_start_frameindex": null,
+  "loopsection_framecount": null
+}

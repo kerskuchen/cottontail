@@ -1,0 +1,10 @@
+{
+  "resource_name": "loop_bell",
+  "original_filepath": "assets/loop_bell.wav",
+  "samplerate_hz": 44100,
+  "framecount": 75600,
+  "channelcount": 1,
+  "compression_quality": 5,
+  "loopsection_start_frameindex": null,
+  "loopsection_framecount": null
+}

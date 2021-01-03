@@ -1,0 +1,10 @@
+{
+  "resource_name": "engine_standing",
+  "original_filepath": "assets/engine_standing.wav",
+  "samplerate_hz": 44100,
+  "framecount": 203694,
+  "channelcount": 1,
+  "compression_quality": 5,
+  "loopsection_start_frameindex": null,
+  "loopsection_framecount": null
+}

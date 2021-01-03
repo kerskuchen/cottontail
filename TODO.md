@@ -13,6 +13,7 @@
 ## audio system
 
 ## improve asset baking/loading
+- remove the need to have a 'untextured.png' in assets folder
 - use resources packs instead of raw file download (like we used for audio)
 - use prelude graphics pack that loads quickly to show splashscreen
 - refactor gamememory/audio/draw/asset initialization to 

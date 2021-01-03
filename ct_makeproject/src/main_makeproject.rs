@@ -19,6 +19,7 @@ fn create_default_project_details(project_name: String) -> (ProjectDetails, Proj
     let project_copyright_year = Utc::now().year().to_string();
 
     let windows_appdata_dir = project_display_name.to_camel_case();
+    let mobile_display_orientation = "portrait".to_owned();
 
     let mut details: ProjectDetails = IndexMap::new();
     details.insert("project_name".to_owned(), project_name);
@@ -29,6 +30,10 @@ fn create_default_project_details(project_name: String) -> (ProjectDetails, Proj
     );
     details.insert("project_copyright_year".to_owned(), project_copyright_year);
     details.insert("windows_appdata_dir".to_owned(), windows_appdata_dir);
+    details.insert(
+        "mobile_display_orientation".to_owned(),
+        mobile_display_orientation,
+    );
 
     let mut details_local: ProjectDetailsLocal = IndexMap::new();
     details_local.insert("windows_certificate_path".to_owned(), "".to_owned());
