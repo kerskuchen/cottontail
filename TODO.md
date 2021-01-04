@@ -6,6 +6,7 @@
           in screenspace and getting mouse coordinates from screenspace therefore currently has an 
           error
 - remove the need to have a 'untextured.png' in assets folder
+- now using graphics.data pack for graphics similar to audio.data for audio
 
 # CURRENT
 

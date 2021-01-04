@@ -132,6 +132,25 @@ impl Bitmap {
         result
     }
 
+    pub fn encoded_as_png(&self) -> Vec<u8> {
+        let mut png_data = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(
+                std::io::Cursor::new(&mut png_data),
+                self.width as u32,
+                self.height as u32,
+            );
+            encoder.set_color(png::ColorType::RGBA);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().unwrap();
+
+            writer
+                .write_image_data(self.as_bytes())
+                .expect(&format!("Could not encode png data to"));
+        }
+        png_data
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub fn write_to_png_file(&self, png_filepath: &str) {
         std::fs::create_dir_all(path_without_filename(png_filepath)).expect(&format!(

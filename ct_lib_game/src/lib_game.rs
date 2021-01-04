@@ -129,13 +129,13 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
         audio_output: &mut AudioOutput,
         out_systemcommands: &mut Vec<AppCommand>,
     ) {
-        if !self.assets.load_graphics() {
+        if !self.assets.decode_assets() {
             return;
         }
 
         if input.has_focus {
             if self.draw.is_none() {
-                let textures = self.assets.get_atlas_textures().to_vec();
+                let textures = self.assets.get_atlas_textures().clone();
                 let untextured_sprite = self.assets.get_sprite("untextured").clone();
                 let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
                 let debug_log_font = self.assets.get_font(&debug_log_font_name).clone();
@@ -205,7 +205,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 SplashscreenState::FinishedFadingIn => {
                     assert!(self.audio.is_none());
 
-                    let audio_recordings = self.assets.load_audiorecordings();
+                    let audio_recordings = self.assets.get_audiorecordings().clone();
                     if self.audio.is_none() {
                         let window_config = GameStateType::get_window_config();
                         self.audio = Some(Audiostate::new(
@@ -2209,6 +2209,43 @@ impl Afterimage {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Debug drawing
+
+pub fn debug_get_bitmap_for_sprite(assets: &GameAssets, sprite_name: &str) -> Bitmap {
+    let sprite = assets.get_sprite(sprite_name);
+    let textures = assets.get_atlas_textures();
+
+    let source_bitmap = &textures[sprite.atlas_texture_index as usize].borrow();
+
+    let dim = Vec2i::from_vec2_rounded(sprite.trimmed_rect.dim);
+    let texture_coordinates = AAQuad::from_rect(
+        sprite
+            .trimmed_uvs
+            .to_rect()
+            .scaled_from_origin(Vec2::filled(source_bitmap.width as f32)),
+    );
+
+    let source_rect = Recti::from_rect_rounded(texture_coordinates.to_rect());
+
+    let mut result_bitmap = Bitmap::new(dim.x as u32, dim.y as u32);
+    let result_rect = result_bitmap.rect();
+
+    Bitmap::copy_region(
+        source_bitmap,
+        source_rect,
+        &mut result_bitmap,
+        result_rect,
+        None,
+    );
+
+    result_bitmap
+}
+
+#[inline]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn debug_save_sprite_as_png(assets: &GameAssets, sprite_name: &str, filepath: &str) {
+    let sprite_bitmap = debug_get_bitmap_for_sprite(assets, sprite_name);
+    Bitmap::write_to_png_file(&sprite_bitmap, filepath);
+}
 
 #[inline]
 pub fn debug_draw_grid(

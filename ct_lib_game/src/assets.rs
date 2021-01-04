@@ -1,7 +1,8 @@
 use super::*;
+use indexmap::IndexMap;
 use log;
 
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub type ResourceName = String;
 
@@ -61,9 +62,9 @@ impl AudioMetadata {
 pub struct AudioResources {
     pub resource_sample_rate_hz: usize,
     pub names: Vec<ResourceName>,
-    pub metadata: HashMap<String, AudioMetadata>,
-    pub metadata_original: HashMap<String, AudioMetadata>,
-    pub content: HashMap<String, Vec<u8>>,
+    pub metadata: HashMap<ResourceName, AudioMetadata>,
+    pub metadata_original: HashMap<ResourceName, AudioMetadata>,
+    pub recordings_ogg_data: HashMap<ResourceName, Vec<u8>>,
 }
 
 impl AudioResources {
@@ -73,7 +74,7 @@ impl AudioResources {
             names: Vec::new(),
             metadata: HashMap::new(),
             metadata_original: HashMap::new(),
-            content: HashMap::new(),
+            recordings_ogg_data: HashMap::new(),
         }
     }
 
@@ -89,23 +90,33 @@ impl AudioResources {
         self.metadata.insert(name.clone(), metadata);
         self.metadata_original
             .insert(name.clone(), metadata_original);
-        self.content.insert(name, content);
+        self.recordings_ogg_data.insert(name, content);
     }
 }
+
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct GraphicsResources {
+    pub animations: IndexMap<ResourceName, Animation<Sprite>>,
+    pub animations_3d: IndexMap<ResourceName, Animation<Sprite3D>>,
+    pub sprites: IndexMap<ResourceName, Sprite>,
+    pub sprites_3d: IndexMap<ResourceName, Sprite3D>,
+    pub fonts: IndexMap<ResourceName, SpriteFont>,
+
+    pub textures_png_data: Vec<Vec<u8>>,
+    pub textures_dimension: u32,
+}
+
 #[derive(Default)]
 pub struct GameAssets {
     assets_folder: String,
-    animations: HashMap<String, Animation<Sprite>>,
-    animations_3d: HashMap<String, Animation<Sprite3D>>,
-    sprites_3d: HashMap<String, Sprite3D>,
-    fonts: HashMap<String, SpriteFont>,
-    atlas: SpriteAtlas,
 
     pub audio: AudioResources,
+    pub graphics: GraphicsResources,
+
+    decoded_audio_recordings: HashMap<ResourceName, Rc<RefCell<AudioRecording>>>,
+    decoded_bitmap_textures: Vec<Rc<RefCell<Bitmap>>>,
 
     files_loading_stage: AssetLoadingStage,
-    files_list: Vec<String>,
-    files_bindata: HashMap<String, Vec<u8>>,
     files_loaders: HashMap<String, Fileloader>,
 }
 
@@ -116,15 +127,12 @@ impl Clone for GameAssets {
 
         let mut result = GameAssets::default();
         result.assets_folder = self.assets_folder.clone();
-        result.animations = self.animations.clone();
-        result.animations_3d = self.animations_3d.clone();
-        result.sprites_3d = self.sprites_3d.clone();
-        result.fonts = self.fonts.clone();
-        result.atlas = self.atlas.clone();
+
         result.files_loading_stage = self.files_loading_stage.clone();
-        result.files_list = self.files_list.clone();
-        result.files_bindata = self.files_bindata.clone();
+        result.files_loaders = HashMap::new();
+
         result.audio = self.audio.clone();
+        result.graphics = self.graphics.clone();
 
         result
     }
@@ -140,53 +148,61 @@ impl GameAssets {
     pub fn load_files(&mut self) -> bool {
         match self.files_loading_stage {
             AssetLoadingStage::Start => {
-                let index_filepath = path_join(&self.assets_folder, "index.txt");
-                let index_loader = self
-                    .files_loaders
-                    .entry(index_filepath.clone())
-                    .or_insert(Fileloader::new(&index_filepath).unwrap());
+                let graphics_filepath = path_join(&self.assets_folder, "graphics.data");
+                self.files_loaders.insert(
+                    graphics_filepath.clone(),
+                    Fileloader::new(&graphics_filepath).unwrap(),
+                );
 
-                if let Some(index_content) = index_loader
-                    .poll()
-                    .expect("Could not load resource index file")
-                {
-                    log::debug!("Loaded index file '{}'", index_filepath);
-                    self.files_list = String::from_utf8_lossy(&index_content)
-                        .lines()
-                        .filter(|&filepath| !filepath.is_empty())
-                        .map(|filepath| filepath.to_owned())
-                        .collect();
+                #[cfg(target_arch = "wasm32")]
+                let audio_filepath = path_join(&self.assets_folder, "audio_wasm.data");
+                #[cfg(not(target_arch = "wasm32"))]
+                let audio_filepath = path_join(&self.assets_folder, "audio.data");
+                self.files_loaders.insert(
+                    audio_filepath.clone(),
+                    Fileloader::new(&audio_filepath).unwrap(),
+                );
 
-                    self.files_loaders.clear();
-                    for filepath in &self.files_list {
-                        self.files_loaders
-                            .insert(filepath.clone(), Fileloader::new(&filepath).unwrap());
-                    }
-                    self.files_loading_stage = AssetLoadingStage::LoadingFiles;
-                }
-
+                self.files_loading_stage = AssetLoadingStage::LoadingFiles;
                 false
             }
             AssetLoadingStage::LoadingFiles => {
-                // Remove loaders for which we already saved the bindata
-                for filepath in self.files_bindata.keys() {
-                    self.files_loaders.remove(filepath);
-                }
+                let mut finished_loaders = Vec::new();
 
-                // Poll loaders
+                // Poll file loaders
                 for (filepath, loader) in self.files_loaders.iter_mut() {
-                    if let Some(content) = loader.poll().unwrap() {
-                        self.files_bindata.insert(filepath.clone(), content);
+                    let poll_result = loader.poll().unwrap_or_else(|error| {
+                        panic!("Failed to get file status on '{}': {}", filepath, error)
+                    });
+
+                    if let Some(content) = poll_result {
                         log::debug!("Loaded resource file '{}'", filepath);
+
+                        if filepath == &path_join(&self.assets_folder, "graphics.data") {
+                            self.graphics = bincode::deserialize(&content)
+                                .expect("Could not deserialize 'graphics.data' (file corrupt?)");
+                            log::info!("Loaded graphics resources");
+                        } else if filepath == &path_join(&self.assets_folder, "audio.data")
+                            || filepath == &path_join(&self.assets_folder, "audio_wasm.data")
+                        {
+                            self.audio = bincode::deserialize(&content)
+                                .expect("Could not deserialize 'audio.data' (file corrupt?)");
+                            log::info!("Loaded audio resources");
+                        } else {
+                            unreachable!("Loaded unknown file '{}'", filepath);
+                        }
+
+                        // Mark the loader for removal
+                        finished_loaders.push(filepath.clone());
                     }
                 }
 
+                // Remove finished file loaders
+                for path in &finished_loaders {
+                    self.files_loaders.remove(path);
+                }
+
                 if self.files_loaders.is_empty() {
-                    assert!(self.files_bindata.len() == self.files_list.len());
-
-                    self.audio = self.load_audio();
-                    log::info!("Loaded audio resources");
-
                     self.files_loading_stage = AssetLoadingStage::Finished;
                     log::info!("Finished loading asset files");
                     true
@@ -199,78 +215,164 @@ impl GameAssets {
     }
 
     #[must_use]
-    pub fn load_graphics(&mut self) -> bool {
+    pub fn decode_assets(&mut self) -> bool {
         if !self.load_files() {
             return false;
         }
 
-        if self.atlas.textures.is_empty() {
-            self.atlas = self.load_atlas();
-            self.animations = self.load_animations();
-            self.fonts = self.load_fonts();
-            self.animations_3d = self.load_animations_3d();
-            self.sprites_3d = self.load_sprites_3d();
-            log::info!("Loaded graphic resources");
+        if self.decoded_audio_recordings.is_empty() {
+            self.decode_audiorecordings();
+        }
+        if self.decoded_bitmap_textures.is_empty() {
+            self.decode_atlas_textures();
         }
 
         return true;
     }
 
-    pub fn load_audiorecordings(&self) -> HashMap<String, AudioRecording> {
+    pub fn get_atlas_textures(&self) -> &Vec<Rc<RefCell<Bitmap>>> {
         assert!(self.files_loading_stage == AssetLoadingStage::Finished);
-
-        let mut audiorecordings = HashMap::new();
-
-        for (resource_name, metadata) in self.audio.metadata.iter() {
-            let ogg_data = &self.audio.content[resource_name];
-            let recording = AudioRecording::new_from_ogg_stream_with_loopsection(
-                metadata.resource_name.clone(),
-                metadata.framecount,
-                ogg_data.clone(),
-                metadata.loopsection_start_frameindex.unwrap_or(0),
-                metadata
-                    .loopsection_framecount
-                    .unwrap_or(metadata.framecount),
-            )
-            .unwrap_or_else(|error| {
-                panic!("Cannot create Audiorecording from resource '{}'", error)
-            });
-            audiorecordings.insert(resource_name.clone(), recording);
-        }
-
-        log::info!("Loaded audio recordings");
-        audiorecordings
+        &self.decoded_bitmap_textures
     }
 
-    pub fn get_atlas_textures(&self) -> &[Bitmap] {
-        &self.atlas.textures
+    fn decode_atlas_textures(&mut self) {
+        assert!(self.files_loading_stage == AssetLoadingStage::Finished);
+        self.decoded_bitmap_textures = self
+            .graphics
+            .textures_png_data
+            .iter()
+            .enumerate()
+            .map(|(index, png_data)| {
+                let bitmap = Bitmap::from_png_data(png_data).unwrap_or_else(|error| {
+                    panic!("Could not decode atlas texture ({}): {}", index, error)
+                });
+                assert!(
+                    bitmap.width == bitmap.height,
+                    "Loaded atlas texture ({}) needs to have same width and height - got {}x{}",
+                    index,
+                    bitmap.width,
+                    bitmap.height,
+                );
+                assert!(
+                    bitmap.width == self.graphics.textures_dimension as i32,
+                    "Loaded atlas texture ({}) dimension does not match ours - expectet {} got {}",
+                    index,
+                    self.graphics.textures_dimension,
+                    bitmap.width,
+                );
+                Rc::new(RefCell::new(bitmap))
+            })
+            .collect();
+
+        // Make sprites out of the atlas pages themselves for debug purposes
+        for page_index in 0..self.decoded_bitmap_textures.len() {
+            let sprite_name = format!("debug_sprite_whole_page_{}", page_index);
+            self.add_sprite_for_region(
+                sprite_name,
+                page_index as TextureIndex,
+                Recti::from_width_height(
+                    self.graphics.textures_dimension as i32,
+                    self.graphics.textures_dimension as i32,
+                ),
+                Vec2i::zero(),
+                true,
+            );
+        }
+
+        log::info!("Decoded bitmap textures");
+    }
+
+    pub fn get_audiorecordings(&self) -> &HashMap<ResourceName, Rc<RefCell<AudioRecording>>> {
+        assert!(self.files_loading_stage == AssetLoadingStage::Finished);
+        &self.decoded_audio_recordings
+    }
+
+    fn decode_audiorecordings(&mut self) {
+        assert!(self.files_loading_stage == AssetLoadingStage::Finished);
+        self.decoded_audio_recordings = self
+            .audio
+            .metadata
+            .iter()
+            .map(|(resource_name, metadata)| {
+                let ogg_data = &self.audio.recordings_ogg_data[resource_name];
+                let recording = AudioRecording::new_from_ogg_stream_with_loopsection(
+                    metadata.resource_name.clone(),
+                    metadata.framecount,
+                    ogg_data.clone(),
+                    metadata.loopsection_start_frameindex.unwrap_or(0),
+                    metadata
+                        .loopsection_framecount
+                        .unwrap_or(metadata.framecount),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("Cannot create Audiorecording from resource '{}'", error)
+                });
+                (resource_name.clone(), Rc::new(RefCell::new(recording)))
+            })
+            .collect();
+
+        log::info!("Decoded audio recordings");
+    }
+
+    /// This does not change the atlas bitmap
+    pub fn add_sprite_for_region(
+        &mut self,
+        sprite_name: String,
+        atlas_texture_index: TextureIndex,
+        sprite_rect: Recti,
+        draw_offset: Vec2i,
+        has_translucency: bool,
+    ) -> Sprite {
+        debug_assert!(!self.graphics.sprites.contains_key(&sprite_name));
+
+        let sprite_rect = Rect::from(sprite_rect);
+        let draw_offset = Vec2::from(draw_offset);
+        let uv_scale = 1.0 / self.graphics.textures_dimension as f32;
+        let sprite = Sprite {
+            name: sprite_name.clone(),
+            atlas_texture_index: atlas_texture_index,
+            has_translucency,
+            pivot_offset: Vec2::zero(),
+            attachment_points: [Vec2::zero(); SPRITE_ATTACHMENT_POINTS_MAX_COUNT],
+            untrimmed_dimensions: sprite_rect.dim,
+            trimmed_rect: sprite_rect.translated_by(draw_offset),
+            trimmed_uvs: AAQuad::from_rect(sprite_rect.scaled_from_origin(Vec2::filled(uv_scale))),
+        };
+
+        self.graphics
+            .sprites
+            .insert(sprite_name.clone(), sprite.clone());
+        sprite
     }
 
     pub fn get_anim(&self, animation_name: &str) -> &Animation<Sprite> {
-        self.animations
+        self.graphics
+            .animations
             .get(animation_name)
             .unwrap_or_else(|| panic!("Could not find animation '{}'", animation_name))
     }
 
     pub fn get_anim_3d(&self, animation_name: &str) -> &Animation<Sprite3D> {
-        self.animations_3d
+        self.graphics
+            .animations_3d
             .get(animation_name)
             .unwrap_or_else(|| panic!("Could not find animation '{}'", animation_name))
     }
 
     pub fn get_font(&self, font_name: &str) -> &SpriteFont {
-        self.fonts
+        self.graphics
+            .fonts
             .get(font_name)
             .unwrap_or_else(|| panic!("Could not find font '{}'", font_name))
     }
 
     pub fn get_sprite(&self, sprite_name: &str) -> &Sprite {
-        if let Some(result) = self.atlas.sprites.get(sprite_name) {
+        if let Some(result) = self.graphics.sprites.get(sprite_name) {
             result
         } else {
             // NOTE: By adding ".0" automatically we can conveniently call the first (or only) frame
             //       of a sprite without the ".0" suffix
-            self.atlas
+            self.graphics
                 .sprites
                 .get(&format!("{}.0", sprite_name))
                 .unwrap_or_else(|| panic!("Sprite with name '{}' does not exist", sprite_name))
@@ -278,96 +380,15 @@ impl GameAssets {
     }
 
     pub fn get_sprite_3d(&self, sprite_name: &str) -> &Sprite3D {
-        if let Some(result) = self.sprites_3d.get(sprite_name) {
+        if let Some(result) = self.graphics.sprites_3d.get(sprite_name) {
             result
         } else {
             // NOTE: By adding ".0" automatically we can conveniently call the first (or only) frame
             //       of a sprite without the ".0" suffix
-            self.sprites_3d
+            self.graphics
+                .sprites_3d
                 .get(&format!("{}.0", sprite_name))
                 .unwrap_or_else(|| panic!("Sprite with name '{}' does not exist", sprite_name))
         }
     }
-
-    #[cfg(target_arch = "wasm32")]
-    fn load_audio(&self) -> AudioResources {
-        let filepath = path_join(&self.assets_folder, "audio_wasm.data");
-        deserialize_from_binary(&self.files_bindata[&filepath])
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn load_audio(&self) -> AudioResources {
-        let filepath = path_join(&self.assets_folder, "audio.data");
-        deserialize_from_binary(&self.files_bindata[&filepath])
-    }
-
-    fn load_sprites(&self) -> HashMap<String, Sprite> {
-        let filepath = path_join(&self.assets_folder, "sprites.data");
-        deserialize_from_binary(&self.files_bindata[&filepath])
-    }
-
-    fn load_sprites_3d(&self) -> HashMap<String, Sprite3D> {
-        let filepath = path_join(&self.assets_folder, "sprites_3d.data");
-        deserialize_from_binary(&self.files_bindata[&filepath])
-    }
-
-    fn load_animations(&self) -> HashMap<String, Animation<Sprite>> {
-        let filepath = path_join(&self.assets_folder, "animations.data");
-        deserialize_from_binary(&self.files_bindata[&filepath])
-    }
-
-    fn load_animations_3d(&self) -> HashMap<String, Animation<Sprite3D>> {
-        let filepath = path_join(&self.assets_folder, "animations_3d.data");
-        deserialize_from_binary(&self.files_bindata[&filepath])
-    }
-
-    fn load_fonts(&self) -> HashMap<String, SpriteFont> {
-        let filepath = path_join(&self.assets_folder, "fonts.data");
-        deserialize_from_binary(&self.files_bindata[&filepath])
-    }
-
-    fn load_atlas(&self) -> SpriteAtlas {
-        let textures_list_filepath = path_join(&self.assets_folder, "atlas.data");
-        let textures_list: Vec<String> =
-            deserialize_from_binary(&self.files_bindata[&textures_list_filepath]);
-
-        let mut textures = Vec::new();
-        for texture_filepath_relative in &textures_list {
-            let texture_filepath = path_join(&self.assets_folder, texture_filepath_relative);
-            textures.push(
-                Bitmap::from_png_data(&self.files_bindata[&texture_filepath])
-                    .unwrap_or_else(|error| panic!("Could load texture '{}'", texture_filepath)),
-            );
-        }
-
-        let sprites = self.load_sprites();
-        let mut atlas = SpriteAtlas::new(textures, sprites);
-
-        // Make sprites out of the atlas pages themselves for debug purposes
-        for page_index in 0..atlas.textures.len() {
-            let sprite_name = format!("debug_sprite_whole_page_{}", page_index);
-            atlas.add_sprite_for_region(
-                sprite_name,
-                page_index as TextureIndex,
-                Recti::from_width_height(atlas.textures_size as i32, atlas.textures_size as i32),
-                Vec2i::zero(),
-                true,
-            );
-        }
-
-        atlas
-    }
-
-    pub fn debug_get_sprite_as_bitmap(&self, sprite_name: &str) -> Bitmap {
-        self.atlas.debug_get_bitmap_for_sprite(sprite_name)
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn debug_save_sprite_as_png(&self, sprite_name: &str, filepath: &str) {
-        let sprite_bitmap = self.debug_get_sprite_as_bitmap(sprite_name);
-        Bitmap::write_to_png_file(&sprite_bitmap, filepath);
-    }
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Asset loading

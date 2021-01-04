@@ -6,7 +6,7 @@ use super::sprite::*;
 use super::*;
 
 use ct_lib_core::{transmute_slice_to_byte_slice, transmute_to_slice};
-use std::cmp::Ordering;
+use std::{cell::RefCell, cmp::Ordering, rc::Rc};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Vertex format
@@ -321,7 +321,7 @@ static mut DRAWSTATE_DEBUG_LOG_FONT: Option<SpriteFont> = None;
 
 #[derive(Clone)]
 pub struct Drawstate {
-    textures: Vec<Bitmap>,
+    textures: Vec<Rc<RefCell<Bitmap>>>,
     textures_size: u32,
     textures_dirty: Vec<bool>,
 
@@ -357,13 +357,14 @@ pub struct Drawstate {
 
 impl Drawstate {
     pub fn new(
-        textures: Vec<Bitmap>,
+        textures: Vec<Rc<RefCell<Bitmap>>>,
         untextured_sprite: Sprite,
         debug_log_font: SpriteFont,
     ) -> Drawstate {
         let textures_size = textures
             .first()
             .expect("Drawstate: No Textures given")
+            .borrow()
             .width as u32;
 
         let textures_dirty = vec![true; textures.len()];
@@ -543,7 +544,7 @@ impl Drawstate {
                     self.textures_size,
                     atlas_page as TextureIndex,
                 );
-                let atlas_page_bitmap = &self.textures[atlas_page];
+                let atlas_page_bitmap = &self.textures[atlas_page].borrow();
                 renderer.texture_create_or_update_whole(
                     &texture_name,
                     atlas_page_bitmap.width as u32,

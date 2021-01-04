@@ -95,9 +95,8 @@ pub struct AssetFont {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize)]
 pub struct AssetAtlas {
-    pub texture_size: u32,
-    pub texture_count: u32,
-    pub texture_imagepaths: Vec<String>,
+    pub textures_dimension: u32,
+    pub textures_png_data: Vec<Vec<u8>>,
     pub sprite_positions: IndexMap<Spritename, BitmapAtlasPosition>,
 }
 
@@ -159,7 +158,7 @@ fn bake_graphics_resources() {
         aseprite::create_sheet(&untextured_path, &untextured_name, &untextured_output_path);
     result_sheet.extend_by(untextured_sheet);
 
-    result_sheet.pack_and_serialize();
+    result_sheet.pack_and_serialize(1024);
 }
 
 fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {
@@ -609,46 +608,6 @@ fn create_sheet_from_ttf(
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Atlas packing
-
-pub fn atlas_create_from_images(
-    images: &IndexMap<Imagename, Bitmap>,
-    output_dir: &str,
-    atlas_texture_size: u32,
-) -> AssetAtlas {
-    let (atlas_textures, result_sprite_positions) = {
-        let mut packer = BitmapMultiAtlas::new(atlas_texture_size);
-        for (image_name, image) in images.iter() {
-            packer.pack_bitmap(image_name, image);
-        }
-        packer.finish()
-    };
-
-    // Write textures to disk
-    let result_texture_imagepaths = {
-        let atlas_path_without_extension = path_join(output_dir, "atlas");
-        let mut texture_imagepaths = Vec::new();
-        for (index, atlas_texture) in atlas_textures.iter().enumerate() {
-            let texture_path = format!("{}-{}.png", atlas_path_without_extension, index);
-            Bitmap::write_to_png_file(&atlas_texture.to_premultiplied_alpha(), &texture_path);
-
-            // NOTE: We assume that our atlas textures will be located at the root of our final destination,
-            //       so we drop the prefix
-            let texture_path_shortened = texture_path.replace("resources/", "");
-            texture_imagepaths.push(texture_path_shortened);
-        }
-        texture_imagepaths
-    };
-
-    AssetAtlas {
-        texture_size: atlas_texture_size,
-        texture_count: result_texture_imagepaths.len() as u32,
-        texture_imagepaths: result_texture_imagepaths,
-        sprite_positions: result_sprite_positions,
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
 // Asset conversion
 
 fn convert_sprite(sprite: &AssetSprite, atlas_texture_size: u32) -> Sprite {
@@ -766,124 +725,6 @@ fn convert_animation_3d(
         );
     }
     anim_result
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Serialization
-
-fn serialize_sprites(
-    sprite_map: &IndexMap<Spritename, AssetSprite>,
-    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
-) {
-    let human_readable: Vec<AssetSprite> = sprite_map.values().cloned().collect();
-    std::fs::write(
-        "target/assets_temp/graphics/sprites.json",
-        serde_json::to_string_pretty(&human_readable).unwrap(),
-    )
-    .unwrap();
-
-    std::fs::write(
-        "resources/sprites.data",
-        bincode::serialize(&final_sprites_by_name).unwrap(),
-    )
-    .unwrap();
-}
-
-fn serialize_sprites_3d(
-    sprite_map_3d: &IndexMap<Spritename3D, AssetSprite3D>,
-    final_sprites_by_name_3d: &IndexMap<Spritename3D, Sprite3D>,
-) {
-    let human_readable: Vec<AssetSprite3D> = sprite_map_3d.values().cloned().collect();
-    std::fs::write(
-        "target/assets_temp/graphics/sprites_3d.json",
-        serde_json::to_string_pretty(&human_readable).unwrap(),
-    )
-    .unwrap();
-
-    std::fs::write(
-        "resources/sprites_3d.data",
-        bincode::serialize(&final_sprites_by_name_3d).unwrap(),
-    )
-    .unwrap();
-}
-
-fn serialize_fonts(
-    font_map: &IndexMap<Fontname, AssetFont>,
-    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
-) {
-    let human_readable: Vec<AssetFont> = font_map.values().cloned().collect();
-    std::fs::write(
-        "target/assets_temp/graphics/fonts.json",
-        serde_json::to_string_pretty(&human_readable).unwrap(),
-    )
-    .unwrap();
-
-    let binary: HashMap<String, SpriteFont> = font_map
-        .iter()
-        .map(|(name, font)| (name.clone(), convert_font(font, final_sprites_by_name)))
-        .collect();
-    std::fs::write("resources/fonts.data", bincode::serialize(&binary).unwrap()).unwrap();
-}
-
-fn serialize_animations(
-    animation_map: &IndexMap<Animationname, AssetAnimation>,
-    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
-) {
-    let human_readable: Vec<AssetAnimation> = animation_map.values().cloned().collect();
-    std::fs::write(
-        "target/assets_temp/graphics/animations.json",
-        serde_json::to_string_pretty(&human_readable).unwrap(),
-    )
-    .unwrap();
-
-    let binary: HashMap<String, Animation<Sprite>> = animation_map
-        .iter()
-        .map(|(name, anim)| (name.clone(), convert_animation(anim, final_sprites_by_name)))
-        .collect();
-    std::fs::write(
-        "resources/animations.data",
-        bincode::serialize(&binary).unwrap(),
-    )
-    .unwrap();
-}
-
-fn serialize_animations_3d(
-    animation_map_3d: &IndexMap<Animationname3D, AssetAnimation3D>,
-    final_sprites_by_name_3d: &IndexMap<Spritename3D, Sprite3D>,
-) {
-    let human_readable: Vec<AssetAnimation3D> = animation_map_3d.values().cloned().collect();
-    std::fs::write(
-        "target/assets_temp/graphics/animations_3d.json",
-        serde_json::to_string_pretty(&human_readable).unwrap(),
-    )
-    .unwrap();
-
-    let binary: HashMap<String, Animation<Sprite3D>> = animation_map_3d
-        .iter()
-        .map(|(name, anim)| {
-            (
-                name.clone(),
-                convert_animation_3d(anim, final_sprites_by_name_3d),
-            )
-        })
-        .collect();
-    std::fs::write(
-        "resources/animations_3d.data",
-        bincode::serialize(&binary).unwrap(),
-    )
-    .unwrap();
-}
-
-fn serialize_atlas(atlas: &AssetAtlas) {
-    // Human readable
-    std::fs::write(
-        "target/assets_temp/graphics/atlas.json",
-        serde_json::to_string_pretty(&atlas).unwrap(),
-    )
-    .unwrap();
-
-    let binary: Vec<String> = atlas.texture_imagepaths.clone();
-    std::fs::write("resources/atlas.data", bincode::serialize(&binary).unwrap()).unwrap();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1160,11 +1001,29 @@ impl GraphicsSheet {
         self.animations_3d.extend(other.animations_3d);
     }
 
-    fn pack_and_serialize(mut self) {
+    fn pack_and_serialize(mut self, atlas_texture_size: u32) {
+        // Pack textures
+        let (textures, sprite_positions) = {
+            let mut packer = BitmapMultiAtlas::new(atlas_texture_size);
+            for (image_name, image) in self.images.iter() {
+                packer.pack_bitmap(image_name, image);
+            }
+            packer.finish()
+        };
+
+        // Create png files
+        let textures_dimension = textures
+            .first()
+            .expect("Atlas packer did not generate a texture")
+            .width as u32;
+        let textures_png_data: Vec<Vec<u8>> = textures
+            .into_iter()
+            .map(|texture| texture.to_premultiplied_alpha().encoded_as_png())
+            .collect();
+
         // Create texture atlas and adjust positions of our sprites according to the final packed
         // atlas positions
-        let result_atlas = atlas_create_from_images(&self.images, "resources", 1024);
-        for (packed_sprite_name, sprite_pos) in &result_atlas.sprite_positions {
+        for (packed_sprite_name, sprite_pos) in &sprite_positions {
             if self.sprites.contains_key(packed_sprite_name) {
                 // Atlas-sprite is a regular sprite
                 let mut sprite = self.sprites.get_mut(packed_sprite_name).unwrap();
@@ -1211,32 +1070,86 @@ impl GraphicsSheet {
             }
         }
 
-        let final_sprites_by_name: IndexMap<Spritename, Sprite> = self
+        // HUMAN READABLE OUTPUT
+        let human_readable_sprites: Vec<AssetSprite> = self.sprites.values().cloned().collect();
+        serialize_to_json_file(
+            &human_readable_sprites,
+            "target/assets_temp/graphics/sprites.json",
+        );
+        let human_readable_sprites_3d: Vec<AssetSprite3D> =
+            self.sprites_3d.values().cloned().collect();
+        serialize_to_json_file(
+            &human_readable_sprites_3d,
+            "target/assets_temp/graphics/sprites_3d.json",
+        );
+        let human_readable_fonts: Vec<AssetFont> = self.fonts.values().cloned().collect();
+        serialize_to_json_file(
+            &human_readable_fonts,
+            "target/assets_temp/graphics/fonts.json",
+        );
+        let human_readable_animations: Vec<AssetAnimation> =
+            self.animations.values().cloned().collect();
+        serialize_to_json_file(
+            &human_readable_animations,
+            "target/assets_temp/graphics/animations.json",
+        );
+        let human_readable_animations_3d: Vec<AssetAnimation3D> =
+            self.animations_3d.values().cloned().collect();
+        serialize_to_json_file(
+            &human_readable_animations_3d,
+            "target/assets_temp/graphics/animations_3d.json",
+        );
+        for (index, png_data) in textures_png_data.iter().enumerate() {
+            let texture_path = format!(
+                "target/assets_temp/graphics/atlas-{}x{}-{}.png",
+                textures_dimension, textures_dimension, index
+            );
+            std::fs::write(&texture_path, &png_data).unwrap_or_else(|error| {
+                panic!(
+                    "Could not write atlas texture '{}': {}",
+                    texture_path, error
+                )
+            });
+        }
+
+        // Convert resources into final format
+        let sprites: IndexMap<Spritename, Sprite> = self
             .sprites
             .iter()
-            .map(|(name, sprite)| {
-                (
-                    name.clone(),
-                    convert_sprite(&sprite, result_atlas.texture_size),
-                )
-            })
+            .map(|(name, sprite)| (name.clone(), convert_sprite(&sprite, textures_dimension)))
             .collect();
-        let final_sprites_by_name_3d: IndexMap<Spritename3D, Sprite3D> = self
+        let sprites_3d: IndexMap<Spritename3D, Sprite3D> = self
             .sprites_3d
             .iter()
-            .map(|(name, sprite)| {
-                (
-                    name.clone(),
-                    convert_sprite_3d(&sprite, &final_sprites_by_name),
-                )
-            })
+            .map(|(name, sprite)| (name.clone(), convert_sprite_3d(&sprite, &sprites)))
+            .collect();
+        let animations = self
+            .animations
+            .iter()
+            .map(|(name, anim)| (name.clone(), convert_animation(anim, &sprites)))
+            .collect();
+        let animations_3d = self
+            .animations_3d
+            .iter()
+            .map(|(name, anim)| (name.clone(), convert_animation_3d(anim, &sprites_3d)))
+            .collect();
+        let fonts = self
+            .fonts
+            .iter()
+            .map(|(name, font)| (name.clone(), convert_font(font, &sprites)))
             .collect();
 
-        serialize_sprites(&self.sprites, &final_sprites_by_name);
-        serialize_sprites_3d(&self.sprites_3d, &final_sprites_by_name_3d);
-        serialize_fonts(&self.fonts, &final_sprites_by_name);
-        serialize_animations(&self.animations, &final_sprites_by_name);
-        serialize_animations_3d(&self.animations_3d, &final_sprites_by_name_3d);
-        serialize_atlas(&result_atlas);
+        // Create GraphicsResources for serialization
+        let graphics_resources = GraphicsResources {
+            animations,
+            animations_3d,
+            fonts,
+            sprites,
+            sprites_3d,
+            textures_png_data,
+            textures_dimension,
+        };
+
+        serialize_to_binary_file(&graphics_resources, "resources/graphics.data");
     }
 }

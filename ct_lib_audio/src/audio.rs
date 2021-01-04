@@ -1689,8 +1689,12 @@ impl Audiostate {
     }
 
     #[inline]
-    pub fn add_audio_recordings(&mut self, mut audio_recordings: HashMap<String, AudioRecording>) {
-        for (name, recording) in audio_recordings.drain() {
+    pub fn add_audio_recordings(
+        &mut self,
+        audio_recordings: HashMap<String, Rc<RefCell<AudioRecording>>>,
+    ) {
+        for (name, recording) in audio_recordings.iter() {
+            let recording = recording.borrow();
             assert!(
                 recording.sample_rate_hz == self.render_params.internal_sample_rate_hz,
                 "Resource '{}' has sample_rate {}Hz - expected {}Hz",
@@ -1698,9 +1702,8 @@ impl Audiostate {
                 recording.sample_rate_hz,
                 self.render_params.internal_sample_rate_hz
             );
-            self.audio_recordings
-                .insert(name, Rc::new(RefCell::new(recording)));
         }
+        self.audio_recordings = audio_recordings;
     }
 
     #[inline]
