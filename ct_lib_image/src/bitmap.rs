@@ -133,7 +133,7 @@ impl Bitmap {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn write_to_png_file(bitmap: &Bitmap, png_filepath: &str) {
+    pub fn write_to_png_file(&self, png_filepath: &str) {
         std::fs::create_dir_all(path_without_filename(png_filepath)).expect(&format!(
             "Could not create necessary directories to write to '{}'",
             png_filepath
@@ -143,13 +143,13 @@ impl Bitmap {
             .expect(&format!("Could not open png file '{}'", png_filepath));
 
         let ref mut file_writer = std::io::BufWriter::new(file);
-        let mut encoder = png::Encoder::new(file_writer, bitmap.width as u32, bitmap.height as u32);
+        let mut encoder = png::Encoder::new(file_writer, self.width as u32, self.height as u32);
         encoder.set_color(png::ColorType::RGBA);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder.write_header().unwrap();
 
         writer
-            .write_image_data(bitmap.as_bytes())
+            .write_image_data(self.as_bytes())
             .expect(&format!("Could not write png file to '{}'", png_filepath));
     }
 

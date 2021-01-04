@@ -1,19 +1,30 @@
 # DONE:
 
+- find out why our screenspace grid does not line up with our canvas space / worldspace objects
+  ANSWER: The main problem is the canvas blit offset which is a non-zero percentage of a canvas 
+          pixel when the camera's internal position is not pixel perfectly aligned. drawing things
+          in screenspace and getting mouse coordinates from screenspace therefore currently has an 
+          error
+- remove the need to have a 'untextured.png' in assets folder
+
 # CURRENT
 
 
 
 # NEXT:
 
-- find out why our screenspace grid does not line up with our canvas space / worldspace objects
-  ANSWER: The main problem is the canvas blit offset which is a non-zero percentage of a canvas 
-          pixel when the camera's internal position is not pixel perfectly aligned. drawing things
-          in screenspace and getting mouse coordinates from screenspace therefore has an error
+- evaluate if we want to either get rid of the blit canvas offset (and don't have a smooth camera
+  but get rid of much complexity) or implement the blit offset feature properly including
+  an extra 1 pixel canvas padding and correct coordinate transformation from/to screenspace in the 
+  camera struct which all need to use. Additionally we would need to overthink the canvas-space 
+  drawing because it will either jitter when moving the camera or we need to draw the canvas space
+  as a separate pass into its own framebuffer. but then we will have pixels between canvas and world
+  that won't align properly. 
+  - NOTE: Out dungeontracks and many other games like Celeste and Downwell don't use pixel smoothing
+          and it looks ok!
 
 
 ## improve asset baking/loading
-- remove the need to have a 'untextured.png' in assets folder
 - use resources packs instead of raw file download (like we used for audio)
 - use prelude graphics pack that loads quickly to show splashscreen
 - refactor gamememory/audio/draw/asset initialization to 

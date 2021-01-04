@@ -149,6 +149,16 @@ fn bake_graphics_resources() {
         result_sheet.extend_by(sheet)
     }
 
+    // We need an additional untextured white 1x1 pixel sprite to draw color modulated shapes
+    let untextured_name = "untextured".to_owned();
+    let untextured_path = "target/assets_temp/untextured/untextured.png".to_owned();
+    let untextured_output_path = "target/assets_temp/untextured".to_owned();
+    let untextured = Bitmap::new_filled(1, 1, PixelRGBA::white());
+    untextured.write_to_png_file(&untextured_path);
+    let untextured_sheet =
+        aseprite::create_sheet(&untextured_path, &untextured_name, &untextured_output_path);
+    result_sheet.extend_by(untextured_sheet);
+
     result_sheet.pack_and_serialize();
 }
 
