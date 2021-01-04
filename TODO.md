@@ -1,14 +1,5 @@
 # DONE:
 
-- adds automatic download of tools in batchfiles (where possible)
-- put all our generated project template files into a single directory and just copy it and replace 
-  all containing strings in all templates. This could simplify our generator code immensely. maybe
-  that way we can replace our system with (https://github.com/ffizer/ffizer)?
-  NOTE: We rolled our own because there was not much needed to do for this simple change
-- add new html/batchfiles and everything we added recently to the templates
-- adds debug draw grid helper function
-- adds debug crosshair drawing
-
 # CURRENT
 
 
@@ -16,6 +7,9 @@
 # NEXT:
 
 - find out why our screenspace grid does not line up with our canvas space / worldspace objects
+  ANSWER: The main problem is the canvas blit offset which is a non-zero percentage of a canvas 
+          pixel when the camera's internal position is not pixel perfectly aligned. drawing things
+          in screenspace and getting mouse coordinates from screenspace therefore has an error
 
 
 ## improve asset baking/loading
@@ -246,3 +240,12 @@
 - distribute rendering of chunks over multiple frames at a constant rate instead of multiple chunks 
   in one frame to fill up the queue (important on wasm because we have bigger buffers there but even
   less time per frame)
+
+- adds automatic download of tools in batchfiles (where possible)
+- put all our generated project template files into a single directory and just copy it and replace 
+  all containing strings in all templates. This could simplify our generator code immensely. maybe
+  that way we can replace our system with (https://github.com/ffizer/ffizer)?
+  NOTE: We rolled our own because there was not much needed to do for this simple change
+- add new html/batchfiles and everything we added recently to the templates
+- adds debug draw grid helper function
+- adds debug crosshair drawing

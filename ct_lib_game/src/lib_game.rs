@@ -340,9 +340,39 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                     globals,
                     out_systemcommands,
                 );
+
+                let mouse_coords = globals.cursors.mouse;
+                game_handle_mouse_camera_zooming_panning(
+                    &mut globals.camera,
+                    &input.mouse,
+                    &mouse_coords,
+                );
+                globals.camera.update(globals.deltatime);
                 game_handle_system_keys(&input.keyboard, out_systemcommands);
 
-                globals.camera.update(globals.deltatime);
+                debug_draw_crosshair(
+                    draw,
+                    &globals.camera.cam,
+                    mouse_coords.pos_world,
+                    input.screen_framebuffer_width as f32,
+                    input.screen_framebuffer_height as f32,
+                    2.0,
+                    Color::red(),
+                    DEPTH_MAX,
+                );
+
+                debug_draw_grid(
+                    draw,
+                    &globals.camera.cam,
+                    16.0,
+                    input.screen_framebuffer_width as f32,
+                    input.screen_framebuffer_height as f32,
+                    1,
+                    Color::greyscale(0.5),
+                    DEPTH_MAX,
+                );
+
+                draw.debug_log(dformat!(globals.camera.canvas_blit_offset()));
                 draw.set_shaderparams_simple(
                     Color::white(),
                     globals.camera.proj_view_matrix(),
@@ -363,6 +393,9 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
             }
 
             if let Some(audio) = self.audio.as_mut() {
+                let globals = self.globals.as_mut().unwrap();
+                audio.set_listener_pos(globals.camera.center());
+
                 self.audio_chunk_timer += input.deltatime;
 
                 let mut audiochunk = AudioChunk::new_stereo();
@@ -377,7 +410,6 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                         // We don't want to fill too much or else the latency is gonna be big.
                         // Filling it that much is also a symptom of our deltatime being too much
                         // out of sync with our realtime
-                        log::warn!("Too many audiochunks queued up");
                         continue;
                     }
                     audio.render_audio_chunk(&mut audiochunk, input.audio_playback_rate_hz);
@@ -505,8 +537,8 @@ impl Camera {
         }
     }
 
-    pub fn canvas_blit_offset(&mut self) -> Vec2 {
-        self.pos - self.pos_pixelsnapped
+    pub fn canvas_blit_offset(&self) -> Vec2 {
+        (self.pos - self.pos_pixelsnapped) * self.zoom_level
     }
 
     /// Returns a project-view-matrix that can transform vertices into camera-view-space
@@ -2197,6 +2229,13 @@ pub fn debug_draw_grid(
     let left = f32::floor(frustum.left() / world_grid_size) * world_grid_size;
     let right = f32::ceil(frustum.right() / world_grid_size) * world_grid_size;
 
+    let draw_offset_screenspace = Vec2::new(
+        -(camera.canvas_blit_offset().x * (screen_width as f32 / camera.dim_canvas.x as f32))
+            .floor(),
+        -(camera.canvas_blit_offset().y * (screen_height as f32 / camera.dim_canvas.y as f32))
+            .floor(),
+    );
+
     let mut x = left;
     while x <= right {
         let start = Vec2::new(x, top);
@@ -2207,6 +2246,9 @@ pub fn debug_draw_grid(
 
         let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
         let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+
+        let start = start + draw_offset_screenspace;
+        let end = end + draw_offset_screenspace;
 
         let rect = Rect::from_bounds_left_top_right_bottom(
             start.x,
@@ -2228,6 +2270,9 @@ pub fn debug_draw_grid(
 
         let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
         let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+
+        let start = start + draw_offset_screenspace;
+        let end = end + draw_offset_screenspace;
 
         let rect = Rect::from_bounds_left_top_right_bottom(
             start.x,
@@ -2263,6 +2308,13 @@ pub fn debug_draw_crosshair(
     let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
     let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
 
+    let draw_offset_screenspace = Vec2::new(
+        (camera.canvas_blit_offset().x * (screen_width as f32 / camera.dim_canvas.x as f32))
+            .floor(),
+        (camera.canvas_blit_offset().y * (screen_height as f32 / camera.dim_canvas.y as f32))
+            .floor(),
+    );
+
     draw.draw_line_with_thickness(
         start,
         end,
@@ -2282,6 +2334,9 @@ pub fn debug_draw_crosshair(
 
     let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
     let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+
+    let start = start + draw_offset_screenspace;
+    let end = end + draw_offset_screenspace;
 
     draw.draw_line_with_thickness(
         start,
