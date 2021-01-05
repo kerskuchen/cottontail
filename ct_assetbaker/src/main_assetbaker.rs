@@ -319,49 +319,23 @@ pub struct BitmapFontResource {
 }
 
 fn collect_font_resources() -> IndexMap<ResourceName, BitmapFontResource> {
-    let mut result = IndexMap::new();
+    // Search assets folder for metadata files without corresponding font files
+    for filepath in &collect_files_recursive("assets") {
+        if !filepath.ends_with(".fontmeta.json") {
+            // This is no font metadata file
+            continue;
+        }
 
-    // Add default fonts
-    result.insert(
-        font::FONT_DEFAULT_TINY_NAME.to_owned(),
-        BitmapFontResource {
-            ttf_data_bytes: font::FONT_DEFAULT_TINY_TTF.to_vec(),
-            metadata: BitmapFontMetadata {
-                height_in_pixels: font::FONT_DEFAULT_TINY_PIXEL_HEIGHT,
-                raster_offset: font::FONT_DEFAULT_TINY_RASTER_OFFSET,
-            },
-        },
-    );
-    result.insert(
-        font::FONT_DEFAULT_SMALL_NAME.to_owned(),
-        BitmapFontResource {
-            ttf_data_bytes: font::FONT_DEFAULT_SMALL_TTF.to_vec(),
-            metadata: BitmapFontMetadata {
-                height_in_pixels: font::FONT_DEFAULT_SMALL_PIXEL_HEIGHT,
-                raster_offset: font::FONT_DEFAULT_SMALL_RASTER_OFFSET,
-            },
-        },
-    );
-    result.insert(
-        font::FONT_DEFAULT_REGULAR_NAME.to_owned(),
-        BitmapFontResource {
-            ttf_data_bytes: font::FONT_DEFAULT_REGULAR_TTF.to_vec(),
-            metadata: BitmapFontMetadata {
-                height_in_pixels: font::FONT_DEFAULT_REGULAR_PIXEL_HEIGHT,
-                raster_offset: font::FONT_DEFAULT_REGULAR_RASTER_OFFSET,
-            },
-        },
-    );
-    result.insert(
-        font::FONT_DEFAULT_SQUARE_NAME.to_owned(),
-        BitmapFontResource {
-            ttf_data_bytes: font::FONT_DEFAULT_SQUARE_TTF.to_vec(),
-            metadata: BitmapFontMetadata {
-                height_in_pixels: font::FONT_DEFAULT_SQUARE_PIXEL_HEIGHT,
-                raster_offset: font::FONT_DEFAULT_SQUARE_RASTER_OFFSET,
-            },
-        },
-    );
+        let corresponding_ttf_filepath = filepath.replace(".fontmeta.json", ".ttf");
+        if !path_exists(&corresponding_ttf_filepath) {
+            panic!(
+                "Found font metadata file '{}' without corresponding .ttf file",
+                filepath
+            );
+        }
+    }
+
+    let mut result = IndexMap::new();
 
     let font_filepaths = collect_files_by_extension_recursive("assets", ".ttf");
     for font_filepath in font_filepaths {
@@ -445,6 +419,48 @@ fn collect_font_resources() -> IndexMap<ResourceName, BitmapFontResource> {
             );
         }
     }
+
+    // Add default fonts
+    result.insert(
+        font::FONT_DEFAULT_TINY_NAME.to_owned(),
+        BitmapFontResource {
+            ttf_data_bytes: font::FONT_DEFAULT_TINY_TTF.to_vec(),
+            metadata: BitmapFontMetadata {
+                height_in_pixels: font::FONT_DEFAULT_TINY_PIXEL_HEIGHT,
+                raster_offset: font::FONT_DEFAULT_TINY_RASTER_OFFSET,
+            },
+        },
+    );
+    result.insert(
+        font::FONT_DEFAULT_SMALL_NAME.to_owned(),
+        BitmapFontResource {
+            ttf_data_bytes: font::FONT_DEFAULT_SMALL_TTF.to_vec(),
+            metadata: BitmapFontMetadata {
+                height_in_pixels: font::FONT_DEFAULT_SMALL_PIXEL_HEIGHT,
+                raster_offset: font::FONT_DEFAULT_SMALL_RASTER_OFFSET,
+            },
+        },
+    );
+    result.insert(
+        font::FONT_DEFAULT_REGULAR_NAME.to_owned(),
+        BitmapFontResource {
+            ttf_data_bytes: font::FONT_DEFAULT_REGULAR_TTF.to_vec(),
+            metadata: BitmapFontMetadata {
+                height_in_pixels: font::FONT_DEFAULT_REGULAR_PIXEL_HEIGHT,
+                raster_offset: font::FONT_DEFAULT_REGULAR_RASTER_OFFSET,
+            },
+        },
+    );
+    result.insert(
+        font::FONT_DEFAULT_SQUARE_NAME.to_owned(),
+        BitmapFontResource {
+            ttf_data_bytes: font::FONT_DEFAULT_SQUARE_TTF.to_vec(),
+            metadata: BitmapFontMetadata {
+                height_in_pixels: font::FONT_DEFAULT_SQUARE_PIXEL_HEIGHT,
+                raster_offset: font::FONT_DEFAULT_SQUARE_RASTER_OFFSET,
+            },
+        },
+    );
 
     result
 }
