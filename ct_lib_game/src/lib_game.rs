@@ -169,7 +169,6 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                         DEFAULT_WORLD_ZNEAR,
                         DEFAULT_WORLD_ZFAR,
                     ),
-                    Vec2::zero(),
                 );
                 self.draw = Some(draw);
             }
@@ -372,7 +371,6 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                     DEPTH_MAX,
                 );
 
-                draw.debug_log(dformat!(globals.camera.canvas_blit_offset()));
                 draw.set_shaderparams_simple(
                     Color::white(),
                     globals.camera.proj_view_matrix(),
@@ -388,7 +386,6 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                         DEFAULT_WORLD_ZNEAR,
                         DEFAULT_WORLD_ZFAR,
                     ),
-                    globals.camera.canvas_blit_offset(),
                 );
             }
 
@@ -535,10 +532,6 @@ impl Camera {
         } else {
             self.pos + 0.5 * self.dim_frustum
         }
-    }
-
-    pub fn canvas_blit_offset(&self) -> Vec2 {
-        (self.pos - self.pos_pixelsnapped) * self.zoom_level
     }
 
     /// Returns a project-view-matrix that can transform vertices into camera-view-space
@@ -763,15 +756,6 @@ impl GameCamera {
     pub fn center(&mut self) -> Worldpoint {
         self.sync_pos_internal();
         self.cam.center()
-    }
-
-    pub fn canvas_blit_offset(&mut self) -> Vec2 {
-        self.sync_pos_internal();
-        if self.use_pixel_perfect_smoothing {
-            Vec2::zero()
-        } else {
-            self.cam.canvas_blit_offset()
-        }
     }
 
     /// Returns a project-view-matrix that can transform vertices into camera-view-space
@@ -2266,13 +2250,6 @@ pub fn debug_draw_grid(
     let left = f32::floor(frustum.left() / world_grid_size) * world_grid_size;
     let right = f32::ceil(frustum.right() / world_grid_size) * world_grid_size;
 
-    let draw_offset_screenspace = Vec2::new(
-        -(camera.canvas_blit_offset().x * (screen_width as f32 / camera.dim_canvas.x as f32))
-            .floor(),
-        -(camera.canvas_blit_offset().y * (screen_height as f32 / camera.dim_canvas.y as f32))
-            .floor(),
-    );
-
     let mut x = left;
     while x <= right {
         let start = Vec2::new(x, top);
@@ -2283,9 +2260,6 @@ pub fn debug_draw_grid(
 
         let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
         let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
-
-        let start = start + draw_offset_screenspace;
-        let end = end + draw_offset_screenspace;
 
         let rect = Rect::from_bounds_left_top_right_bottom(
             start.x,
@@ -2307,9 +2281,6 @@ pub fn debug_draw_grid(
 
         let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
         let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
-
-        let start = start + draw_offset_screenspace;
-        let end = end + draw_offset_screenspace;
 
         let rect = Rect::from_bounds_left_top_right_bottom(
             start.x,
@@ -2345,13 +2316,6 @@ pub fn debug_draw_crosshair(
     let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
     let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
 
-    let draw_offset_screenspace = Vec2::new(
-        (camera.canvas_blit_offset().x * (screen_width as f32 / camera.dim_canvas.x as f32))
-            .floor(),
-        (camera.canvas_blit_offset().y * (screen_height as f32 / camera.dim_canvas.y as f32))
-            .floor(),
-    );
-
     draw.draw_line_with_thickness(
         start,
         end,
@@ -2371,9 +2335,6 @@ pub fn debug_draw_crosshair(
 
     let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
     let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
-
-    let start = start + draw_offset_screenspace;
-    let end = end + draw_offset_screenspace;
 
     draw.draw_line_with_thickness(
         start,

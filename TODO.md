@@ -5,13 +5,6 @@
   type needs to have a unique name)
 - assetbaker now checks for font and audio metadata files without corresponding font/audio file
 - adds content.data resource pack
-
-# CURRENT
-
-
-
-# NEXT:
-
 - evaluate if we want to either get rid of the blit canvas offset (and don't have a smooth camera
   but get rid of much complexity) or implement the blit offset feature properly including
   an extra 1 pixel canvas padding and correct coordinate transformation from/to screenspace in the 
@@ -19,8 +12,16 @@
   drawing because it will either jitter when moving the camera or we need to draw the canvas space
   as a separate pass into its own framebuffer. but then we will have pixels between canvas and world
   that won't align properly. 
-  - NOTE: Out dungeontracks and many other games like Celeste and Downwell don't use pixel smoothing
+  - NOTE: Our dungeontracks and many other games like Celeste and Downwell don't use pixel smoothing
           and it looks ok!
+- gets rid of screenspace blit offset because it adds too much complexity
+
+# CURRENT
+
+
+
+# NEXT:
+
 
 
 ## improve asset baking/loading

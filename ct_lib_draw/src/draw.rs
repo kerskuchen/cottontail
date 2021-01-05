@@ -343,7 +343,6 @@ pub struct Drawstate {
     simple_vertexbuffer_dirty: bool,
 
     canvas_framebuffer: Option<FramebufferInfo>,
-    canvas_blit_offset: Vec2,
 
     debug_use_flat_color_mode: bool,
     debug_log_font_scale: f32,
@@ -400,7 +399,6 @@ impl Drawstate {
             simple_vertexbuffer_dirty: true,
 
             canvas_framebuffer: None,
-            canvas_blit_offset: Vec2::zero(),
 
             debug_use_flat_color_mode: false,
             debug_log_font_scale: 2.0,
@@ -423,7 +421,6 @@ impl Drawstate {
         transform_world: Mat4,
         transform_canvas: Mat4,
         transform_screen: Mat4,
-        canvas_blit_offset: Vec2,
     ) {
         self.simple_shaderparams_world.texture_color_modulate = color_modulate;
         self.simple_shaderparams_world.transform = transform_world;
@@ -433,8 +430,6 @@ impl Drawstate {
 
         self.simple_shaderparams_screen.texture_color_modulate = color_modulate;
         self.simple_shaderparams_screen.transform = transform_screen;
-
-        self.canvas_blit_offset = canvas_blit_offset;
     }
 
     pub fn set_letterbox_color(&mut self, color: Color) {
@@ -626,19 +621,12 @@ impl Drawstate {
 
             let rect_canvas =
                 BlitRect::new_from_dimensions(canvas_framebuffer.width, canvas_framebuffer.height);
-            let mut rect_screen = BlitRect::new_for_fixed_canvas_size(
+            let rect_screen = BlitRect::new_for_fixed_canvas_size(
                 screen_width,
                 screen_height,
                 canvas_framebuffer.width,
                 canvas_framebuffer.height,
             );
-
-            rect_screen.offset_x -= (self.canvas_blit_offset.x
-                * (screen_width as f32 / canvas_framebuffer.width as f32))
-                as i32;
-            rect_screen.offset_y += (self.canvas_blit_offset.y
-                * (screen_width as f32 / canvas_framebuffer.width as f32))
-                as i32;
 
             renderer.framebuffer_blit(
                 &canvas_framebuffer.name,
