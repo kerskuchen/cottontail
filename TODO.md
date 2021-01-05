@@ -1,13 +1,8 @@
 # DONE:
 
-- find out why our screenspace grid does not line up with our canvas space / worldspace objects
-  ANSWER: The main problem is the canvas blit offset which is a non-zero percentage of a canvas 
-          pixel when the camera's internal position is not pixel perfectly aligned. drawing things
-          in screenspace and getting mouse coordinates from screenspace therefore currently has an 
-          error
-- remove the need to have a 'untextured.png' in assets folder
-- now using graphics.data pack for graphics similar to audio.data for audio
-
+- simplifies font asset baking by creating default metadata files if missing
+- removes relative paths from asset names (this has the consequence that every resource of the same
+  type needs to have a unique name)
 # CURRENT
 
 
@@ -261,3 +256,11 @@
 - add new html/batchfiles and everything we added recently to the templates
 - adds debug draw grid helper function
 - adds debug crosshair drawing
+
+- find out why our screenspace grid does not line up with our canvas space / worldspace objects
+  ANSWER: The main problem is the canvas blit offset which is a non-zero percentage of a canvas 
+          pixel when the camera's internal position is not pixel perfectly aligned. drawing things
+          in screenspace and getting mouse coordinates from screenspace therefore currently has an 
+          error
+- remove the need to have a 'untextured.png' in assets folder
+- now using graphics.data pack for graphics similar to audio.data for audio

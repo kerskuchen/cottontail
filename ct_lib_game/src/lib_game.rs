@@ -178,7 +178,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
             draw.begin_frame();
 
             if self.splashscreen.is_none() {
-                let splash_sprite = self.assets.get_sprite("splash").clone();
+                let splash_sprite = self.assets.get_sprite("splashscreen").clone();
                 self.splashscreen = Some(SplashScreen::new(
                     splash_sprite,
                     SPLASHSCREEN_FADEIN_TIME,

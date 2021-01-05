@@ -18,23 +18,16 @@ use game::*;
 use image::*;
 use math::*;
 
-use rayon::prelude::*;
+use rayon::{prelude::*, result};
 
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
 };
 
-type Imagename = String;
-type Spritename = String;
-type Spritename3D = String;
-type Fontname = String;
-type Animationname = String;
-type Animationname3D = String;
-
 #[derive(Debug, Clone, Serialize)]
 pub struct AssetSprite {
-    pub name: Spritename,
+    pub name: ResourceName,
     pub atlas_texture_index: TextureIndex,
     pub has_translucency: bool,
 
@@ -49,30 +42,30 @@ pub struct AssetSprite {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AssetSprite3D {
-    pub name: Spritename3D,
-    pub layer_sprite_names: Vec<Spritename>,
+    pub name: ResourceName,
+    pub layer_sprite_names: Vec<ResourceName>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize)]
 pub struct AssetAnimation {
-    pub name: Animationname,
+    pub name: ResourceName,
     pub framecount: u32,
-    pub sprite_names: Vec<Spritename>,
+    pub sprite_names: Vec<ResourceName>,
     pub frame_durations_ms: Vec<u32>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize)]
 pub struct AssetAnimation3D {
-    pub name: Animationname3D,
+    pub name: ResourceName,
     pub framecount: u32,
-    pub sprite_names: Vec<Spritename3D>,
+    pub sprite_names: Vec<ResourceName>,
     pub frame_durations_ms: Vec<u32>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize)]
 pub struct AssetGlyph {
     pub codepoint: Codepoint,
-    pub sprite_name: Spritename,
+    pub sprite_name: ResourceName,
 
     pub horizontal_advance: i32,
 
@@ -84,7 +77,7 @@ pub struct AssetGlyph {
 
 #[derive(Default, Debug, Clone, Serialize)]
 pub struct AssetFont {
-    pub name: Fontname,
+    pub name: ResourceName,
     pub baseline: i32,
     pub vertical_advance: i32,
     pub horizontal_advance_max: i32,
@@ -97,28 +90,48 @@ pub struct AssetFont {
 pub struct AssetAtlas {
     pub textures_dimension: u32,
     pub textures_png_data: Vec<Vec<u8>>,
-    pub sprite_positions: IndexMap<Spritename, BitmapAtlasPosition>,
+    pub sprite_positions: IndexMap<ResourceName, BitmapAtlasPosition>,
 }
 
 fn bake_graphics_resources() {
     let mut result_sheet: GraphicsSheet = GraphicsSheet::new_empty();
 
+    // Load fonts and drawstyles
+    let fontstyles_filepath = "assets/fonts/font_drawstyles.json";
+    let font_drawstyles = collect_font_drawstyles(fontstyles_filepath);
+    let font_resources = collect_font_resources();
+
+    // Check that we have drawstyles defined for each added font
+    for (name, _resource) in &font_resources {
+        if name == FONT_DEFAULT_REGULAR_NAME
+            || name == FONT_DEFAULT_SMALL_NAME
+            || name == FONT_DEFAULT_SQUARE_NAME
+            || name == FONT_DEFAULT_TINY_NAME
+        {
+            // It is okay to not have a drawstyle for the default fonts defined
+            continue;
+        }
+        if !font_drawstyles.iter().any(|style| &style.fontname == name) {
+            panic!(
+                "Font '{}' is missing a drawing style - please add one to '{}'",
+                &name, fontstyles_filepath
+            );
+        }
+    }
+
     // Create fonts and its correspronding sprites
-    let font_styles = load_font_styles();
-    let font_properties = load_font_properties();
-    let font_sheets: Vec<GraphicsSheet> = font_styles
+    let font_sheets: Vec<GraphicsSheet> = font_drawstyles
         .par_iter()
         .map(|style| {
-            let properties = font_properties.get(&style.fontname).expect(&format!(
+            let font = font_resources.get(&style.fontname).expect(&format!(
                 "No font and/or render parameters found for font name '{}'",
                 &style.fontname
             ));
             create_sheet_from_ttf(
                 &style.fontname,
-                &properties.ttf_data_bytes,
-                "target/assets_temp",
-                properties.render_params.height_in_pixels,
-                properties.render_params.raster_offset,
+                &font.ttf_data_bytes,
+                font.metadata.height_in_pixels,
+                font.metadata.raster_offset,
                 style.bordered,
                 style.color_glyph,
                 style.color_border,
@@ -137,10 +150,8 @@ fn bake_graphics_resources() {
         imagepaths
             .par_iter()
             .map(|imagepath| {
-                let sheet_name = path_without_extension(imagepath).replace("assets/", "");
-                let output_path_without_extension =
-                    path_without_extension(imagepath).replace("assets", "target/assets_temp");
-                aseprite::create_sheet(imagepath, &sheet_name, &output_path_without_extension)
+                let sheet_name = path_to_filename_without_extension(imagepath);
+                aseprite::create_sheet(imagepath, &sheet_name)
             })
             .collect()
     };
@@ -150,12 +161,10 @@ fn bake_graphics_resources() {
 
     // We need an additional untextured white 1x1 pixel sprite to draw color modulated shapes
     let untextured_name = "untextured".to_owned();
-    let untextured_path = "target/assets_temp/untextured/untextured.png".to_owned();
-    let untextured_output_path = "target/assets_temp/untextured".to_owned();
+    let untextured_path = "target/assets_temp/sprites/untextured_temp.png".to_owned();
     let untextured = Bitmap::new_filled(1, 1, PixelRGBA::white());
     untextured.write_to_png_file(&untextured_path);
-    let untextured_sheet =
-        aseprite::create_sheet(&untextured_path, &untextured_name, &untextured_output_path);
+    let untextured_sheet = aseprite::create_sheet(&untextured_path, &untextured_name);
     result_sheet.extend_by(untextured_sheet);
 
     result_sheet.pack_and_serialize(1024);
@@ -169,8 +178,8 @@ fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {
             continue;
         }
 
-        let resource_name = path_without_extension(filepath).replace("assets/", "");
-        let metadata_path = path_without_extension(filepath) + ".meta.json";
+        let resource_name = path_to_filename_without_extension(filepath);
+        let metadata_path = path_with_extension(filepath, ".meta.json");
         let recreate_metadata = if path_exists(&metadata_path) {
             let last_modified_time = path_last_modified_time(filepath);
             let metadata_last_modified_time = path_last_modified_time(&metadata_path);
@@ -188,7 +197,6 @@ fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {
             let framecount = audiochunk.len();
 
             let original = AudioMetadata {
-                original_filepath: filepath.to_owned(),
                 resource_name: resource_name.clone(),
                 samplerate_hz,
                 channelcount,
@@ -205,74 +213,51 @@ fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {
 
         let metadata = metadata_original.clone_with_new_sample_rate(audio_sample_rate_hz);
 
-        let ogg_data = if filepath.ends_with(".ogg") {
+        let ogg_output_path = &format!(
+            "target/assets_temp/{}/{}.ogg",
+            resource_pack_name, resource_name
+        );
+        if filepath.ends_with(".ogg") {
             // Check if we need to resample our ogg file
             if metadata.samplerate_hz == metadata_original.samplerate_hz {
-                read_file_whole(filepath).unwrap_or_else(|error| {
-                    panic!("Cannot open ogg file '{}': {}", filepath, error)
-                })
+                // Make a human readable copy of our file in the temp dir
+                path_copy_file(filepath, &ogg_output_path);
             } else {
                 let (original_samplerate_hz, audiochunk) = audio::decode_audio_file(filepath)
                     .unwrap_or_else(|error| {
                         panic!("Cannot decode audio file '{}': {}", filepath, error)
                     });
-                let wav_output_temp_path = path_with_extension(&filepath, ".wav").replace(
-                    "assets",
-                    &format!("target/assets_temp/{}", resource_pack_name),
-                );
+                let wav_output_temp_path = path_with_extension(ogg_output_path, ".wav");
                 write_audio_samples_to_wav_file(
                     &wav_output_temp_path,
                     &audiochunk,
                     original_samplerate_hz,
                 );
 
-                let ogg_output_temp_path = filepath.replace(
-                    "assets",
-                    &format!("target/assets_temp/{}", resource_pack_name),
-                );
                 let command = format!(
                     "oggenc2 {} --quality {} --resample {} --converter 0 --output={}",
                     wav_output_temp_path,
                     metadata.compression_quality,
                     audio_sample_rate_hz,
-                    ogg_output_temp_path
+                    ogg_output_path,
                 );
                 run_systemcommand_fail_on_error(&command, false);
-
-                assert!(
-                    path_exists(&ogg_output_temp_path),
-                    "Failed to encode ogg file for '{}' - '{}' is missing",
-                    filepath,
-                    ogg_output_temp_path
-                );
-
-                read_file_whole(&ogg_output_temp_path).unwrap_or_else(|error| {
-                    panic!("Cannot open ogg file '{}': {}", ogg_output_temp_path, error)
-                })
             }
         } else {
             // Create resampled ogg file out of our wav file
-            let ogg_output_temp_path = path_with_extension(&filepath, ".ogg").replace(
-                "assets",
-                &format!("target/assets_temp/{}", resource_pack_name),
-            );
             let command = format!(
                 "oggenc2 {} --quality {} --resample {} --converter 0 --output={}",
-                filepath, metadata.compression_quality, audio_sample_rate_hz, ogg_output_temp_path
+                filepath, metadata.compression_quality, audio_sample_rate_hz, ogg_output_path
             );
             run_systemcommand_fail_on_error(&command, false);
-
-            assert!(
-                path_exists(&ogg_output_temp_path),
-                "Failed to encode ogg file for '{}' - '{}' is missing",
-                filepath,
-                ogg_output_temp_path
-            );
-
-            read_file_whole(&ogg_output_temp_path).unwrap_or_else(|error| {
-                panic!("Cannot open ogg file '{}': {}", ogg_output_temp_path, error)
-            })
         };
+
+        let ogg_data = read_file_whole(&ogg_output_path).unwrap_or_else(|error| {
+            panic!(
+                "Failed to copy/encode ogg file for '{}' - '{}' is missing: {}",
+                filepath, ogg_output_path, error
+            )
+        });
 
         audio_resources.add_audio_resource(resource_name, metadata_original, metadata, ogg_data);
     }
@@ -290,207 +275,187 @@ fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {
             resource_pack_name, resource_pack_name
         ),
     );
-    // Copy ogg files to a human readable location
-    for resource_name in &audio_resources.names {
-        let metadata = audio_resources.metadata.get(resource_name).unwrap();
-        let metadata_original = audio_resources
-            .metadata_original
-            .get(resource_name)
-            .unwrap();
-
-        let path = &metadata.original_filepath;
-        if path.ends_with(".wav") {
-            // Wav files are converted to ogg files and which will be already placed in temp folder
-            continue;
-        }
-
-        if metadata.samplerate_hz != metadata_original.samplerate_hz {
-            // We resampled our .ogg file and already placed it into the temp folder
-            continue;
-        }
-
-        let temp_path = path.replace(
-            "assets",
-            &format!("target/assets_temp/{}", resource_pack_name),
-        );
-        path_copy_file(path, &temp_path);
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Font properties and styles
+// Font resources and styles
 
-#[derive(Deserialize)]
-pub struct BitmapFontStyle {
+#[derive(Serialize, Deserialize)]
+pub struct BitmapFontDrawStyle {
     pub fontname: String,
     pub bordered: bool,
     pub color_glyph: PixelRGBA,
     pub color_border: PixelRGBA,
 }
 
-#[derive(Deserialize)]
-pub struct BitmapFontRenderParams {
+#[derive(Serialize, Deserialize)]
+pub struct BitmapFontMetadata {
     pub height_in_pixels: i32,
     pub raster_offset: Vec2,
 }
 
-pub struct BitmapFontProperties {
+pub struct BitmapFontResource {
     pub ttf_data_bytes: Vec<u8>,
-    pub render_params: BitmapFontRenderParams,
+    pub metadata: BitmapFontMetadata,
 }
 
-fn load_font_properties() -> IndexMap<Fontname, BitmapFontProperties> {
-    let mut result_properties = IndexMap::new();
-
-    let font_filepaths = collect_files_by_extension_recursive("assets/fonts", ".ttf");
-    for font_filepath in font_filepaths {
-        let font_name = path_to_filename_without_extension(&font_filepath);
-        let renderparams_filepath = path_with_extension(&font_filepath, "json");
-        let ttf_data_bytes = std::fs::read(&font_filepath)
-            .expect(&format!("Cannot read fontdata '{}'", &font_filepath));
-
-        // NOTE: We only read the fontdata when the renderparams exist but don't throw an error when
-        //       it does not exist. This helps us make test renders for a font before we have found
-        //       out its correct render params.
-        if let Some(params_string) = std::fs::read_to_string(&renderparams_filepath).ok() {
-            let render_params: BitmapFontRenderParams = serde_json::from_str(&params_string)
-                .expect(&format!(
-                    "Cannot read render parameters for font: '{}'",
-                    &font_filepath
-                ));
-
-            result_properties.insert(
-                font_name,
-                BitmapFontProperties {
-                    ttf_data_bytes,
-                    render_params,
-                },
-            );
-        } else {
-            let test_png_filepath = path_join(
-                "target/assets_temp",
-                &(font_name.clone() + "_fontsize_test.png"),
-            );
-            log::warn!(
-                "Font is missing its render parameters: '{}' - Created font size test image at '{}'",
-                &font_filepath,
-                &test_png_filepath
-            );
-            let test_png_filepath = path_join(
-                "target/assets_temp",
-                &(font_name.clone() + "_fontsize_test_offset_-0.5.png"),
-            );
-            BitmapFont::test_font_sizes(
-                &font_name,
-                &ttf_data_bytes,
-                Vec2::new(0.0, -0.5),
-                4,
-                32,
-                &test_png_filepath,
-            );
-            let test_png_filepath = path_join(
-                "target/assets_temp",
-                &(font_name.clone() + "_fontsize_test_offset_0.0.png"),
-            );
-            BitmapFont::test_font_sizes(
-                &font_name,
-                &ttf_data_bytes,
-                Vec2::new(0.0, 0.0),
-                4,
-                32,
-                &test_png_filepath,
-            );
-            let test_png_filepath = path_join(
-                "target/assets_temp",
-                &(font_name.clone() + "_fontsize_test_offset_0.5.png"),
-            );
-            BitmapFont::test_font_sizes(
-                &font_name,
-                &ttf_data_bytes,
-                Vec2::new(0.0, 0.5),
-                4,
-                32,
-                &test_png_filepath,
-            );
-        }
-    }
+fn collect_font_resources() -> IndexMap<ResourceName, BitmapFontResource> {
+    let mut result = IndexMap::new();
 
     // Add default fonts
-    result_properties.insert(
+    result.insert(
         font::FONT_DEFAULT_TINY_NAME.to_owned(),
-        BitmapFontProperties {
+        BitmapFontResource {
             ttf_data_bytes: font::FONT_DEFAULT_TINY_TTF.to_vec(),
-            render_params: BitmapFontRenderParams {
+            metadata: BitmapFontMetadata {
                 height_in_pixels: font::FONT_DEFAULT_TINY_PIXEL_HEIGHT,
                 raster_offset: font::FONT_DEFAULT_TINY_RASTER_OFFSET,
             },
         },
     );
-    result_properties.insert(
+    result.insert(
         font::FONT_DEFAULT_SMALL_NAME.to_owned(),
-        BitmapFontProperties {
+        BitmapFontResource {
             ttf_data_bytes: font::FONT_DEFAULT_SMALL_TTF.to_vec(),
-            render_params: BitmapFontRenderParams {
+            metadata: BitmapFontMetadata {
                 height_in_pixels: font::FONT_DEFAULT_SMALL_PIXEL_HEIGHT,
                 raster_offset: font::FONT_DEFAULT_SMALL_RASTER_OFFSET,
             },
         },
     );
-    result_properties.insert(
+    result.insert(
         font::FONT_DEFAULT_REGULAR_NAME.to_owned(),
-        BitmapFontProperties {
+        BitmapFontResource {
             ttf_data_bytes: font::FONT_DEFAULT_REGULAR_TTF.to_vec(),
-            render_params: BitmapFontRenderParams {
+            metadata: BitmapFontMetadata {
                 height_in_pixels: font::FONT_DEFAULT_REGULAR_PIXEL_HEIGHT,
                 raster_offset: font::FONT_DEFAULT_REGULAR_RASTER_OFFSET,
             },
         },
     );
-    result_properties.insert(
+    result.insert(
         font::FONT_DEFAULT_SQUARE_NAME.to_owned(),
-        BitmapFontProperties {
+        BitmapFontResource {
             ttf_data_bytes: font::FONT_DEFAULT_SQUARE_TTF.to_vec(),
-            render_params: BitmapFontRenderParams {
+            metadata: BitmapFontMetadata {
                 height_in_pixels: font::FONT_DEFAULT_SQUARE_PIXEL_HEIGHT,
                 raster_offset: font::FONT_DEFAULT_SQUARE_RASTER_OFFSET,
             },
         },
     );
 
-    result_properties
+    let font_filepaths = collect_files_by_extension_recursive("assets", ".ttf");
+    for font_filepath in font_filepaths {
+        let font_name = path_to_filename_without_extension(&font_filepath);
+        let metadata_filepath = path_with_extension(&font_filepath, ".meta.json");
+        let ttf_data = std::fs::read(&font_filepath)
+            .expect(&format!("Cannot read font data '{}'", &font_filepath));
+
+        // NOTE: We only read the fontdata when the renderparams exist but don't throw an error when
+        //       it does not exist. This helps us make test renders for a font before we have found
+        //       out its correct render params.
+        if let Some(metadata_string) = std::fs::read_to_string(&metadata_filepath).ok() {
+            let metadata: BitmapFontMetadata = serde_json::from_str(&metadata_string).expect(
+                &format!("Cannot read metadata for font: '{}'", &font_filepath),
+            );
+
+            result.insert(
+                font_name,
+                BitmapFontResource {
+                    ttf_data_bytes: ttf_data,
+                    metadata,
+                },
+            );
+        } else {
+            let test_png_filepath = path_join(
+                "target/assets_temp/font_test",
+                &(font_name.clone() + "_fontsize_test_offset_-0.5.png"),
+            );
+            BitmapFont::test_font_sizes(
+                &font_name,
+                &ttf_data,
+                Vec2::new(0.0, -0.5),
+                4,
+                32,
+                &test_png_filepath,
+            );
+            let test_png_filepath = path_join(
+                "target/assets_temp/font_test",
+                &(font_name.clone() + "_fontsize_test_offset_0.0.png"),
+            );
+            BitmapFont::test_font_sizes(
+                &font_name,
+                &ttf_data,
+                Vec2::new(0.0, 0.0),
+                4,
+                32,
+                &test_png_filepath,
+            );
+            let test_png_filepath = path_join(
+                "target/assets_temp/font_test",
+                &(font_name.clone() + "_fontsize_test_offset_0.5.png"),
+            );
+            BitmapFont::test_font_sizes(
+                &font_name,
+                &ttf_data,
+                Vec2::new(0.0, 0.5),
+                4,
+                32,
+                &test_png_filepath,
+            );
+
+            let metadata_filepath = path_join(
+                "target/assets_temp/font_test",
+                &(font_name.clone() + "meta.json"),
+            );
+            serialize_to_binary_file(
+                &BitmapFontMetadata {
+                    height_in_pixels: 12,
+                    raster_offset: Vec2::zero(),
+                },
+                &metadata_filepath,
+            );
+
+            panic!(
+                "Font '{}' is missing its metadata - 
+                 Please look at the font size test images at 'target/assets_temp/font_test' and then
+                 fill out and copy the '{}.meta.json' from 'target/assets_temp/font_test' to '{}'",
+                &font_name,
+                &font_name,
+                path_without_filename(&font_filepath)
+            );
+        }
+    }
+
+    result
 }
 
-fn load_font_styles() -> Vec<BitmapFontStyle> {
-    // Load styles from styles file
-    let mut result_styles: Vec<BitmapFontStyle> = {
-        let font_styles_filepath = "assets/fonts/font_styles.json";
-        let font_styles_str = std::fs::read_to_string(font_styles_filepath).expect(&format!(
-            "Missing font styles file '{}'",
-            font_styles_filepath
-        ));
-        serde_json::from_str(&font_styles_str).expect(&format!(
-            "Cannot read font styles file '{}'",
-            font_styles_filepath
-        ))
-    };
+fn collect_font_drawstyles(font_drawstyles_filepath: &str) -> Vec<BitmapFontDrawStyle> {
+    // Load styles from styles file if it exists
+    if path_exists(font_drawstyles_filepath) {
+        return deserialize_from_json_file(font_drawstyles_filepath);
+    }
 
-    // Add default fonts styles
+    // Create default fonts styles file
+    let mut result = Vec::new();
     let default_color_glyph = PixelRGBA::new(255, 255, 255, 255);
     let default_color_border = PixelRGBA::new(0, 0, 0, 255);
-    result_styles.push(BitmapFontStyle {
+    result.push(BitmapFontDrawStyle {
         fontname: font::FONT_DEFAULT_TINY_NAME.to_owned(),
         bordered: false,
         color_glyph: default_color_glyph,
         color_border: default_color_border,
     });
-    result_styles.push(BitmapFontStyle {
+    result.push(BitmapFontDrawStyle {
         fontname: font::FONT_DEFAULT_TINY_NAME.to_owned(),
         bordered: true,
         color_glyph: default_color_glyph,
         color_border: default_color_border,
     });
 
-    result_styles
+    serialize_to_json_file(&result, font_drawstyles_filepath);
+
+    result
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -512,19 +477,12 @@ fn sprite_create_from_glyph(
     // actually pack the sprites into atlas textures
     AssetSprite {
         name: sprite_name.to_owned(),
-
         has_translucency: false,
-
         atlas_texture_index: std::u32::MAX,
-
         pivot_offset: Vec2i::zero(),
-
         attachment_points: [Vec2i::zero(); SPRITE_ATTACHMENT_POINTS_MAX_COUNT],
-
         untrimmed_dimensions: glyph_rect.dim,
-
         trimmed_rect: glyph_rect,
-
         trimmed_uvs: Recti::from_xy_width_height(
             glyph_atlas_pos.x,
             glyph_atlas_pos.y,
@@ -537,7 +495,6 @@ fn sprite_create_from_glyph(
 fn create_sheet_from_ttf(
     font_name: &str,
     font_ttf_bytes: &[u8],
-    output_dir: &str,
     height_in_pixels: i32,
     raster_offset: Vec2,
     draw_border: bool,
@@ -545,10 +502,6 @@ fn create_sheet_from_ttf(
     color_border: PixelRGBA,
 ) -> GraphicsSheet {
     let font_name = font_name.to_owned() + if draw_border { "_bordered" } else { "" };
-
-    let output_filepath_without_extension = path_join(output_dir, &font_name);
-    let output_filepath_png = output_filepath_without_extension.to_owned() + ".png";
-
     let border_thickness = if draw_border { 1 } else { 0 };
 
     // Create font and atlas
@@ -563,11 +516,14 @@ fn create_sheet_from_ttf(
         color_border,
     );
     let (font_atlas_texture, font_atlas_glyph_positions) = font.to_bitmap_atlas(&font_name);
-    Bitmap::write_to_png_file(&font_atlas_texture, &output_filepath_png);
+
+    // Human readable output
+    let output_png_filepath = format!("target/assets_temp/fonts/{}.png", font_name);
+    font_atlas_texture.write_to_png_file(&output_png_filepath);
 
     // Create sprites and glyphs
     let mut result_glyphs: IndexMap<Codepoint, AssetGlyph> = IndexMap::new();
-    let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
+    let mut result_sprites: IndexMap<ResourceName, AssetSprite> = IndexMap::new();
     for glyph in font.glyphs.values() {
         let codepoint = glyph.codepoint as Codepoint;
         let sprite_name = BitmapFont::get_glyph_name(&font_name, glyph.codepoint as Codepoint);
@@ -637,7 +593,7 @@ fn convert_sprite(sprite: &AssetSprite, atlas_texture_size: u32) -> Sprite {
 
 fn convert_sprite_3d(
     sprite: &AssetSprite3D,
-    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
+    final_sprites_by_name: &IndexMap<ResourceName, Sprite>,
 ) -> Sprite3D {
     let layers = sprite
         .layer_sprite_names
@@ -652,7 +608,7 @@ fn convert_sprite_3d(
 
 fn convert_glyph(
     glyph: &AssetGlyph,
-    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
+    final_sprites_by_name: &IndexMap<ResourceName, Sprite>,
 ) -> SpriteGlyph {
     SpriteGlyph {
         horizontal_advance: glyph.horizontal_advance,
@@ -664,7 +620,7 @@ fn convert_glyph(
 
 fn convert_font(
     font: &AssetFont,
-    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
+    final_sprites_by_name: &IndexMap<ResourceName, Sprite>,
 ) -> SpriteFont {
     let mut ascii_glyphs: Vec<SpriteGlyph> =
         vec![SpriteGlyph::default(); FONT_MAX_NUM_FASTPATH_CODEPOINTS];
@@ -693,7 +649,7 @@ fn convert_font(
 
 fn convert_animation(
     anim: &AssetAnimation,
-    final_sprites_by_name: &IndexMap<Spritename, Sprite>,
+    final_sprites_by_name: &IndexMap<ResourceName, Sprite>,
 ) -> Animation<Sprite> {
     assert!(anim.sprite_names.len() == anim.frame_durations_ms.len());
     let mut anim_result = Animation::new_empty(anim.name.clone());
@@ -710,7 +666,7 @@ fn convert_animation(
 
 fn convert_animation_3d(
     anim_3d: &AssetAnimation3D,
-    final_sprites_by_name_3d: &IndexMap<Spritename3D, Sprite3D>,
+    final_sprites_by_name_3d: &IndexMap<ResourceName, Sprite3D>,
 ) -> Animation<Sprite3D> {
     assert!(anim_3d.sprite_names.len() == anim_3d.frame_durations_ms.len());
     let mut anim_result = Animation::new_empty(anim_3d.name.clone());
@@ -972,12 +928,12 @@ fn main() {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct GraphicsSheet {
-    images: IndexMap<Imagename, Bitmap>,
-    fonts: IndexMap<Fontname, AssetFont>,
-    sprites: IndexMap<Spritename, AssetSprite>,
-    sprites_3d: IndexMap<Spritename3D, AssetSprite3D>,
-    animations: IndexMap<Animationname, AssetAnimation>,
-    animations_3d: IndexMap<Animationname3D, AssetAnimation3D>,
+    images: IndexMap<ResourceName, Bitmap>,
+    fonts: IndexMap<ResourceName, AssetFont>,
+    sprites: IndexMap<ResourceName, AssetSprite>,
+    sprites_3d: IndexMap<ResourceName, AssetSprite3D>,
+    animations: IndexMap<ResourceName, AssetAnimation>,
+    animations_3d: IndexMap<ResourceName, AssetAnimation3D>,
 }
 
 impl GraphicsSheet {
@@ -1113,12 +1069,12 @@ impl GraphicsSheet {
         }
 
         // Convert resources into final format
-        let sprites: IndexMap<Spritename, Sprite> = self
+        let sprites: IndexMap<ResourceName, Sprite> = self
             .sprites
             .iter()
             .map(|(name, sprite)| (name.clone(), convert_sprite(&sprite, textures_dimension)))
             .collect();
-        let sprites_3d: IndexMap<Spritename3D, Sprite3D> = self
+        let sprites_3d: IndexMap<ResourceName, Sprite3D> = self
             .sprites_3d
             .iter()
             .map(|(name, sprite)| (name.clone(), convert_sprite_3d(&sprite, &sprites)))

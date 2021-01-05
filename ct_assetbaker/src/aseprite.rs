@@ -1,48 +1,37 @@
-use crate::{GraphicsSheet, Imagename};
-
-use super::{
-    Animationname, Animationname3D, AssetAnimation, AssetAnimation3D, AssetSprite, AssetSprite3D,
-    Spritename, Spritename3D,
+use crate::{
+    AssetAnimation, AssetAnimation3D, AssetSprite, AssetSprite3D, GraphicsSheet, ResourceName,
 };
 
-use super::core::indexmap::indexmap;
-use super::core::indexmap::IndexMap;
-use super::core::serde_derive::Deserialize;
-use super::core::serde_json;
-use super::core::*;
-use super::draw::*;
-use super::image::*;
-use super::math::*;
+use crate::core::indexmap::indexmap;
+use crate::core::indexmap::IndexMap;
+use crate::core::serde_derive::Deserialize;
+use crate::core::serde_json;
+use crate::core::*;
+use crate::draw::*;
+use crate::image::*;
+use crate::math::*;
 
 use rayon::prelude::*;
 use std::collections::HashSet;
 
-pub fn create_sheet(
-    image_filepath: &str,
-    sheet_name: &str,
-    output_filepath_without_extension: &str,
-) -> GraphicsSheet {
-    let (images, sprites, sprites_3d, animations, animations_3d) =
-        if image_filepath.ends_with("_3d.ase") {
-            create_sheet_animations_3d(
-                image_filepath,
-                sheet_name,
-                output_filepath_without_extension,
-            )
-        } else {
-            let (images, sprites, animations) = create_sheet_animations_2d(
-                image_filepath,
-                sheet_name,
-                output_filepath_without_extension,
-            );
-            (
-                images,
-                sprites,
-                IndexMap::new(),
-                animations,
-                IndexMap::new(),
-            )
-        };
+pub fn create_sheet(image_filepath: &str, sheet_name: &str) -> GraphicsSheet {
+    std::fs::create_dir_all("target/assets_temp/sprites")
+        .expect("Cannot create 'target/assets_temp/sprites");
+
+    let (images, sprites, sprites_3d, animations, animations_3d) = if image_filepath
+        .ends_with("_3d.ase")
+    {
+        create_sheet_animations_3d(image_filepath, sheet_name)
+    } else {
+        let (images, sprites, animations) = create_sheet_animations_2d(image_filepath, sheet_name);
+        (
+            images,
+            sprites,
+            IndexMap::new(),
+            animations,
+            IndexMap::new(),
+        )
+    };
 
     GraphicsSheet {
         images,
@@ -57,13 +46,12 @@ pub fn create_sheet(
 pub fn create_sheet_animations_3d(
     image_filepath: &str,
     sheet_name: &str,
-    output_filepath_without_extension: &str,
 ) -> (
-    IndexMap<Imagename, Bitmap>,
-    IndexMap<Spritename, AssetSprite>,
-    IndexMap<Spritename3D, AssetSprite3D>,
-    IndexMap<Animationname, AssetAnimation>,
-    IndexMap<Animationname3D, AssetAnimation3D>,
+    IndexMap<ResourceName, Bitmap>,
+    IndexMap<ResourceName, AssetSprite>,
+    IndexMap<ResourceName, AssetSprite3D>,
+    IndexMap<ResourceName, AssetAnimation>,
+    IndexMap<ResourceName, AssetAnimation3D>,
 ) {
     let stack_layer_count = {
         // NOTE: This block is mainly for validation
@@ -107,26 +95,25 @@ pub fn create_sheet_animations_3d(
         layers.len()
     };
 
+    let output_filepath_without_extension = format!("target/assets_temp/sprites/{}", sheet_name);
+
     // Split out each of the 3D sprites stack layers into their own files and process each
     // separately
-    let mut result_images: IndexMap<Imagename, Bitmap> = IndexMap::new();
-    let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
-    let mut result_animations: IndexMap<Animationname, AssetAnimation> = IndexMap::new();
+    let mut result_images: IndexMap<ResourceName, Bitmap> = IndexMap::new();
+    let mut result_sprites: IndexMap<ResourceName, AssetSprite> = IndexMap::new();
+    let mut result_animations: IndexMap<ResourceName, AssetAnimation> = IndexMap::new();
     let sprites_and_animations: Vec<(
-        IndexMap<Imagename, Bitmap>,
-        IndexMap<Spritename, AssetSprite>,
-        IndexMap<Animationname, AssetAnimation>,
+        IndexMap<ResourceName, Bitmap>,
+        IndexMap<ResourceName, AssetSprite>,
+        IndexMap<ResourceName, AssetAnimation>,
     )> = (0..stack_layer_count)
         .into_par_iter()
         .map(|current_stack_layer| {
-            let stack_layer_sheet_name =
-                sheet_name.to_string() + "#" + &current_stack_layer.to_string();
-            let stack_layer_output_filepath_without_extension = output_filepath_without_extension
-                .to_string()
-                + "#"
-                + &current_stack_layer.to_string();
-            let stack_layer_image_filepath =
-                stack_layer_output_filepath_without_extension.clone() + ".ase";
+            let stack_layer_sheet_name = format!("{}#{}", sheet_name, current_stack_layer);
+            let stack_layer_image_filepath = format!(
+                "{}#{}.ase",
+                output_filepath_without_extension, current_stack_layer
+            );
 
             let mut command = String::from("aseprite") + " --batch ";
             for ignored_stack_layer in 0..stack_layer_count {
@@ -147,11 +134,7 @@ pub fn create_sheet_animations_3d(
                 stack_layer_image_filepath
             );
 
-            create_sheet_animations_2d(
-                &stack_layer_image_filepath,
-                &stack_layer_sheet_name,
-                &stack_layer_output_filepath_without_extension,
-            )
+            create_sheet_animations_2d(&stack_layer_image_filepath, &stack_layer_sheet_name)
         })
         .collect();
     for (images, sprites, animations) in sprites_and_animations {
@@ -161,7 +144,7 @@ pub fn create_sheet_animations_3d(
     }
 
     // 3D-Sprites
-    let mut result_sprites_3d: IndexMap<Spritename3D, AssetSprite3D> = IndexMap::new();
+    let mut result_sprites_3d: IndexMap<ResourceName, AssetSprite3D> = IndexMap::new();
     assert!(
         result_sprites.len() % stack_layer_count == 0,
         "Sprite count {} is not a multiple of stack layer count {} in 3D sprite '{}'",
@@ -189,7 +172,7 @@ pub fn create_sheet_animations_3d(
     }
 
     // 3D-Animations
-    let mut result_animations_3d: IndexMap<Animationname3D, AssetAnimation3D> = IndexMap::new();
+    let mut result_animations_3d: IndexMap<ResourceName, AssetAnimation3D> = IndexMap::new();
     assert!(
         result_animations.len() % stack_layer_count == 0,
         "Animation count {} is not a multiple of stack layer count {} in 3D sprite '{}'",
@@ -255,14 +238,14 @@ pub fn create_sheet_animations_3d(
 pub fn create_sheet_animations_2d(
     image_filepath: &str,
     sheet_name: &str,
-    output_path_without_extension: &str,
 ) -> (
-    IndexMap<Imagename, Bitmap>,
-    IndexMap<Spritename, AssetSprite>,
-    IndexMap<Animationname, AssetAnimation>,
+    IndexMap<ResourceName, Bitmap>,
+    IndexMap<ResourceName, AssetSprite>,
+    IndexMap<ResourceName, AssetAnimation>,
 ) {
-    let output_path_image = output_path_without_extension.to_string() + ".png";
-    let output_path_meta = output_path_without_extension.to_string() + ".json";
+    let output_path_without_extension = format!("target/assets_temp/sprites/{}", sheet_name);
+    let output_path_image = output_path_without_extension.clone() + ".png";
+    let output_path_meta = output_path_without_extension.clone() + ".json";
 
     aseprite_run_sheet_packer(&image_filepath, &output_path_image, &output_path_meta);
     let result_images =
@@ -363,7 +346,7 @@ pub fn create_sheet_animations_2d(
     }
 
     // Create sprites
-    let mut result_sprites: IndexMap<Spritename, AssetSprite> = IndexMap::new();
+    let mut result_sprites: IndexMap<ResourceName, AssetSprite> = IndexMap::new();
     for (frame_index, frame) in meta.frames.iter().enumerate() {
         let sprite_name = sprite_name_for_frameindex(&sheet_name, frame_index);
 
@@ -397,11 +380,11 @@ pub fn create_sheet_animations_2d(
     };
 
     // Create animations
-    let mut result_animations: IndexMap<Animationname, AssetAnimation> = IndexMap::new();
+    let mut result_animations: IndexMap<ResourceName, AssetAnimation> = IndexMap::new();
     for frametag in frametags {
         let animation_name = sheet_name.to_string() + ":" + &frametag.name;
 
-        let mut sprite_names: Vec<Spritename> = Vec::new();
+        let mut sprite_names: Vec<ResourceName> = Vec::new();
         let mut frame_durations_ms: Vec<u32> = Vec::new();
         for frame_index in frametag.from..=frametag.to {
             let sprite_name = sprite_name_for_frameindex(&sheet_name, frame_index as usize);
@@ -422,7 +405,7 @@ pub fn create_sheet_animations_2d(
     (result_images, result_sprites, result_animations)
 }
 
-fn sprite_name_for_frameindex(sheet_name: &str, frame_index: usize) -> Spritename {
+fn sprite_name_for_frameindex(sheet_name: &str, frame_index: usize) -> ResourceName {
     format!("{}.{}", sheet_name, frame_index)
 }
 
@@ -430,7 +413,7 @@ fn sprite_name_for_frameindex_and_stack_layer(
     sheet_name: &str,
     stack_layer_index: usize,
     frame_index: usize,
-) -> Spritename {
+) -> ResourceName {
     format!("{}#{}.{}", sheet_name, stack_layer_index, frame_index)
 }
 

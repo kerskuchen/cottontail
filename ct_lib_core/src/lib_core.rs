@@ -148,7 +148,7 @@ where
 {
     let file_content = platform::read_file_whole(filepath).unwrap_or_else(|error| {
         panic!(
-            "Could not open binary file '{}' for deserialization: {}",
+            "Could not open json file '{}' for deserialization: {}",
             filepath, error
         )
     });

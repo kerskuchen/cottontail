@@ -22,7 +22,6 @@ impl Default for AssetLoadingStage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioMetadata {
     pub resource_name: ResourceName,
-    pub original_filepath: String,
     pub samplerate_hz: usize,
     pub framecount: usize,
     pub channelcount: usize,
