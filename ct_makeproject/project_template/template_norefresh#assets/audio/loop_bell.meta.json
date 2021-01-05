@@ -1,5 +1,5 @@
 {
-  "resource_name": "audio/loop_bell",
+  "resource_name": "loop_bell",
   "samplerate_hz": 44100,
   "framecount": 75600,
   "channelcount": 1,

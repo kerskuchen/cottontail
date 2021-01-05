@@ -1,5 +1,5 @@
 {
-  "resource_name": "audio/bg_title",
+  "resource_name": "bg_title",
   "samplerate_hz": 44100,
   "framecount": 75600,
   "channelcount": 2,

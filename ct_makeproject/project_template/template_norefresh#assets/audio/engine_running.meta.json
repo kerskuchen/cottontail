@@ -1,5 +1,5 @@
 {
-  "resource_name": "audio/engine_running",
+  "resource_name": "engine_running",
   "samplerate_hz": 44100,
   "framecount": 203789,
   "channelcount": 1,
