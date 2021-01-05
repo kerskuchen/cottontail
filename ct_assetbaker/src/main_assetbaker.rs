@@ -18,7 +18,7 @@ use game::*;
 use image::*;
 use math::*;
 
-use rayon::{prelude::*, result};
+use rayon::prelude::*;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -886,17 +886,16 @@ fn main() {
     }));
 
     recreate_directory("target/assets_temp");
-    recreate_directory("target/assets_temp/audio");
-    recreate_directory("target/assets_temp/graphics");
-    recreate_directory("resources");
-    recreate_directory("resources_executable");
 
     if path_exists("assets") && !path_dir_empty("assets") {
+        recreate_directory("resources");
+
         if path_exists("assets/credits.txt") {
+            recreate_directory("target/assets_temp/content");
             create_credits_file(
                 "assets/credits.txt",
                 &["assets", "assets_copy", "assets_executable", "cottontail"],
-                "resources/credits.txt",
+                "target/assets_temp/content/credits.txt",
             );
         } else {
             log::warn!("No credits file found at 'assets/credits.txt'")
@@ -907,17 +906,10 @@ fn main() {
         bake_audio_resources("audio_wasm", 22050);
     }
 
-    if path_exists("assets_copy") {
-        path_copy_directory_contents_recursive("assets_copy", "resources");
-        // Delete license files that got accidentally copied over to output path.
-        // NOTE: We don't need those because we will create a credits file containing all licenses
-        for license_path in collect_files_by_extension_recursive("resources", ".license") {
-            std::fs::remove_file(&license_path)
-                .expect(&format!("Cannot delete '{}'", &license_path));
-        }
-    }
+    // Process icons and executable resource info
+    if path_exists("assets_executable") && !path_dir_empty("assets_executable") {
+        recreate_directory("resources_executable");
 
-    if path_exists("assets_executable") {
         // Copy version info
         if path_exists("assets_executable/versioninfo.rc") {
             std::fs::copy(
@@ -944,14 +936,45 @@ fn main() {
         }
     }
 
-    // Write indexfile
-    let mut filelist_content = String::new();
-    let filelist = collect_files_recursive("resources");
-    for filepath in &filelist {
-        filelist_content += &format!("{}\n", filepath);
+    // Add remaining files as content data
+    let mut content_filepaths = Vec::new();
+    if path_exists("assets") {
+        content_filepaths.extend(collect_files_recursive("assets"));
     }
-    std::fs::write("resources/index.txt", filelist_content.as_bytes())
-        .expect("Could not write indexfile to 'resources/index.txt'");
+    if path_exists("assets_copy") {
+        content_filepaths.extend(collect_files_recursive("assets_copy"));
+    }
+    if !content_filepaths.is_empty() {
+        let mut contents: HashMap<String, Vec<u8>> = HashMap::new();
+        for filepath in &content_filepaths {
+            if filepath.ends_with(".wav")
+                || filepath.ends_with(".ogg")
+                || filepath.ends_with(".png")
+                || filepath.ends_with(".ase")
+                || filepath.ends_with(".license")
+                || filepath.ends_with(".audiometa.json")
+                || filepath.ends_with(".fontmeta.json")
+                || filepath.ends_with(".ttf")
+                || filepath.ends_with("font_drawstyles.json")
+                || filepath.ends_with("credits.txt")
+            {
+                // We already processed the above files types by other means
+                continue;
+            }
+
+            let content_filename = path_to_filename(&filepath);
+            let content_data = read_file_whole(&filepath).unwrap();
+
+            // Copy file to human readable location
+            path_copy_file(
+                &filepath,
+                &format!("target/assets_temp/content/{}", &content_filename),
+            );
+
+            contents.insert(content_filename, content_data);
+        }
+        serialize_to_binary_file(&contents, "resources/content.data");
+    }
 
     log::info!(
         "ASSETS SUCCESSFULLY BAKED: Elapsed time: {:.3}s",
@@ -1062,6 +1085,7 @@ impl GraphicsSheet {
         }
 
         // HUMAN READABLE OUTPUT
+        recreate_directory("target/assets_temp/graphics");
         let human_readable_sprites: Vec<AssetSprite> = self.sprites.values().cloned().collect();
         serialize_to_json_file(
             &human_readable_sprites,

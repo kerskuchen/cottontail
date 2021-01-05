@@ -3,7 +3,7 @@
 - simplifies font asset baking by creating default metadata files if missing
 - removes relative paths from asset names (this has the consequence that every resource of the same
   type needs to have a unique name)
-- checks for audio metadata files without corresponding audio file
+- assetbaker now checks for font and audio metadata files without corresponding font/audio file
 
 # CURRENT
 
