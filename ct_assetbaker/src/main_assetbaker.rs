@@ -945,7 +945,6 @@ fn main() {
         content_filepaths.extend(collect_files_recursive("assets_copy"));
     }
     if !content_filepaths.is_empty() {
-        let mut contents: HashMap<String, Vec<u8>> = HashMap::new();
         for filepath in &content_filepaths {
             if filepath.ends_with(".wav")
                 || filepath.ends_with(".ogg")
@@ -963,14 +962,18 @@ fn main() {
             }
 
             let content_filename = path_to_filename(&filepath);
-            let content_data = read_file_whole(&filepath).unwrap();
 
             // Copy file to human readable location
             path_copy_file(
                 &filepath,
                 &format!("target/assets_temp/content/{}", &content_filename),
             );
+        }
 
+        let mut contents: HashMap<String, Vec<u8>> = HashMap::new();
+        for filepath in &collect_files_recursive("target/assets_temp/content") {
+            let content_filename = path_to_filename(&filepath);
+            let content_data = read_file_whole(&filepath).unwrap();
             contents.insert(content_filename, content_data);
         }
         serialize_to_binary_file(&contents, "resources/content.data");

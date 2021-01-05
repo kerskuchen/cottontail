@@ -4,6 +4,7 @@
 - removes relative paths from asset names (this has the consequence that every resource of the same
   type needs to have a unique name)
 - assetbaker now checks for font and audio metadata files without corresponding font/audio file
+- adds content.data resource pack
 
 # CURRENT
 
@@ -23,7 +24,6 @@
 
 
 ## improve asset baking/loading
-- use resources packs instead of raw file download (like we used for audio)
 - use prelude graphics pack that loads quickly to show splashscreen
 - refactor gamememory/audio/draw/asset initialization to 
   - allow hotloading of assets

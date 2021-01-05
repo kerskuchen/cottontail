@@ -110,6 +110,7 @@ pub struct GameAssets {
 
     pub audio: AudioResources,
     pub graphics: GraphicsResources,
+    pub content: HashMap<String, Vec<u8>>,
 
     decoded_audio_recordings: HashMap<ResourceName, Rc<RefCell<AudioRecording>>>,
     decoded_bitmap_textures: Vec<Rc<RefCell<Bitmap>>>,
@@ -131,6 +132,7 @@ impl Clone for GameAssets {
 
         result.audio = self.audio.clone();
         result.graphics = self.graphics.clone();
+        result.content = self.content.clone();
 
         result
     }
@@ -150,6 +152,12 @@ impl GameAssets {
                 self.files_loaders.insert(
                     graphics_filepath.clone(),
                     Fileloader::new(&graphics_filepath).unwrap(),
+                );
+
+                let content_filepath = path_join(&self.assets_folder, "content.data");
+                self.files_loaders.insert(
+                    content_filepath.clone(),
+                    Fileloader::new(&content_filepath).unwrap(),
                 );
 
                 #[cfg(target_arch = "wasm32")]
@@ -186,6 +194,10 @@ impl GameAssets {
                             self.audio = bincode::deserialize(&content)
                                 .expect("Could not deserialize 'audio.data' (file corrupt?)");
                             log::info!("Loaded audio resources");
+                        } else if filepath == &path_join(&self.assets_folder, "content.data") {
+                            self.content = bincode::deserialize(&content)
+                                .expect("Could not deserialize 'content.data' (file corrupt?)");
+                            log::info!("Loaded content resources");
                         } else {
                             unreachable!("Loaded unknown file '{}'", filepath);
                         }
@@ -341,6 +353,12 @@ impl GameAssets {
             .sprites
             .insert(sprite_name.clone(), sprite.clone());
         sprite
+    }
+
+    pub fn get_content_filedata(&self, filename: &str) -> &[u8] {
+        self.content
+            .get(filename)
+            .unwrap_or_else(|| panic!("Could not find file '{}'", filename))
     }
 
     pub fn get_anim(&self, animation_name: &str) -> &Animation<Sprite> {
