@@ -1,7 +1,6 @@
 {
-  "resource_name": "drum",
   "samplerate_hz": 44100,
-  "framecount": 13230,
+  "framecount": 203789,
   "channelcount": 1,
   "compression_quality": 5,
   "loopsection_start_frameindex": null,

@@ -1,7 +1,6 @@
 {
-  "resource_name": "engine_running",
   "samplerate_hz": 44100,
-  "framecount": 203789,
+  "framecount": 13230,
   "channelcount": 1,
   "compression_quality": 5,
   "loopsection_start_frameindex": null,

@@ -1,7 +1,6 @@
 {
-  "resource_name": "engine_standing",
   "samplerate_hz": 44100,
-  "framecount": 203694,
+  "framecount": 75600,
   "channelcount": 1,
   "compression_quality": 5,
   "loopsection_start_frameindex": null,

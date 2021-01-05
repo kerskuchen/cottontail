@@ -21,7 +21,6 @@ impl Default for AssetLoadingStage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioMetadata {
-    pub resource_name: ResourceName,
     pub samplerate_hz: usize,
     pub framecount: usize,
     pub channelcount: usize,
@@ -295,7 +294,7 @@ impl GameAssets {
             .map(|(resource_name, metadata)| {
                 let ogg_data = &self.audio.recordings_ogg_data[resource_name];
                 let recording = AudioRecording::new_from_ogg_stream_with_loopsection(
-                    metadata.resource_name.clone(),
+                    resource_name.clone(),
                     metadata.framecount,
                     ogg_data.clone(),
                     metadata.loopsection_start_frameindex.unwrap_or(0),

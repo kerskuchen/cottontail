@@ -1,8 +1,7 @@
 {
-  "resource_name": "bg_title",
   "samplerate_hz": 44100,
-  "framecount": 75600,
-  "channelcount": 2,
+  "framecount": 203694,
+  "channelcount": 1,
   "compression_quality": 5,
   "loopsection_start_frameindex": null,
   "loopsection_framecount": null

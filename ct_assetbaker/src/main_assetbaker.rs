@@ -173,13 +173,33 @@ fn bake_graphics_resources() {
 fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {
     let mut audio_resources = AudioResources::new(audio_sample_rate_hz);
 
+    // Search assets folder for metadata files without corresponding audio files
+    for filepath in &collect_files_recursive("assets") {
+        if !filepath.ends_with(".audiometa.json") {
+            // This is no audio metadata file
+            continue;
+        }
+
+        let corresponding_audio_filepath_wav = filepath.replace(".audiometa.json", ".wav");
+        let corresponding_audio_filepath_ogg = filepath.replace(".audiometa.json", ".ogg");
+        if !path_exists(&corresponding_audio_filepath_wav)
+            && !path_exists(&corresponding_audio_filepath_ogg)
+        {
+            panic!(
+                "Found audio metadata file '{}' without corresponding .wav or .ogg file",
+                filepath
+            );
+        }
+    }
+
+    // Collect and process audio files
     for filepath in &collect_files_recursive("assets") {
         if !filepath.ends_with(".wav") && !filepath.ends_with(".ogg") {
             continue;
         }
 
         let resource_name = path_to_filename_without_extension(filepath);
-        let metadata_path = path_with_extension(filepath, ".meta.json");
+        let metadata_path = path_with_extension(filepath, ".audiometa.json");
         let recreate_metadata = if path_exists(&metadata_path) {
             let last_modified_time = path_last_modified_time(filepath);
             let metadata_last_modified_time = path_last_modified_time(&metadata_path);
@@ -197,7 +217,6 @@ fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {
             let framecount = audiochunk.len();
 
             let original = AudioMetadata {
-                resource_name: resource_name.clone(),
                 samplerate_hz,
                 channelcount,
                 framecount,
@@ -347,7 +366,7 @@ fn collect_font_resources() -> IndexMap<ResourceName, BitmapFontResource> {
     let font_filepaths = collect_files_by_extension_recursive("assets", ".ttf");
     for font_filepath in font_filepaths {
         let font_name = path_to_filename_without_extension(&font_filepath);
-        let metadata_filepath = path_with_extension(&font_filepath, ".meta.json");
+        let metadata_filepath = path_with_extension(&font_filepath, ".fontmeta.json");
         let ttf_data = std::fs::read(&font_filepath)
             .expect(&format!("Cannot read font data '{}'", &font_filepath));
 
@@ -406,7 +425,7 @@ fn collect_font_resources() -> IndexMap<ResourceName, BitmapFontResource> {
 
             let metadata_filepath = path_join(
                 "target/assets_temp/font_test",
-                &(font_name.clone() + "meta.json"),
+                &(font_name.clone() + "fontmeta.json"),
             );
             serialize_to_binary_file(
                 &BitmapFontMetadata {
@@ -419,7 +438,7 @@ fn collect_font_resources() -> IndexMap<ResourceName, BitmapFontResource> {
             panic!(
                 "Font '{}' is missing its metadata - 
                  Please look at the font size test images at 'target/assets_temp/font_test' and then
-                 fill out and copy the '{}.meta.json' from 'target/assets_temp/font_test' to '{}'",
+                 fill out and copy the '{}.fontmeta.json' from 'target/assets_temp/font_test' to '{}'",
                 &font_name,
                 &font_name,
                 path_without_filename(&font_filepath)
