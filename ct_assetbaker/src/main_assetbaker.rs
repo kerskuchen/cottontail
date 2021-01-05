@@ -169,20 +169,33 @@ fn bake_graphics_resources() {
 
     result_sheet.pack_and_serialize("graphics", 1024);
 
+    // Create minimal prelude graphics sheet that starts up fast and only shows splashscreen
     if path_exists("assets_executable") {
-        // Create minimal prelude graphics sheet that starts up fast and only shows splashscreen
         let mut prelude_sheet = GraphicsSheet::new_empty();
+
         let splashscreen_sheet =
             aseprite::create_sheet("assets_executable/splashscreen.png", "splashscreen");
-        prelude_sheet.extend_by(splashscreen_sheet);
+        // Create fonts and its correspronding sprites
+        let default_font_sheet = create_sheet_from_ttf(
+            FONT_DEFAULT_TINY_NAME,
+            FONT_DEFAULT_TINY_TTF,
+            FONT_DEFAULT_TINY_PIXEL_HEIGHT,
+            FONT_DEFAULT_TINY_RASTER_OFFSET,
+            true,
+            PixelRGBA::white(),
+            PixelRGBA::black(),
+        );
+        prelude_sheet.extend_by(default_font_sheet);
         prelude_sheet.extend_by(untextured_sheet);
+        prelude_sheet.extend_by(splashscreen_sheet);
 
-        let splashscreen_bitmap =
-            Bitmap::from_png_file_or_panic("assets_executable/splashscreen.png");
         let texture_size = {
-            let texture_size =
-                i32::max(splashscreen_bitmap.width, splashscreen_bitmap.height) as u32;
-            // NOTE: +1 to make sure our untextured 1x1 pixel sprite fits in as well
+            // TODO: Make packing smarter by working its texture size by itself
+            let texture_size = prelude_sheet
+                .images
+                .values()
+                .fold(0, |_max_size, image| i32::max(image.width, image.height))
+                as u32;
             (texture_size + 1).next_power_of_two()
         };
         prelude_sheet.pack_and_serialize("graphics_splash", texture_size);

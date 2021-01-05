@@ -24,6 +24,7 @@
 # NEXT:
 
 
+- Make texture packer more smart and calculating its max texture size on its own
 
 ## improve asset baking/loading
 - use prelude graphics pack that loads quickly to show splashscreen
