@@ -15,6 +15,7 @@
   - NOTE: Our dungeontracks and many other games like Celeste and Downwell don't use pixel smoothing
           and it looks ok!
 - gets rid of screenspace blit offset because it adds too much complexity
+- bake a minimal graphics pack with splashscreen only
 
 # CURRENT
 

@@ -165,9 +165,28 @@ fn bake_graphics_resources() {
     let untextured = Bitmap::new_filled(1, 1, PixelRGBA::white());
     untextured.write_to_png_file(&untextured_path);
     let untextured_sheet = aseprite::create_sheet(&untextured_path, &untextured_name);
-    result_sheet.extend_by(untextured_sheet);
+    result_sheet.extend_by(untextured_sheet.clone());
 
-    result_sheet.pack_and_serialize(1024);
+    result_sheet.pack_and_serialize("graphics", 1024);
+
+    if path_exists("assets_executable") {
+        // Create minimal prelude graphics sheet that starts up fast and only shows splashscreen
+        let mut prelude_sheet = GraphicsSheet::new_empty();
+        let splashscreen_sheet =
+            aseprite::create_sheet("assets_executable/splashscreen.png", "splashscreen");
+        prelude_sheet.extend_by(splashscreen_sheet);
+        prelude_sheet.extend_by(untextured_sheet);
+
+        let splashscreen_bitmap =
+            Bitmap::from_png_file_or_panic("assets_executable/splashscreen.png");
+        let texture_size = {
+            let texture_size =
+                i32::max(splashscreen_bitmap.width, splashscreen_bitmap.height) as u32;
+            // NOTE: +1 to make sure our untextured 1x1 pixel sprite fits in as well
+            (texture_size + 1).next_power_of_two()
+        };
+        prelude_sheet.pack_and_serialize("graphics_splash", texture_size);
+    }
 }
 
 fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {
@@ -988,6 +1007,7 @@ fn main() {
 //==================================================================================================
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Clone)]
 pub struct GraphicsSheet {
     images: IndexMap<ResourceName, Bitmap>,
     fonts: IndexMap<ResourceName, AssetFont>,
@@ -1018,7 +1038,11 @@ impl GraphicsSheet {
         self.animations_3d.extend(other.animations_3d);
     }
 
-    fn pack_and_serialize(mut self, atlas_texture_size: u32) {
+    fn pack_and_serialize(mut self, pack_name: &str, atlas_texture_size: u32) {
+        let pack_temp_out_dir = format!("target/assets_temp/{}", pack_name);
+        let pack_out_filepath = format!("resources/{}.data", pack_name);
+        recreate_directory(&pack_temp_out_dir);
+
         // Pack textures
         let (textures, sprite_positions) = {
             let mut packer = BitmapMultiAtlas::new(atlas_texture_size);
@@ -1088,39 +1112,38 @@ impl GraphicsSheet {
         }
 
         // HUMAN READABLE OUTPUT
-        recreate_directory("target/assets_temp/graphics");
         let human_readable_sprites: Vec<AssetSprite> = self.sprites.values().cloned().collect();
         serialize_to_json_file(
             &human_readable_sprites,
-            "target/assets_temp/graphics/sprites.json",
+            &path_join(&pack_temp_out_dir, "sprites.json"),
         );
         let human_readable_sprites_3d: Vec<AssetSprite3D> =
             self.sprites_3d.values().cloned().collect();
         serialize_to_json_file(
             &human_readable_sprites_3d,
-            "target/assets_temp/graphics/sprites_3d.json",
+            &path_join(&pack_temp_out_dir, "sprites_3d.json"),
         );
         let human_readable_fonts: Vec<AssetFont> = self.fonts.values().cloned().collect();
         serialize_to_json_file(
             &human_readable_fonts,
-            "target/assets_temp/graphics/fonts.json",
+            &path_join(&pack_temp_out_dir, "fonts.json"),
         );
         let human_readable_animations: Vec<AssetAnimation> =
             self.animations.values().cloned().collect();
         serialize_to_json_file(
             &human_readable_animations,
-            "target/assets_temp/graphics/animations.json",
+            &path_join(&pack_temp_out_dir, "animations.json"),
         );
         let human_readable_animations_3d: Vec<AssetAnimation3D> =
             self.animations_3d.values().cloned().collect();
         serialize_to_json_file(
             &human_readable_animations_3d,
-            "target/assets_temp/graphics/animations_3d.json",
+            &path_join(&pack_temp_out_dir, "animations_3d.json"),
         );
         for (index, png_data) in textures_png_data.iter().enumerate() {
             let texture_path = format!(
-                "target/assets_temp/graphics/atlas-{}x{}-{}.png",
-                textures_dimension, textures_dimension, index
+                "{}/atlas-{}x{}-{}.png",
+                pack_temp_out_dir, textures_dimension, textures_dimension, index
             );
             std::fs::write(&texture_path, &png_data).unwrap_or_else(|error| {
                 panic!(
@@ -1168,6 +1191,6 @@ impl GraphicsSheet {
             textures_dimension,
         };
 
-        serialize_to_binary_file(&graphics_resources, "resources/graphics.data");
+        serialize_to_binary_file(&graphics_resources, &pack_out_filepath);
     }
 }
