@@ -218,18 +218,19 @@ pub fn run_main<AppContextType: AppContextInterface>() {
     // Input
 
     let mut gamepad_subsystem = {
+        const GAME_CONTROLLER_DB: &[u8] = include_bytes!("../../resources/gamecontrollerdb.txt");
+
         let savedata_mappings_path = path_join(&savedata_dir, "gamecontrollerdb.txt");
-        let gamedata_mappings_path = "resources/gamecontrollerdb.txt".to_string();
         let gamepad_mappings = std::fs::read_to_string(&savedata_mappings_path)
             .or_else(|_error| {
                 log::info!(
                     "Could not read gamepad mappings file at '{}' - using default one",
                     savedata_mappings_path
                 );
-                std::fs::read_to_string(&gamedata_mappings_path).map_err(|error| {
+
+                String::from_utf8(GAME_CONTROLLER_DB.to_vec()).map_err(|error| {
                     log::info!(
-                        "Could not read gamepad mappings file at '{}' - game data corrupt? : {}",
-                        gamedata_mappings_path,
+                        "Could not read gamepad mappings data - game data corrupt? : {}",
                         error
                     )
                 })

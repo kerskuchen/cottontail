@@ -16,22 +16,20 @@
           and it looks ok!
 - gets rid of screenspace blit offset because it adds too much complexity
 - bake a minimal graphics pack with splashscreen only
+- move controllerdb into executable on sdl2 platform
 
 # CURRENT
 
-
+- use prelude graphics pack that loads quickly to show splashscreen
+- improve wasm startup speed (load graphic assets first to show splash screen, then later sound assets)
 
 # NEXT:
 
 
-- Make texture packer more smart and calculating its max texture size on its own
-
 ## improve asset baking/loading
-- use prelude graphics pack that loads quickly to show splashscreen
+- Make texture packer more smart and calculating its max texture size on its own
 - refactor gamememory/audio/draw/asset initialization to 
   - allow hotloading of assets
-  - improve wasm startup speed (load graphic assets first to show splash screen, 
-    then later sound assets)
 - find out why our ogg decoder decodes more frames than exist in ogg file
 
 ## renderer flexibility + speed + cleanup

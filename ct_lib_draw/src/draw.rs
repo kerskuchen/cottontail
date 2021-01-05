@@ -408,6 +408,35 @@ impl Drawstate {
         }
     }
 
+    pub fn replace_textures(
+        &mut self,
+        textures: Vec<Rc<RefCell<Bitmap>>>,
+        untextured_sprite: Sprite,
+        debug_log_font: SpriteFont,
+    ) {
+        let textures_size = textures
+            .first()
+            .expect("Drawstate: No Textures given")
+            .borrow()
+            .width as u32;
+
+        let textures_dirty = vec![true; textures.len()];
+
+        // Reserves a white pixel for special usage on the first page
+        let untextured_uv_center_coord = untextured_sprite.trimmed_uvs;
+        let untextured_uv_center_atlas_page = untextured_sprite.atlas_texture_index;
+
+        unsafe {
+            DRAWSTATE_DEBUG_LOG_FONT = Some(debug_log_font);
+        }
+
+        self.textures = textures;
+        self.textures_size = textures_size;
+        self.textures_dirty = textures_dirty;
+        self.untextured_uv_center_coord = untextured_uv_center_coord;
+        self.untextured_uv_center_atlas_page = untextured_uv_center_atlas_page;
+    }
+
     fn texturename_for_atlaspage(textures_size: u32, page_index: TextureIndex) -> String {
         format!(
             "atlas_page_{}__{}x{}",

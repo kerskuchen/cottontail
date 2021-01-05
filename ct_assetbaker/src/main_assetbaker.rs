@@ -926,7 +926,7 @@ fn main() {
             recreate_directory("target/assets_temp/content");
             create_credits_file(
                 "assets/credits.txt",
-                &["assets", "assets_copy", "assets_executable", "cottontail"],
+                &["assets", "assets_executable", "cottontail"],
                 "target/assets_temp/content/credits.txt",
             );
         } else {
@@ -972,9 +972,6 @@ fn main() {
     let mut content_filepaths = Vec::new();
     if path_exists("assets") {
         content_filepaths.extend(collect_files_recursive("assets"));
-    }
-    if path_exists("assets_copy") {
-        content_filepaths.extend(collect_files_recursive("assets_copy"));
     }
     if !content_filepaths.is_empty() {
         for filepath in &content_filepaths {

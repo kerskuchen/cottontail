@@ -6,16 +6,24 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub type ResourceName = String;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum AssetLoadingStage {
-    Start,
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AssetLoadingStage {
+    StartLoadingSplash,
+    LoadingSplash,
+    FinishedLoadingSplash,
+    WaitingToStartLoadingFiles,
+    StartLoadingFiles,
     LoadingFiles,
-    Finished,
+    FinishedLoadingFiles,
+    StartDecodingAssets,
+    DecodingAssets,
+    FinishedDecodingAssets,
+    Idle,
 }
 
 impl Default for AssetLoadingStage {
     fn default() -> Self {
-        AssetLoadingStage::Start
+        AssetLoadingStage::StartLoadingSplash
     }
 }
 
@@ -109,11 +117,13 @@ pub struct GameAssets {
     assets_folder: String,
 
     pub audio: AudioResources,
+    pub graphics_splash: GraphicsResources,
     pub graphics: GraphicsResources,
     pub content: HashMap<String, Vec<u8>>,
 
     decoded_audio_recordings: HashMap<ResourceName, Rc<RefCell<AudioRecording>>>,
-    decoded_bitmap_textures: Vec<Rc<RefCell<Bitmap>>>,
+    decoded_atlas_textures: Vec<Rc<RefCell<Bitmap>>>,
+    decoded_atlas_textures_splash: Vec<Rc<RefCell<Bitmap>>>,
 
     files_loading_stage: AssetLoadingStage,
     files_loaders: HashMap<String, Fileloader>,
@@ -145,9 +155,68 @@ impl GameAssets {
         result
     }
 
-    pub fn load_files(&mut self) -> bool {
+    pub fn update(&mut self) -> AssetLoadingStage {
         match self.files_loading_stage {
-            AssetLoadingStage::Start => {
+            AssetLoadingStage::StartLoadingSplash => {
+                let graphics_splash_filepath =
+                    path_join(&self.assets_folder, "graphics_splash.data");
+                self.files_loaders.insert(
+                    graphics_splash_filepath.clone(),
+                    Fileloader::new(&graphics_splash_filepath).unwrap(),
+                );
+
+                self.files_loading_stage = AssetLoadingStage::LoadingSplash;
+                AssetLoadingStage::StartLoadingSplash
+            }
+            AssetLoadingStage::LoadingSplash => {
+                let mut finished_loaders = Vec::new();
+
+                // Poll file loaders
+                for (filepath, loader) in self.files_loaders.iter_mut() {
+                    let poll_result = loader.poll().unwrap_or_else(|error| {
+                        panic!("Failed to get file status on '{}': {}", filepath, error)
+                    });
+
+                    if let Some(content) = poll_result {
+                        log::debug!("Loaded resource file '{}'", filepath);
+
+                        if filepath == &path_join(&self.assets_folder, "graphics_splash.data") {
+                            self.graphics_splash = bincode::deserialize(&content).expect(
+                                "Could not deserialize 'graphics_splash.data' (file corrupt?)",
+                            );
+                            log::info!("Loaded splash graphics resources");
+                        } else {
+                            unreachable!("Loaded unknown file '{}'", filepath);
+                        }
+
+                        // Mark the loader for removal
+                        finished_loaders.push(filepath.clone());
+                    }
+                }
+
+                // Remove finished file loaders
+                for path in &finished_loaders {
+                    self.files_loaders.remove(path);
+                }
+
+                if self.files_loaders.is_empty() {
+                    self.files_loading_stage = AssetLoadingStage::FinishedLoadingSplash;
+                    if self.decoded_atlas_textures_splash.is_empty() {
+                        self.decode_atlas_textures_splash();
+                    }
+                    log::info!("Finished loading splash asset files");
+                }
+                AssetLoadingStage::LoadingSplash
+            }
+            AssetLoadingStage::FinishedLoadingSplash => {
+                self.files_loading_stage = AssetLoadingStage::WaitingToStartLoadingFiles;
+                AssetLoadingStage::FinishedLoadingSplash
+            }
+            AssetLoadingStage::WaitingToStartLoadingFiles => {
+                // We wait here until our `start_loading_files` method is called
+                AssetLoadingStage::WaitingToStartLoadingFiles
+            }
+            AssetLoadingStage::StartLoadingFiles => {
                 let graphics_filepath = path_join(&self.assets_folder, "graphics.data");
                 self.files_loaders.insert(
                     graphics_filepath.clone(),
@@ -170,7 +239,7 @@ impl GameAssets {
                 );
 
                 self.files_loading_stage = AssetLoadingStage::LoadingFiles;
-                false
+                AssetLoadingStage::StartLoadingFiles
             }
             AssetLoadingStage::LoadingFiles => {
                 let mut finished_loaders = Vec::new();
@@ -213,69 +282,81 @@ impl GameAssets {
                 }
 
                 if self.files_loaders.is_empty() {
-                    self.files_loading_stage = AssetLoadingStage::Finished;
+                    self.files_loading_stage = AssetLoadingStage::FinishedLoadingFiles;
                     log::info!("Finished loading asset files");
-                    true
-                } else {
-                    false
                 }
+                AssetLoadingStage::LoadingFiles
             }
-            AssetLoadingStage::Finished => true,
+            AssetLoadingStage::FinishedLoadingFiles => {
+                self.files_loading_stage = AssetLoadingStage::StartDecodingAssets;
+                AssetLoadingStage::FinishedLoadingFiles
+            }
+            AssetLoadingStage::StartDecodingAssets => {
+                self.files_loading_stage = AssetLoadingStage::DecodingAssets;
+                AssetLoadingStage::StartDecodingAssets
+            }
+            AssetLoadingStage::DecodingAssets => {
+                if self.decoded_atlas_textures.is_empty() {
+                    self.decode_atlas_textures();
+                    return AssetLoadingStage::DecodingAssets;
+                }
+
+                if self.decoded_audio_recordings.is_empty() {
+                    self.decode_audiorecordings();
+                    return AssetLoadingStage::DecodingAssets;
+                }
+
+                self.files_loading_stage = AssetLoadingStage::FinishedDecodingAssets;
+                AssetLoadingStage::DecodingAssets
+            }
+            AssetLoadingStage::FinishedDecodingAssets => {
+                self.files_loading_stage = AssetLoadingStage::Idle;
+                AssetLoadingStage::FinishedDecodingAssets
+            }
+            AssetLoadingStage::Idle => AssetLoadingStage::Idle,
         }
     }
 
-    #[must_use]
-    pub fn decode_assets(&mut self) -> bool {
-        if !self.load_files() {
-            return false;
-        }
+    pub fn start_loading_files(&mut self) {
+        assert!(self.files_loading_stage == AssetLoadingStage::WaitingToStartLoadingFiles);
+        self.files_loading_stage = AssetLoadingStage::StartLoadingFiles;
+    }
 
-        if self.decoded_audio_recordings.is_empty() {
-            self.decode_audiorecordings();
-        }
-        if self.decoded_bitmap_textures.is_empty() {
-            self.decode_atlas_textures();
-        }
+    pub fn finished_loading_splash(&self) -> bool {
+        self.files_loading_stage >= AssetLoadingStage::FinishedLoadingSplash
+    }
 
-        return true;
+    pub fn finished_loading_assets(&self) -> bool {
+        self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets
+    }
+
+    pub fn get_atlas_textures_splash(&self) -> &Vec<Rc<RefCell<Bitmap>>> {
+        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedLoadingSplash);
+        &self.decoded_atlas_textures_splash
+    }
+    fn decode_atlas_textures_splash(&mut self) {
+        assert!(self.files_loading_stage == AssetLoadingStage::FinishedLoadingSplash);
+        self.decoded_atlas_textures_splash = GameAssets::decode_png_images(
+            &self.graphics_splash.textures_png_data,
+            self.graphics_splash.textures_dimension,
+        );
+
+        log::info!("Decoded splash bitmap textures");
     }
 
     pub fn get_atlas_textures(&self) -> &Vec<Rc<RefCell<Bitmap>>> {
-        assert!(self.files_loading_stage == AssetLoadingStage::Finished);
-        &self.decoded_bitmap_textures
+        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets);
+        &self.decoded_atlas_textures
     }
-
     fn decode_atlas_textures(&mut self) {
-        assert!(self.files_loading_stage == AssetLoadingStage::Finished);
-        self.decoded_bitmap_textures = self
-            .graphics
-            .textures_png_data
-            .iter()
-            .enumerate()
-            .map(|(index, png_data)| {
-                let bitmap = Bitmap::from_png_data(png_data).unwrap_or_else(|error| {
-                    panic!("Could not decode atlas texture ({}): {}", index, error)
-                });
-                assert!(
-                    bitmap.width == bitmap.height,
-                    "Loaded atlas texture ({}) needs to have same width and height - got {}x{}",
-                    index,
-                    bitmap.width,
-                    bitmap.height,
-                );
-                assert!(
-                    bitmap.width == self.graphics.textures_dimension as i32,
-                    "Loaded atlas texture ({}) dimension does not match ours - expectet {} got {}",
-                    index,
-                    self.graphics.textures_dimension,
-                    bitmap.width,
-                );
-                Rc::new(RefCell::new(bitmap))
-            })
-            .collect();
+        assert!(self.files_loading_stage == AssetLoadingStage::DecodingAssets);
+        self.decoded_atlas_textures = GameAssets::decode_png_images(
+            &self.graphics.textures_png_data,
+            self.graphics.textures_dimension,
+        );
 
         // Make sprites out of the atlas pages themselves for debug purposes
-        for page_index in 0..self.decoded_bitmap_textures.len() {
+        for page_index in 0..self.decoded_atlas_textures.len() {
             let sprite_name = format!("debug_sprite_whole_page_{}", page_index);
             self.add_sprite_for_region(
                 sprite_name,
@@ -291,14 +372,31 @@ impl GameAssets {
 
         log::info!("Decoded bitmap textures");
     }
-
-    pub fn get_audiorecordings(&self) -> &HashMap<ResourceName, Rc<RefCell<AudioRecording>>> {
-        assert!(self.files_loading_stage == AssetLoadingStage::Finished);
-        &self.decoded_audio_recordings
+    pub fn get_sprite_splash(&self, sprite_name: &str) -> &Sprite {
+        if let Some(result) = self.graphics_splash.sprites.get(sprite_name) {
+            result
+        } else {
+            // NOTE: By adding ".0" automatically we can conveniently call the first (or only) frame
+            //       of a sprite without the ".0" suffix
+            self.graphics_splash
+                .sprites
+                .get(&format!("{}.0", sprite_name))
+                .unwrap_or_else(|| panic!("Sprite with name '{}' does not exist", sprite_name))
+        }
+    }
+    pub fn get_font_splash(&self, font_name: &str) -> &SpriteFont {
+        self.graphics_splash
+            .fonts
+            .get(font_name)
+            .unwrap_or_else(|| panic!("Could not find font '{}'", font_name))
     }
 
+    pub fn get_audiorecordings(&self) -> &HashMap<ResourceName, Rc<RefCell<AudioRecording>>> {
+        assert!(self.files_loading_stage == AssetLoadingStage::FinishedDecodingAssets);
+        &self.decoded_audio_recordings
+    }
     fn decode_audiorecordings(&mut self) {
-        assert!(self.files_loading_stage == AssetLoadingStage::Finished);
+        assert!(self.files_loading_stage == AssetLoadingStage::DecodingAssets);
         self.decoded_audio_recordings = self
             .audio
             .metadata
@@ -406,5 +504,35 @@ impl GameAssets {
                 .get(&format!("{}.0", sprite_name))
                 .unwrap_or_else(|| panic!("Sprite with name '{}' does not exist", sprite_name))
         }
+    }
+
+    fn decode_png_images(
+        textures_png_data: &[Vec<u8>],
+        textures_dimension: u32,
+    ) -> Vec<Rc<RefCell<Bitmap>>> {
+        textures_png_data
+            .iter()
+            .enumerate()
+            .map(|(index, png_data)| {
+                let bitmap = Bitmap::from_png_data(png_data).unwrap_or_else(|error| {
+                    panic!("Could not decode atlas texture ({}): {}", index, error)
+                });
+                assert!(
+                    bitmap.width == bitmap.height,
+                    "Loaded atlas texture ({}) needs to have same width and height - got {}x{}",
+                    index,
+                    bitmap.width,
+                    bitmap.height,
+                );
+                assert!(
+                    bitmap.width == textures_dimension as i32,
+                    "Loaded atlas texture ({}) dimension does not match ours - expectet {} got {}",
+                    index,
+                    textures_dimension,
+                    bitmap.width,
+                );
+                Rc::new(RefCell::new(bitmap))
+            })
+            .collect()
     }
 }
