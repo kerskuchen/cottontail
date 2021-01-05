@@ -1,9 +1,8 @@
 {
-  "resource_name": "bg_title",
-  "original_filepath": "assets/bg_title.ogg",
+  "resource_name": "audio/engine_running",
   "samplerate_hz": 44100,
-  "framecount": 75600,
-  "channelcount": 2,
+  "framecount": 203789,
+  "channelcount": 1,
   "compression_quality": 5,
   "loopsection_start_frameindex": null,
   "loopsection_framecount": null

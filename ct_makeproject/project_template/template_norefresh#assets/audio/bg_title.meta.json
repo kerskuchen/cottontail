@@ -1,9 +1,8 @@
 {
-  "resource_name": "drum",
-  "original_filepath": "assets/drum.wav",
+  "resource_name": "audio/bg_title",
   "samplerate_hz": 44100,
-  "framecount": 13230,
-  "channelcount": 1,
+  "framecount": 75600,
+  "channelcount": 2,
   "compression_quality": 5,
   "loopsection_start_frameindex": null,
   "loopsection_framecount": null
