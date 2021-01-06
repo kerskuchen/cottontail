@@ -3,6 +3,7 @@
 - use prelude graphics pack that loads quickly to show splashscreen
 - improve wasm startup speed (load graphic assets first to show splash screen, then later sound assets)
 - adds loadingscreen progressbar
+- reuse drawtext method for draw debug logging
 
 # CURRENT
 
@@ -11,7 +12,7 @@
 
 ## improve asset baking/loading
 - allow hotloading of assets
-- Make texture packer more smart and calculating its max texture size on its own
+- Make texture packer more smart and calculate its max texture size on its own
 - find out why our ogg decoder decodes more frames than exist in ogg file
 
 ## renderer flexibility + speed + cleanup

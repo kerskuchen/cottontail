@@ -488,16 +488,6 @@ impl Drawstate {
         });
     }
 
-    pub fn debug_init_logging(&mut self, font: Option<SpriteFont>, origin: Vec2, depth: Depth) {
-        if let Some(font) = font {
-            unsafe {
-                DRAWSTATE_DEBUG_LOG_FONT = Some(font);
-            }
-        }
-        self.debug_log_origin = origin;
-        self.debug_log_depth = depth;
-    }
-
     pub fn debug_enable_flat_color_mode(&mut self, enable: bool) {
         self.debug_use_flat_color_mode = enable;
     }
@@ -1730,43 +1720,31 @@ impl Drawstate {
 
     #[inline]
     pub fn debug_log_color<StringType: Into<String>>(&mut self, color: Color, text: StringType) {
-        // NOTE: We needed to re-implement this because the borrow-checker does not let us borrow
-        //       `self.debug_log_font` to use in `self.draw_text(...)`
-        let origin = self.debug_log_origin.pixel_snapped();
-        let mut pos = self.debug_log_offset;
         let debug_font = unsafe {
-            // NOTE: See documentation above for explanation why we need this static
+            // NOTE: See documentation of `DRAWSTATE_DEBUG_LOG_FONT` for explanation on why we
+            //       need this static
             DRAWSTATE_DEBUG_LOG_FONT
                 .as_ref()
                 .expect("Debug logging font not initialized")
         };
-        for codepoint in text.into().chars() {
-            if codepoint != '\n' {
-                let glyph = debug_font.get_glyph_for_codepoint(codepoint as Codepoint);
-
-                self.draw_sprite(
-                    &glyph.sprite,
-                    Transform::from_pos_scale_uniform(origin + pos, self.debug_log_font_scale),
-                    false,
-                    false,
-                    self.debug_log_depth,
-                    color,
-                    ADDITIVITY_NONE,
-                    DrawSpace::Screen,
-                );
-
-                pos.x += self.debug_log_font_scale * glyph.horizontal_advance as f32;
-            } else {
-                pos.x = 0.0;
-                pos.y += self.debug_log_font_scale * debug_font.vertical_advance as f32;
-            }
-        }
+        let origin = self.debug_log_origin.pixel_snapped();
+        self.debug_log_offset = self.draw_text(
+            &text.into(),
+            debug_font,
+            self.debug_log_font_scale,
+            origin,
+            self.debug_log_offset,
+            None,
+            None,
+            self.debug_log_depth,
+            color,
+            ADDITIVITY_NONE,
+            DrawSpace::Screen,
+        );
 
         // Add final '\n'
-        pos.x = 0.0;
-        pos.y += self.debug_log_font_scale * debug_font.vertical_advance as f32;
-
-        self.debug_log_offset = pos;
+        self.debug_log_offset.x = 0.0;
+        self.debug_log_offset.y += self.debug_log_font_scale * debug_font.vertical_advance as f32;
     }
 }
 
