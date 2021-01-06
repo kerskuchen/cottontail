@@ -109,7 +109,6 @@ pub struct GraphicsResources {
     pub fonts: IndexMap<ResourceName, SpriteFont>,
 
     pub textures_png_data: Vec<Vec<u8>>,
-    pub textures_dimension: u32,
 }
 
 #[derive(Default)]
@@ -389,31 +388,25 @@ impl GameAssets {
     }
     fn decode_atlas_textures_splash(&mut self) {
         assert!(self.files_loading_stage == AssetLoadingStage::SplashFinish);
-        self.decoded_atlas_textures_splash = GameAssets::decode_png_images(
-            &self.graphics_splash.textures_png_data,
-            self.graphics_splash.textures_dimension,
-        );
+        self.decoded_atlas_textures_splash =
+            GameAssets::decode_png_images(&self.graphics_splash.textures_png_data);
 
         log::info!("Decoded splash bitmap textures");
     }
 
     fn decode_atlas_textures(&mut self) {
         assert!(self.files_loading_stage == AssetLoadingStage::DecodingProgress);
-        self.decoded_atlas_textures = GameAssets::decode_png_images(
-            &self.graphics.textures_png_data,
-            self.graphics.textures_dimension,
-        );
+        self.decoded_atlas_textures =
+            GameAssets::decode_png_images(&self.graphics.textures_png_data);
 
         // Make sprites out of the atlas pages themselves for debug purposes
         for page_index in 0..self.decoded_atlas_textures.len() {
-            let sprite_name = format!("debug_sprite_whole_page_{}", page_index);
+            let bitmap_size = self.decoded_atlas_textures[page_index].borrow().width;
+            let sprite_name = format!("debug_sprite_atlas_page_{}", page_index);
             self.add_sprite_for_region(
                 sprite_name,
                 page_index as TextureIndex,
-                Recti::from_width_height(
-                    self.graphics.textures_dimension as i32,
-                    self.graphics.textures_dimension as i32,
-                ),
+                Recti::from_width_height(bitmap_size, bitmap_size),
                 Vec2i::zero(),
                 true,
             );
@@ -465,9 +458,12 @@ impl GameAssets {
         assert!(self.files_loading_stage >= AssetLoadingStage::DecodingProgress);
         debug_assert!(!self.graphics.sprites.contains_key(&sprite_name));
 
+        let texture_size = self.decoded_atlas_textures[atlas_texture_index as usize]
+            .borrow()
+            .width;
         let sprite_rect = Rect::from(sprite_rect);
         let draw_offset = Vec2::from(draw_offset);
-        let uv_scale = 1.0 / self.graphics.textures_dimension as f32;
+        let uv_scale = 1.0 / texture_size as f32;
         let sprite = Sprite {
             name: sprite_name.clone(),
             atlas_texture_index: atlas_texture_index,
@@ -554,10 +550,7 @@ impl GameAssets {
         }
     }
 
-    fn decode_png_images(
-        textures_png_data: &[Vec<u8>],
-        textures_dimension: u32,
-    ) -> Vec<Rc<RefCell<Bitmap>>> {
+    fn decode_png_images(textures_png_data: &[Vec<u8>]) -> Vec<Rc<RefCell<Bitmap>>> {
         textures_png_data
             .iter()
             .enumerate()
@@ -571,13 +564,6 @@ impl GameAssets {
                     index,
                     bitmap.width,
                     bitmap.height,
-                );
-                assert!(
-                    bitmap.width == textures_dimension as i32,
-                    "Loaded atlas texture ({}) dimension does not match ours - expectet {} got {}",
-                    index,
-                    textures_dimension,
-                    bitmap.width,
                 );
                 Rc::new(RefCell::new(bitmap))
             })

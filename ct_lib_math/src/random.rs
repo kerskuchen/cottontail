@@ -59,14 +59,26 @@ impl Random {
 
     /// Returns a uniformly distributed integer in [0, max]
     #[inline]
+    pub fn u32_in_range(&mut self, min: u32, max: u32) -> u32 {
+        self.generator.rand_range(min..(max + 1))
+    }
+
+    /// Returns a uniformly distributed integer in [0, max - 1]
+    #[inline]
+    pub fn u32_in_range_exclusive(&mut self, min: u32, max_exclusive: u32) -> u32 {
+        self.generator.rand_range(min..max_exclusive)
+    }
+
+    /// Returns a uniformly distributed integer in [0, max]
+    #[inline]
     pub fn u32_bounded(&mut self, max: u32) -> u32 {
-        self.generator.rand_range(0..max)
+        self.generator.rand_range(0..(max + 1))
     }
 
     /// Returns a uniformly distributed integer in [0, max - 1]
     #[inline]
     pub fn u32_bounded_exclusive(&mut self, max_exclusive: u32) -> u32 {
-        self.generator.rand_range(0..(max_exclusive - 1))
+        self.generator.rand_range(0..max_exclusive)
     }
 
     #[inline]

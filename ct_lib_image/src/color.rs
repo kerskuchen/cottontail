@@ -99,6 +99,21 @@ impl PixelRGBA {
     }
 
     #[inline]
+    pub fn new_random(random: &mut Random) -> PixelRGBA {
+        PixelRGBA::from_hex_rgba(random.u32())
+    }
+
+    #[inline]
+    pub fn new_random_non_translucent(random: &mut Random) -> PixelRGBA {
+        PixelRGBA {
+            r: random.u32_bounded(255) as u8,
+            g: random.u32_bounded(255) as u8,
+            b: random.u32_bounded(255) as u8,
+            a: 255,
+        }
+    }
+
+    #[inline]
     pub fn from_color(input: Color) -> PixelRGBA {
         PixelRGBA {
             r: clampf(input.r * 255.0, 0.0, 255.0) as u8,

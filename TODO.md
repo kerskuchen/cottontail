@@ -4,16 +4,20 @@
 - improve wasm startup speed (load graphic assets first to show splash screen, then later sound assets)
 - adds loadingscreen progressbar
 - reuse drawtext method for draw debug logging
+- Make texture packer size dynamically growing up to a maximum size of 4096
 
 # CURRENT
 
-# NEXT:
 
+# NEXT:
 
 ## improve asset baking/loading
 - allow hotloading of assets
-- Make texture packer more smart and calculate its max texture size on its own
 - find out why our ogg decoder decodes more frames than exist in ogg file
+- try another texture packer that is more efficient (maybe https://github.com/ChevyRay/crunch-rs
+  or https://github.com/chinedufn/rectangle-pack)
+  we must refactor our bitmapatlas packer pretty hard for this though as other packers assume 
+
 
 ## renderer flexibility + speed + cleanup
 - Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and 

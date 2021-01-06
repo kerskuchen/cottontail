@@ -241,12 +241,16 @@ pub struct BitmapAtlasPosition {
 /// An atlaspacker that can grow in size
 pub struct BitmapAtlas {
     pub atlas_texture: Bitmap,
+    pub atlas_texture_size_max: Option<u32>,
     pub rect_packer: rect_packer::DensePacker,
     pub sprite_positions: IndexMap<String, Vec2i>,
 }
 
 impl BitmapAtlas {
-    pub fn new(atlas_texture_size_initial: u32) -> BitmapAtlas {
+    pub fn new(
+        atlas_texture_size_initial: u32,
+        atlas_texture_size_max: Option<u32>,
+    ) -> BitmapAtlas {
         BitmapAtlas {
             atlas_texture: Bitmap::new(atlas_texture_size_initial, atlas_texture_size_initial),
             rect_packer: rect_packer::DensePacker::new(
@@ -254,6 +258,7 @@ impl BitmapAtlas {
                 atlas_texture_size_initial as i32,
             ),
             sprite_positions: IndexMap::new(),
+            atlas_texture_size_max,
         }
     }
 
@@ -272,34 +277,51 @@ impl BitmapAtlas {
         }
     }
 
-    /// NOTE: Resizes by doubling the current image dimensions
+    /// NOTE: Resizing is done by doubling current texture size
     pub fn pack_bitmap_with_resize(&mut self, name: &str, image: &Bitmap) -> Option<Vec2i> {
         if let Some(pos) = self.pack_bitmap(name, image) {
             return Some(pos);
         }
 
         // NOTE: At this point our image did not fit in our atlas textures, so we resize it
-        let texture_size = self.atlas_texture.width;
-        self.atlas_texture
-            .extend(0, 0, texture_size, texture_size, PixelRGBA::transparent());
-        self.rect_packer.resize(2 * texture_size, 2 * texture_size);
+        let texture_size_max = self.atlas_texture_size_max.unwrap_or(std::u32::MAX);
+        loop {
+            let texture_size = self.atlas_texture.width;
+            if texture_size as u32 >= texture_size_max {
+                return None;
+            }
 
-        self.pack_bitmap_with_resize(name, image)
+            self.atlas_texture
+                .extend(0, 0, texture_size, texture_size, PixelRGBA::transparent());
+            self.rect_packer.resize(2 * texture_size, 2 * texture_size);
+
+            if let Some(pos) = self.pack_bitmap(name, image) {
+                return Some(pos);
+            }
+        }
     }
 }
 
-/// An atlaspacker that can have multiple fixed size atlas textures
+/// An atlaspacker that can have multiple atlas textures
 pub struct BitmapMultiAtlas {
-    pub atlas_texture_size: u32,
+    pub atlas_texture_size_initial: u32,
+    pub atlas_texture_size_max: Option<u32>,
     pub atlas_packers: Vec<BitmapAtlas>,
     pub sprite_positions: IndexMap<String, BitmapAtlasPosition>,
 }
 
 impl BitmapMultiAtlas {
-    pub fn new(atlas_texture_size: u32) -> BitmapMultiAtlas {
+    pub fn new(
+        atlas_texture_size_initial: u32,
+        atlas_texture_size_max: Option<u32>,
+    ) -> BitmapMultiAtlas {
         BitmapMultiAtlas {
-            atlas_texture_size: atlas_texture_size,
-            atlas_packers: vec![BitmapAtlas::new(atlas_texture_size)],
+            atlas_texture_size_initial,
+            atlas_texture_size_max,
+            atlas_packers: vec![BitmapAtlas::new(
+                atlas_texture_size_initial,
+                atlas_texture_size_max,
+            )],
             sprite_positions: IndexMap::new(),
         }
     }
@@ -311,14 +333,17 @@ impl BitmapMultiAtlas {
 
         // NOTE: At this point our image did not fit in any of the existing atlas textures, so we
         //       create a new atlas texture and try again
-        self.atlas_packers
-            .push(BitmapAtlas::new(self.atlas_texture_size as u32));
+        self.atlas_packers.push(BitmapAtlas::new(
+            self.atlas_texture_size_initial,
+            self.atlas_texture_size_max,
+        ));
         if let Some(atlas_position) = self.pack_bitmap_internal(sprite_name, image) {
             atlas_position
         } else {
+            let texture_size_max = self.atlas_texture_size_max.unwrap_or(std::u32::MAX);
             panic!(
-                "Could not pack image with dimensions {}x{} into atlas with dimensions {}x{}",
-                image.width, image.height, self.atlas_texture_size, self.atlas_texture_size
+                "Could not pack image with dimensions {}x{} into atlas with dimensions with maxium dimensions {}x{}",
+                image.width, image.height, texture_size_max, texture_size_max
             )
         }
     }
@@ -335,7 +360,7 @@ impl BitmapMultiAtlas {
 
     fn pack_bitmap_internal(&mut self, name: &str, image: &Bitmap) -> Option<BitmapAtlasPosition> {
         for (atlas_index, packer) in self.atlas_packers.iter_mut().enumerate() {
-            if let Some(position) = packer.pack_bitmap(name, image) {
+            if let Some(position) = packer.pack_bitmap_with_resize(name, image) {
                 let atlas_position = BitmapAtlasPosition {
                     atlas_texture_index: atlas_index as u32,
                     atlas_texture_pixel_offset: position,

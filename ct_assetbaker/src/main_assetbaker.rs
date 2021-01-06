@@ -25,6 +25,8 @@ use std::{
     path::PathBuf,
 };
 
+const TEST_TEXTURE_PACKER: bool = true;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AssetSprite {
     pub name: ResourceName,
@@ -167,7 +169,7 @@ fn bake_graphics_resources() {
     let untextured_sheet = aseprite::create_sheet(&untextured_path, &untextured_name);
     result_sheet.extend_by(untextured_sheet.clone());
 
-    result_sheet.pack_and_serialize("graphics", 1024);
+    result_sheet.pack_and_serialize("graphics");
 
     // Create minimal prelude graphics sheet that starts up fast and only shows splashscreen
     let mut prelude_sheet = GraphicsSheet::new_empty();
@@ -200,17 +202,7 @@ fn bake_graphics_resources() {
     prelude_sheet.extend_by(default_font_sheet);
     prelude_sheet.extend_by(untextured_sheet);
     prelude_sheet.extend_by(splashscreen_sheet);
-
-    let texture_size = {
-        // TODO: Make packing smarter by working its texture size by itself
-        let texture_size = prelude_sheet
-            .images
-            .values()
-            .fold(0, |_max_size, image| i32::max(image.width, image.height))
-            as u32;
-        (texture_size + 1).next_power_of_two()
-    };
-    prelude_sheet.pack_and_serialize("graphics_splash", texture_size);
+    prelude_sheet.pack_and_serialize("graphics_splash");
 }
 
 fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {
@@ -644,7 +636,7 @@ fn create_sheet_from_ttf(
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Asset conversion
 
-fn convert_sprite(sprite: &AssetSprite, atlas_texture_size: u32) -> Sprite {
+fn convert_sprite(sprite: &AssetSprite, atlas_texture_sizes: &[u32]) -> Sprite {
     let attachment_points = [
         Vec2::from(sprite.attachment_points[0]),
         Vec2::from(sprite.attachment_points[1]),
@@ -662,10 +654,9 @@ fn convert_sprite(sprite: &AssetSprite, atlas_texture_size: u32) -> Sprite {
 
         untrimmed_dimensions: Vec2::from(sprite.untrimmed_dimensions),
         trimmed_rect: Rect::from(sprite.trimmed_rect),
-        trimmed_uvs: AAQuad::from_rect(
-            Rect::from(sprite.trimmed_uvs)
-                .scaled_from_origin(Vec2::filled(1.0 / atlas_texture_size as f32)),
-        ),
+        trimmed_uvs: AAQuad::from_rect(Rect::from(sprite.trimmed_uvs).scaled_from_origin(
+            Vec2::filled(1.0 / atlas_texture_sizes[sprite.atlas_texture_index as usize] as f32),
+        )),
     }
 }
 
@@ -944,9 +935,38 @@ fn main() {
             log::warn!("No credits file found at 'assets/credits.txt'")
         }
 
+        // Create some random pngs
+        if TEST_TEXTURE_PACKER {
+            std::fs::remove_dir_all("assets/random_pngs_test").ok();
+            let mut random = Random::new_from_seed(12345678);
+            let indices_widths_heights_colors: Vec<_> = (0..1000)
+                .map(|index| {
+                    (
+                        index,
+                        random.u32_in_range(8, 128) + 1,
+                        random.u32_in_range(8, 128) + 1,
+                        PixelRGBA::new_random_non_translucent(&mut random),
+                    )
+                })
+                .collect();
+            indices_widths_heights_colors
+                .par_iter()
+                .for_each(|(index, width, height, color)| {
+                    let bitmap = Bitmap::new_filled(*width, *height, *color);
+                    bitmap.write_to_png_file(&format!(
+                        "assets/random_pngs_test/random_{}x{}_{}.png",
+                        bitmap.width, bitmap.height, index
+                    ));
+                });
+        }
+
         bake_graphics_resources();
         bake_audio_resources("audio", 44100);
         bake_audio_resources("audio_wasm", 22050);
+
+        if TEST_TEXTURE_PACKER {
+            std::fs::remove_dir_all("assets/random_pngs_test").expect("Cannot remove png test dir");
+        }
     }
 
     // Process icons and executable resource info
@@ -1059,14 +1079,14 @@ impl GraphicsSheet {
         self.animations_3d.extend(other.animations_3d);
     }
 
-    fn pack_and_serialize(mut self, pack_name: &str, atlas_texture_size: u32) {
+    fn pack_and_serialize(mut self, pack_name: &str) {
         let pack_temp_out_dir = format!("target/assets_temp/{}", pack_name);
         let pack_out_filepath = format!("resources/{}.data", pack_name);
         recreate_directory(&pack_temp_out_dir);
 
         // Pack textures
         let (textures, sprite_positions) = {
-            let mut packer = BitmapMultiAtlas::new(atlas_texture_size);
+            let mut packer = BitmapMultiAtlas::new(1024, Some(2048));
             for (image_name, image) in self.images.iter() {
                 packer.pack_bitmap(image_name, image);
             }
@@ -1074,10 +1094,10 @@ impl GraphicsSheet {
         };
 
         // Create png files
-        let textures_dimension = textures
-            .first()
-            .expect("Atlas packer did not generate a texture")
-            .width as u32;
+        let textures_dimensions: Vec<u32> = textures
+            .iter()
+            .map(|texture| texture.width as u32)
+            .collect();
         let textures_png_data: Vec<Vec<u8>> = textures
             .into_iter()
             .map(|texture| texture.to_premultiplied_alpha().encoded_as_png())
@@ -1161,10 +1181,14 @@ impl GraphicsSheet {
             &human_readable_animations_3d,
             &path_join(&pack_temp_out_dir, "animations_3d.json"),
         );
-        for (index, png_data) in textures_png_data.iter().enumerate() {
+        for (index, (png_data, texture_dimension)) in textures_png_data
+            .iter()
+            .zip(textures_dimensions.iter())
+            .enumerate()
+        {
             let texture_path = format!(
                 "{}/atlas-{}x{}-{}.png",
-                pack_temp_out_dir, textures_dimension, textures_dimension, index
+                pack_temp_out_dir, texture_dimension, texture_dimension, index
             );
             std::fs::write(&texture_path, &png_data).unwrap_or_else(|error| {
                 panic!(
@@ -1178,7 +1202,7 @@ impl GraphicsSheet {
         let sprites: IndexMap<ResourceName, Sprite> = self
             .sprites
             .iter()
-            .map(|(name, sprite)| (name.clone(), convert_sprite(&sprite, textures_dimension)))
+            .map(|(name, sprite)| (name.clone(), convert_sprite(&sprite, &textures_dimensions)))
             .collect();
         let sprites_3d: IndexMap<ResourceName, Sprite3D> = self
             .sprites_3d
@@ -1209,7 +1233,6 @@ impl GraphicsSheet {
             sprites,
             sprites_3d,
             textures_png_data,
-            textures_dimension,
         };
 
         serialize_to_binary_file(&graphics_resources, &pack_out_filepath);

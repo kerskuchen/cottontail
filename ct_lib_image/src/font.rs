@@ -470,7 +470,7 @@ impl BitmapFont {
     }
 
     pub fn to_bitmap_atlas(&self, fontname: &str) -> (Bitmap, IndexMap<String, Vec2i>) {
-        let mut atlas = BitmapAtlas::new(64);
+        let mut atlas = BitmapAtlas::new(64, None);
         for glyph in self.glyphs.values() {
             if let Some(bitmap) = &glyph.bitmap {
                 let spritename = BitmapFont::get_glyph_name(fontname, glyph.codepoint as Codepoint);
