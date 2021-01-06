@@ -134,9 +134,9 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
         out_systemcommands: &mut Vec<AppCommand>,
     ) {
         match self.assets.update() {
-            AssetLoadingStage::StartLoadingSplash => return,
-            AssetLoadingStage::LoadingSplash => return,
-            AssetLoadingStage::FinishedLoadingSplash => {
+            AssetLoadingStage::SplashStart => return,
+            AssetLoadingStage::SplashProgress => return,
+            AssetLoadingStage::SplashFinish => {
                 assert!(self.draw.is_none());
 
                 let textures_splash = self.assets.get_atlas_textures().clone();
@@ -178,17 +178,17 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
 
                 self.loadingscreen.start_fading_in();
             }
-            AssetLoadingStage::WaitingToStartLoadingFiles => {
+            AssetLoadingStage::WaitingToStartFilesLoading => {
                 if self.loadingscreen.is_faded_in() {
                     self.assets.start_loading_files();
                 }
             }
-            AssetLoadingStage::StartLoadingFiles => {}
-            AssetLoadingStage::LoadingFiles => {}
-            AssetLoadingStage::FinishedLoadingFiles => {}
-            AssetLoadingStage::StartDecodingAssets => {}
-            AssetLoadingStage::DecodingAssets => {}
-            AssetLoadingStage::FinishedDecodingAssets => {
+            AssetLoadingStage::FilesStart => {}
+            AssetLoadingStage::FilesProgress => {}
+            AssetLoadingStage::FilesFinish => {}
+            AssetLoadingStage::DecodingStart => {}
+            AssetLoadingStage::DecodingProgress => {}
+            AssetLoadingStage::DecodingFinish => {
                 assert!(self.draw.is_some());
 
                 let textures = self.assets.get_atlas_textures().clone();

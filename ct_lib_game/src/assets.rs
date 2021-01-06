@@ -8,22 +8,22 @@ pub type ResourceName = String;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AssetLoadingStage {
-    StartLoadingSplash,
-    LoadingSplash,
-    FinishedLoadingSplash,
-    WaitingToStartLoadingFiles,
-    StartLoadingFiles,
-    LoadingFiles,
-    FinishedLoadingFiles,
-    StartDecodingAssets,
-    DecodingAssets,
-    FinishedDecodingAssets,
+    SplashStart,
+    SplashProgress,
+    SplashFinish,
+    WaitingToStartFilesLoading,
+    FilesStart,
+    FilesProgress,
+    FilesFinish,
+    DecodingStart,
+    DecodingProgress,
+    DecodingFinish,
     Idle,
 }
 
 impl Default for AssetLoadingStage {
     fn default() -> Self {
-        AssetLoadingStage::StartLoadingSplash
+        AssetLoadingStage::SplashStart
     }
 }
 
@@ -127,6 +127,10 @@ pub struct GameAssets {
 
     files_loading_stage: AssetLoadingStage,
     files_loaders: HashMap<String, Fileloader>,
+
+    progress_fileloads_started_count: usize,
+    progress_deserialized_files_count: usize,
+    progress_assets_decoded_count: usize,
 }
 
 impl Clone for GameAssets {
@@ -134,8 +138,7 @@ impl Clone for GameAssets {
         assert!(self.files_loading_stage == AssetLoadingStage::Idle);
         assert!(self.files_loaders.is_empty());
 
-        let mut result = GameAssets::default();
-        result.assets_folder = self.assets_folder.clone();
+        let mut result = GameAssets::new(&self.assets_folder);
 
         result.files_loading_stage = self.files_loading_stage.clone();
         result.files_loaders = HashMap::new();
@@ -148,32 +151,59 @@ impl Clone for GameAssets {
     }
 }
 
+const PROGRESS_ASSETS_TO_DECODE_COUNT: usize = 3;
+const PROGRESS_FILES_TO_DESERIALIZE_COUNT: usize = 3;
+const PROGRESS_FILELOADS_TO_START_COUNT: usize = 2;
+
 impl GameAssets {
     pub fn new(assets_folder: &str) -> GameAssets {
-        let mut result = GameAssets::default();
-        result.assets_folder = assets_folder.to_string();
-        result
+        GameAssets {
+            assets_folder: assets_folder.to_owned(),
+            audio: AudioResources::default(),
+            graphics_splash: GraphicsResources::default(),
+            graphics: GraphicsResources::default(),
+            content: HashMap::new(),
+
+            decoded_audio_recordings: HashMap::new(),
+            decoded_atlas_textures: Vec::new(),
+            decoded_atlas_textures_splash: Vec::new(),
+
+            files_loading_stage: AssetLoadingStage::default(),
+            files_loaders: HashMap::new(),
+
+            progress_fileloads_started_count: 0,
+            progress_deserialized_files_count: 0,
+            progress_assets_decoded_count: 0,
+        }
     }
 
     pub fn get_loading_percentage(&self) -> Option<f32> {
+        let progress = self.progress_assets_decoded_count
+            + self.progress_deserialized_files_count
+            + self.progress_fileloads_started_count;
+        let progress_target = PROGRESS_ASSETS_TO_DECODE_COUNT
+            + PROGRESS_FILES_TO_DESERIALIZE_COUNT
+            + PROGRESS_FILELOADS_TO_START_COUNT;
+        let progress_percent = progress as f32 / progress_target as f32;
+
         match self.files_loading_stage {
-            AssetLoadingStage::StartLoadingSplash => None,
-            AssetLoadingStage::LoadingSplash => None,
-            AssetLoadingStage::FinishedLoadingSplash => None,
-            AssetLoadingStage::WaitingToStartLoadingFiles => None,
-            AssetLoadingStage::StartLoadingFiles => Some(0.0),
-            AssetLoadingStage::LoadingFiles => Some(0.2),
-            AssetLoadingStage::FinishedLoadingFiles => Some(0.3),
-            AssetLoadingStage::StartDecodingAssets => Some(0.5),
-            AssetLoadingStage::DecodingAssets => Some(0.7),
-            AssetLoadingStage::FinishedDecodingAssets => Some(1.0),
+            AssetLoadingStage::SplashStart => None,
+            AssetLoadingStage::SplashProgress => None,
+            AssetLoadingStage::SplashFinish => None,
+            AssetLoadingStage::WaitingToStartFilesLoading => None,
+            AssetLoadingStage::FilesStart => Some(progress_percent),
+            AssetLoadingStage::FilesProgress => Some(progress_percent),
+            AssetLoadingStage::FilesFinish => Some(progress_percent),
+            AssetLoadingStage::DecodingStart => Some(progress_percent),
+            AssetLoadingStage::DecodingProgress => Some(progress_percent),
+            AssetLoadingStage::DecodingFinish => Some(progress_percent),
             AssetLoadingStage::Idle => Some(1.0),
         }
     }
 
     pub fn update(&mut self) -> AssetLoadingStage {
         match self.files_loading_stage {
-            AssetLoadingStage::StartLoadingSplash => {
+            AssetLoadingStage::SplashStart => {
                 let graphics_splash_filepath =
                     path_join(&self.assets_folder, "graphics_splash.data");
                 self.files_loaders.insert(
@@ -181,9 +211,9 @@ impl GameAssets {
                     Fileloader::new(&graphics_splash_filepath).unwrap(),
                 );
 
-                self.files_loading_stage = AssetLoadingStage::LoadingSplash;
+                self.files_loading_stage = AssetLoadingStage::SplashProgress;
             }
-            AssetLoadingStage::LoadingSplash => {
+            AssetLoadingStage::SplashProgress => {
                 let mut finished_loaders = Vec::new();
 
                 // Poll file loaders
@@ -215,31 +245,33 @@ impl GameAssets {
                 }
 
                 if self.files_loaders.is_empty() {
-                    self.files_loading_stage = AssetLoadingStage::FinishedLoadingSplash;
+                    self.files_loading_stage = AssetLoadingStage::SplashFinish;
                     if self.decoded_atlas_textures_splash.is_empty() {
                         self.decode_atlas_textures_splash();
                     }
                     log::info!("Finished loading splash asset files");
                 }
             }
-            AssetLoadingStage::FinishedLoadingSplash => {
-                self.files_loading_stage = AssetLoadingStage::WaitingToStartLoadingFiles;
+            AssetLoadingStage::SplashFinish => {
+                self.files_loading_stage = AssetLoadingStage::WaitingToStartFilesLoading;
             }
-            AssetLoadingStage::WaitingToStartLoadingFiles => {
+            AssetLoadingStage::WaitingToStartFilesLoading => {
                 // We wait here until our `start_loading_files` method is called
             }
-            AssetLoadingStage::StartLoadingFiles => {
+            AssetLoadingStage::FilesStart => {
                 let graphics_filepath = path_join(&self.assets_folder, "graphics.data");
                 self.files_loaders.insert(
                     graphics_filepath.clone(),
                     Fileloader::new(&graphics_filepath).unwrap(),
                 );
+                self.progress_fileloads_started_count += 1;
 
                 let content_filepath = path_join(&self.assets_folder, "content.data");
                 self.files_loaders.insert(
                     content_filepath.clone(),
                     Fileloader::new(&content_filepath).unwrap(),
                 );
+                self.progress_fileloads_started_count += 1;
 
                 #[cfg(target_arch = "wasm32")]
                 let audio_filepath = path_join(&self.assets_folder, "audio_wasm.data");
@@ -249,10 +281,11 @@ impl GameAssets {
                     audio_filepath.clone(),
                     Fileloader::new(&audio_filepath).unwrap(),
                 );
+                self.progress_fileloads_started_count += 1;
 
-                self.files_loading_stage = AssetLoadingStage::LoadingFiles;
+                self.files_loading_stage = AssetLoadingStage::FilesProgress;
             }
-            AssetLoadingStage::LoadingFiles => {
+            AssetLoadingStage::FilesProgress => {
                 let mut finished_loaders = Vec::new();
 
                 // Poll file loaders
@@ -261,26 +294,28 @@ impl GameAssets {
                         panic!("Failed to get file status on '{}': {}", filepath, error)
                     });
 
-                    if let Some(content) = poll_result {
+                    if let Some(bindata) = poll_result {
                         log::debug!("Loaded resource file '{}'", filepath);
 
                         if filepath == &path_join(&self.assets_folder, "graphics.data") {
-                            self.graphics = bincode::deserialize(&content)
+                            self.graphics = bincode::deserialize(&bindata)
                                 .expect("Could not deserialize 'graphics.data' (file corrupt?)");
                             log::info!("Loaded graphics resources");
                         } else if filepath == &path_join(&self.assets_folder, "audio.data")
                             || filepath == &path_join(&self.assets_folder, "audio_wasm.data")
                         {
-                            self.audio = bincode::deserialize(&content)
+                            self.audio = bincode::deserialize(&bindata)
                                 .expect("Could not deserialize 'audio.data' (file corrupt?)");
                             log::info!("Loaded audio resources");
                         } else if filepath == &path_join(&self.assets_folder, "content.data") {
-                            self.content = bincode::deserialize(&content)
+                            self.content = bincode::deserialize(&bindata)
                                 .expect("Could not deserialize 'content.data' (file corrupt?)");
                             log::info!("Loaded content resources");
                         } else {
                             unreachable!("Loaded unknown file '{}'", filepath);
                         }
+
+                        self.progress_deserialized_files_count += 1;
 
                         // Mark the loader for removal
                         finished_loaders.push(filepath.clone());
@@ -293,31 +328,35 @@ impl GameAssets {
                 }
 
                 if self.files_loaders.is_empty() {
-                    self.files_loading_stage = AssetLoadingStage::FinishedLoadingFiles;
+                    self.files_loading_stage = AssetLoadingStage::FilesFinish;
                     log::info!("Finished loading asset files");
                 }
             }
-            AssetLoadingStage::FinishedLoadingFiles => {
-                self.files_loading_stage = AssetLoadingStage::StartDecodingAssets;
+            AssetLoadingStage::FilesFinish => {
+                self.files_loading_stage = AssetLoadingStage::DecodingStart;
             }
-            AssetLoadingStage::StartDecodingAssets => {
-                self.files_loading_stage = AssetLoadingStage::DecodingAssets;
+            AssetLoadingStage::DecodingStart => {
+                self.files_loading_stage = AssetLoadingStage::DecodingProgress;
             }
-            AssetLoadingStage::DecodingAssets => {
-                if self.decoded_atlas_textures.is_empty() {
-                    self.decode_atlas_textures();
-                    return AssetLoadingStage::DecodingAssets;
-                }
-
+            AssetLoadingStage::DecodingProgress => {
                 if self.decoded_audio_recordings.is_empty() {
                     self.decode_audiorecordings();
-                    return AssetLoadingStage::DecodingAssets;
+                    self.progress_assets_decoded_count += 1;
+                    // We only want to decode one asset per frame
+                    return AssetLoadingStage::DecodingProgress;
+                }
+
+                if self.decoded_atlas_textures.is_empty() {
+                    self.decode_atlas_textures();
+                    self.progress_assets_decoded_count += 1;
+                    // We only want to decode one asset per frame
+                    return AssetLoadingStage::DecodingProgress;
                 }
 
                 log::info!("Finished decoding assset files");
-                self.files_loading_stage = AssetLoadingStage::FinishedDecodingAssets;
+                self.files_loading_stage = AssetLoadingStage::DecodingFinish;
             }
-            AssetLoadingStage::FinishedDecodingAssets => {
+            AssetLoadingStage::DecodingFinish => {
                 self.files_loading_stage = AssetLoadingStage::Idle;
             }
             AssetLoadingStage::Idle => {
@@ -328,28 +367,28 @@ impl GameAssets {
     }
 
     pub fn start_loading_files(&mut self) {
-        assert!(self.files_loading_stage == AssetLoadingStage::WaitingToStartLoadingFiles);
-        self.files_loading_stage = AssetLoadingStage::StartLoadingFiles;
+        assert!(self.files_loading_stage == AssetLoadingStage::WaitingToStartFilesLoading);
+        self.files_loading_stage = AssetLoadingStage::FilesStart;
     }
 
     pub fn finished_loading_splash(&self) -> bool {
-        self.files_loading_stage >= AssetLoadingStage::FinishedLoadingSplash
+        self.files_loading_stage >= AssetLoadingStage::SplashFinish
     }
 
     pub fn finished_loading_assets(&self) -> bool {
-        self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets
+        self.files_loading_stage >= AssetLoadingStage::DecodingFinish
     }
 
     pub fn get_atlas_textures(&self) -> &Vec<Rc<RefCell<Bitmap>>> {
-        if self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets {
+        if self.files_loading_stage >= AssetLoadingStage::DecodingFinish {
             &self.decoded_atlas_textures
         } else {
-            assert!(self.files_loading_stage >= AssetLoadingStage::FinishedLoadingSplash);
+            assert!(self.files_loading_stage >= AssetLoadingStage::SplashFinish);
             &self.decoded_atlas_textures_splash
         }
     }
     fn decode_atlas_textures_splash(&mut self) {
-        assert!(self.files_loading_stage == AssetLoadingStage::FinishedLoadingSplash);
+        assert!(self.files_loading_stage == AssetLoadingStage::SplashFinish);
         self.decoded_atlas_textures_splash = GameAssets::decode_png_images(
             &self.graphics_splash.textures_png_data,
             self.graphics_splash.textures_dimension,
@@ -359,7 +398,7 @@ impl GameAssets {
     }
 
     fn decode_atlas_textures(&mut self) {
-        assert!(self.files_loading_stage == AssetLoadingStage::DecodingAssets);
+        assert!(self.files_loading_stage == AssetLoadingStage::DecodingProgress);
         self.decoded_atlas_textures = GameAssets::decode_png_images(
             &self.graphics.textures_png_data,
             self.graphics.textures_dimension,
@@ -384,11 +423,11 @@ impl GameAssets {
     }
 
     pub fn get_audiorecordings(&self) -> &HashMap<ResourceName, Rc<RefCell<AudioRecording>>> {
-        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets);
+        assert!(self.files_loading_stage >= AssetLoadingStage::DecodingFinish);
         &self.decoded_audio_recordings
     }
     fn decode_audiorecordings(&mut self) {
-        assert!(self.files_loading_stage == AssetLoadingStage::DecodingAssets);
+        assert!(self.files_loading_stage == AssetLoadingStage::DecodingProgress);
         self.decoded_audio_recordings = self
             .audio
             .metadata
@@ -423,7 +462,7 @@ impl GameAssets {
         draw_offset: Vec2i,
         has_translucency: bool,
     ) -> Sprite {
-        assert!(self.files_loading_stage >= AssetLoadingStage::DecodingAssets);
+        assert!(self.files_loading_stage >= AssetLoadingStage::DecodingProgress);
         debug_assert!(!self.graphics.sprites.contains_key(&sprite_name));
 
         let sprite_rect = Rect::from(sprite_rect);
@@ -447,14 +486,14 @@ impl GameAssets {
     }
 
     pub fn get_content_filedata(&self, filename: &str) -> &[u8] {
-        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets);
+        assert!(self.files_loading_stage >= AssetLoadingStage::DecodingFinish);
         self.content
             .get(filename)
             .unwrap_or_else(|| panic!("Could not find file '{}'", filename))
     }
 
     pub fn get_anim(&self, animation_name: &str) -> &Animation<Sprite> {
-        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets);
+        assert!(self.files_loading_stage >= AssetLoadingStage::DecodingFinish);
         self.graphics
             .animations
             .get(animation_name)
@@ -462,7 +501,7 @@ impl GameAssets {
     }
 
     pub fn get_anim_3d(&self, animation_name: &str) -> &Animation<Sprite3D> {
-        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets);
+        assert!(self.files_loading_stage >= AssetLoadingStage::DecodingFinish);
         self.graphics
             .animations_3d
             .get(animation_name)
@@ -470,10 +509,10 @@ impl GameAssets {
     }
 
     pub fn get_font(&self, font_name: &str) -> &SpriteFont {
-        let fonts = if self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets {
+        let fonts = if self.files_loading_stage >= AssetLoadingStage::DecodingFinish {
             &self.graphics.fonts
         } else {
-            assert!(self.files_loading_stage >= AssetLoadingStage::FinishedLoadingSplash);
+            assert!(self.files_loading_stage >= AssetLoadingStage::SplashFinish);
             &self.graphics_splash.fonts
         };
 
@@ -483,10 +522,10 @@ impl GameAssets {
     }
 
     pub fn get_sprite(&self, sprite_name: &str) -> &Sprite {
-        let sprites = if self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets {
+        let sprites = if self.files_loading_stage >= AssetLoadingStage::DecodingFinish {
             &self.graphics.sprites
         } else {
-            assert!(self.files_loading_stage >= AssetLoadingStage::FinishedLoadingSplash);
+            assert!(self.files_loading_stage >= AssetLoadingStage::SplashFinish);
             &self.graphics_splash.sprites
         };
 
@@ -502,7 +541,7 @@ impl GameAssets {
     }
 
     pub fn get_sprite_3d(&self, sprite_name: &str) -> &Sprite3D {
-        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets);
+        assert!(self.files_loading_stage >= AssetLoadingStage::DecodingFinish);
         if let Some(result) = self.graphics.sprites_3d.get(sprite_name) {
             result
         } else {
