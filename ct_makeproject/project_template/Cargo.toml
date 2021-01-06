@@ -17,6 +17,7 @@ opt-level = 3
 # opt-level = 0
 # debug = true
 
-# NOTE: Enables link-time-optimization on final release binary
+# NOTE: Enables link-time- and small-size-optimization on final release binary
 # [profile.release]
 # lto = true
+# opt-level = "z"
