@@ -17,7 +17,7 @@ if not exist assets mkdir assets
 if not exist assets_copy mkdir assets_copy
 if not exist assets_executable mkdir assets_executable
 
-cargo watch --watch assets --watch assets_copy --watch assets_executable --watch cottontail/ct_assetbaker --exec "run --release --package ct_assetbaker"
+cargo watch --watch assets --watch assets_executable --watch cottontail --exec "run --release --package ct_assetbaker"
 
 goto :done 
 
