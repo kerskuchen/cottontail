@@ -345,6 +345,7 @@ pub struct Drawstate {
     canvas_framebuffer: Option<FramebufferInfo>,
 
     debug_use_flat_color_mode: bool,
+    debug_draw_depth: bool,
     debug_log_font_scale: f32,
     debug_log_origin: Vec2,
     debug_log_offset: Vec2,
@@ -401,6 +402,7 @@ impl Drawstate {
             canvas_framebuffer: None,
 
             debug_use_flat_color_mode: false,
+            debug_draw_depth: false,
             debug_log_font_scale: 2.0,
             debug_log_origin: Vec2::new(5.0, 5.0),
             debug_log_offset: Vec2::zero(),
@@ -636,6 +638,10 @@ impl Drawstate {
 
         // If we drew to an offscreen-canvas we must blit it back to the screen
         if let Some(canvas_framebuffer) = &self.canvas_framebuffer {
+            if self.debug_draw_depth {
+                renderer.debug_draw_depthbuffer(&canvas_framebuffer.name);
+            }
+
             let (screen_width, screen_height) = renderer.get_screen_dimensions();
 
             let rect_canvas =
@@ -1747,67 +1753,3 @@ impl Drawstate {
         self.debug_log_offset.y += self.debug_log_font_scale * debug_font.vertical_advance as f32;
     }
 }
-
-// NOTE: SOME OLD STUFF THAT WE WANT TO IMPLEMENT BELOW
-/*
-
-pub fn debugDepthBuffer(ds: Drawstate*)
-{
-    int width = (int)ds.canvas.framebuffer.width;
-    int height = (int)ds.canvas.framebuffer.height;
-    debugi(width);
-    f32* depthBuffer = (f32*)malloc((usize)(width * height) * sizeof(f32));
-    glReadPixels(0, 0, width, height, GL_DEPTH_COMPONENT, GL_FLOAT, depthBuffer);
-
-    f32 minVal = 1000.0f;
-    f32 maxVal = -1000.0f;
-    for (int i = 0; i < width * height; i++)
-    {
-        f32 depth = clampf(depthBuffer[i], 0, 1);
-        minVal = minf(minVal, depth);
-        maxVal = maxf(maxVal, depth);
-    }
-
-    if (minVal == maxVal)
-    {
-        minVal = 0.0f;
-        maxVal = 1.0f;
-    }
-
-    u32* depthBufferReal = (u32*)malloc((usize)(width * height) * sizeof(f32));
-    for (int i = 0; i < width * height; i++)
-    {
-        f32 depth = clampf(depthBuffer[i], 0, 1);
-        depth = (depth - minVal) / (maxVal - minVal);
-
-        u32 r = (u32)(255 * depth);
-        u32 g = (u32)(255 * depth);
-        u32 b = (u32)(255 * depth);
-        u32 a = 255;
-
-        depthBufferReal[i] = ((a << 24) | (b << 16) | (g << 8) | (r << 0));
-    }
-    free(depthBuffer);
-
-    Texture depthTex = createTexture(depthBufferReal, width, height);
-
-    Drawbatch batch = drawbatch_begin(ds.debug_drawBuffer, DRAWMODE_QUADS);
-    Quad quad = {};
-    quad.x1 = 0;
-    quad.y1 = 0;
-    quad.x2 = width;
-    quad.y2 = height;
-    quad.u1 = 0;
-    quad.v1 = 0;
-    quad.u2 = 1;
-    quad.Vec2 = 1;
-    drawbatch_pushQuad(&batch, quad, 0.0f, color_const(1));
-    drawbatch_submit(&batch, ds, depthTex);
-
-    freeTexture(&depthTex);
-    free(depthBufferReal);
-}
-
-#endif
-
-*/

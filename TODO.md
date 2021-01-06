@@ -6,25 +6,15 @@
 - reuse drawtext method for draw debug logging
 - Make texture packer size dynamically growing up to a maximum size of 4096
 - rudimentary hotloading of assets on desktop
+- Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and 
+  implement it (drawing the depthbuffer and various debug grids should be useful). Throw out the rest 
 
 # CURRENT
 
 
 # NEXT:
 
-## improve asset baking/loading
-- find out why our ogg decoder decodes more frames than exist in ogg file
-- try another texture packer that is more efficient (maybe https://github.com/ChevyRay/crunch-rs
-  or https://github.com/chinedufn/rectangle-pack)
-  we must refactor our bitmapatlas packer pretty hard for this though as other packers assume 
-
-
-## renderer flexibility + speed + cleanup
-- Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and 
-  implement it (drawing the depthbuffer and various debug grids should be useful). Throw out the rest 
-- can we make the sorting faster? alternatively can we get rid of sorting for non-translucent 
-  drawobjects by dividing them up into two drawbatches?
-- add ability to add new shaders from drawstate
+- Fix screenspace coordinate transformation for cases where we have letterboxing
 
 ## improve examples
 - find a good way to switch/disable audio when switching scenes
@@ -125,6 +115,17 @@
 - Find and get rid of needles allocations and copies
 - Find out what causes garbage collector to trigger
 - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)
+
+## Drawstate / Renderer
+- can we make the sorting faster? alternatively can we get rid of sorting for non-translucent 
+  drawobjects by dividing them up into two drawbatches?
+- add ability to add new shaders from drawstate
+
+## Asset baker
+- find out why our ogg decoder decodes more frames than exist in ogg file
+- try another texture packer that is more efficient (maybe https://github.com/ChevyRay/crunch-rs
+  or https://github.com/chinedufn/rectangle-pack)
+  we must refactor our bitmapatlas packer pretty hard for this though as other packers assume 
 
 ## apps
 * Repeaty:

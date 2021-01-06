@@ -1,6 +1,6 @@
-use ct_lib_core::{log, transmute_slice_to_byte_slice};
-use ct_lib_math::Mat4;
+use ct_lib_core::{log, transmute_slice_to_byte_slice, transmute_slice_to_byte_slice_mut};
 use ct_lib_math::Recti;
+use ct_lib_math::{clampf, Mat4};
 
 use glow::HasContext;
 
@@ -1340,10 +1340,10 @@ impl Renderer {
             .activate(&transform.into_column_array());
 
         let (vertices, indices) = {
-            let dim_left = rect_target.pos.x as f32;
-            let dim_top = rect_target.pos.y as f32;
-            let dim_right = (rect_target.pos.x + rect_target.width()) as f32;
-            let dim_bottom = (rect_target.pos.y + rect_target.height()) as f32;
+            let vert_left = rect_target.pos.x as f32;
+            let vert_top = rect_target.pos.y as f32;
+            let vert_right = (rect_target.pos.x + rect_target.width()) as f32;
+            let vert_bottom = (rect_target.pos.y + rect_target.height()) as f32;
 
             let uvs_left = rect_source.pos.x as f32 / framebuffer_source.width as f32;
             let uvs_top = rect_source.pos.y as f32 / framebuffer_source.height as f32;
@@ -1354,13 +1354,25 @@ impl Renderer {
 
             let vertices = [
                 // right top
-                dim_right, dim_top, uvs_right, uvs_top, //
+                vert_right,
+                vert_top,
+                uvs_right,
+                uvs_top, //
                 // right bottom
-                dim_right, dim_bottom, uvs_right, uvs_bottom, //
+                vert_right,
+                vert_bottom,
+                uvs_right,
+                uvs_bottom, //
                 // left bottom
-                dim_left, dim_bottom, uvs_left, uvs_bottom, //
+                vert_left,
+                vert_bottom,
+                uvs_left,
+                uvs_bottom, //
                 // left top
-                dim_left, dim_top, uvs_left, uvs_top, //
+                vert_left,
+                vert_top,
+                uvs_left,
+                uvs_top, //
             ];
             let indices = [
                 // first triangle
@@ -1392,5 +1404,186 @@ impl Renderer {
             gl.enable(glow::BLEND);
             gl.enable(glow::DEPTH_TEST);
         }
+    }
+
+    /// Draws the depthbuffer content of the given framebuffer onto itself
+    #[inline]
+    #[cfg(target_arch = "wasm32")]
+    pub fn debug_draw_depthbuffer(&mut self, _framebuffer: &str) {
+        // Not implemented yet
+    }
+
+    /// Draws the depthbuffer content of the given framebuffer onto itself
+    #[inline]
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn debug_draw_depthbuffer(&mut self, framebuffer: &str) {
+        unsafe {
+            let gl = &self.gl;
+            gl.disable(glow::BLEND);
+            gl.disable(glow::DEPTH_TEST);
+        }
+
+        let (framebuffer_width, framebuffer_height) = {
+            let framebuffer = self
+                .framebuffers
+                .get(framebuffer)
+                .unwrap_or_else(|| panic!("Framebuffer '{}' not found", framebuffer));
+
+            (framebuffer.width, framebuffer.height)
+        };
+
+        // Create pixels from normalized depthbuffer values
+        let depthbuffer_pixels = {
+            let depthbuffer_values = self.debug_read_depthbuffer(framebuffer);
+            let (val_min, val_max) = {
+                let val_min = depthbuffer_values
+                    .iter()
+                    .fold(std::f32::MAX, |acc, val| f32::min(acc, *val));
+                let val_max = depthbuffer_values
+                    .iter()
+                    .fold(std::f32::MIN, |acc, val| f32::max(acc, *val));
+
+                if val_min == val_max {
+                    (0.0, 1.0)
+                } else {
+                    (val_min, val_max)
+                }
+            };
+
+            let mut depthbuffer_pixels =
+                vec![0u32; framebuffer_width as usize * framebuffer_height as usize];
+
+            for (pixel, value) in depthbuffer_pixels.iter_mut().zip(depthbuffer_values.iter()) {
+                let depth = (*value - val_min) / (val_max - val_min);
+
+                let r = (255 as f32 * depth) as u32;
+                let g = (255 as f32 * depth) as u32;
+                let b = (255 as f32 * depth) as u32;
+                let a = 255;
+
+                *pixel = (a << 24) | (b << 16) | (g << 8) | (r << 0);
+            }
+
+            depthbuffer_pixels
+        };
+
+        // Upload depth pixel to texture
+        unsafe {
+            let depthbuffer_pixels_raw = transmute_slice_to_byte_slice(&depthbuffer_pixels[..]);
+            self.texture_create_or_update_whole(
+                "debug_depth",
+                framebuffer_width,
+                framebuffer_height,
+                &depthbuffer_pixels_raw,
+            );
+        }
+
+        // Draw texture back to framebuffer
+        let transform = Mat4::ortho_origin_left_bottom(
+            framebuffer_width as f32,
+            framebuffer_height as f32,
+            DEFAULT_WORLD_ZNEAR,
+            DEFAULT_WORLD_ZFAR,
+        );
+        self.shaders
+            .get("blit")
+            .expect("Blit shader not found '{}' not found")
+            .activate(&transform.into_column_array());
+        self.textures
+            .get("debug_depth")
+            .expect("No depthbuffer texture")
+            .activate(0);
+
+        let (vertices, indices) = {
+            let vert_left = 0.0;
+            let vert_top = 0.0;
+            let vert_right = framebuffer_width as f32;
+            let vert_bottom = framebuffer_height as f32;
+
+            let uv_left = 0.0;
+            let uv_top = 0.0;
+            let uv_right = 1.0;
+            let uv_bottom = 1.0;
+
+            let vertices = [
+                // right top
+                vert_right,
+                vert_top,
+                uv_right,
+                uv_top, //
+                // right bottom
+                vert_right,
+                vert_bottom,
+                uv_right,
+                uv_bottom, //
+                // left bottom
+                vert_left,
+                vert_bottom,
+                uv_left,
+                uv_bottom, //
+                // left top
+                vert_left,
+                vert_top,
+                uv_left,
+                uv_top, //
+            ];
+            let indices = [
+                // first triangle
+                3, // left top
+                0, // right top
+                1, // right bottom
+                // second triangle
+                2, // left bottom
+                1, // right bottom
+                3, // left top
+            ];
+            (vertices, indices)
+        };
+
+        unsafe {
+            let drawobject_blit = self
+                .drawobjects
+                .get("blit")
+                .expect("Blit drawobject not found for shader");
+            drawobject_blit.assign_buffers(
+                transmute_slice_to_byte_slice(&vertices),
+                transmute_slice_to_byte_slice(&indices),
+            );
+            drawobject_blit.draw(0, 6);
+        }
+        unsafe {
+            let gl = &self.gl;
+            gl.enable(glow::BLEND);
+            gl.enable(glow::DEPTH_TEST);
+        }
+    }
+
+    fn debug_read_depthbuffer(&mut self, framebuffer: &str) -> Vec<f32> {
+        let (framebuffer_width, framebuffer_height) = {
+            let framebuffer = self
+                .framebuffers
+                .get(framebuffer)
+                .unwrap_or_else(|| panic!("Framebuffer '{}' not found", framebuffer));
+
+            (framebuffer.width, framebuffer.height)
+        };
+
+        let mut depthbuffer_values =
+            vec![0.0f32; framebuffer_width as usize * framebuffer_height as usize];
+        unsafe {
+            let gl = &self.gl;
+            let mut depthbuffer_values_raw =
+                transmute_slice_to_byte_slice_mut(&mut depthbuffer_values[..]);
+            gl.read_pixels(
+                0,
+                0,
+                framebuffer_width as i32,
+                framebuffer_height as i32,
+                glow::DEPTH_COMPONENT,
+                glow::FLOAT,
+                glow::PixelPackData::Slice(&mut depthbuffer_values_raw),
+            );
+        }
+        depthbuffer_values
     }
 }

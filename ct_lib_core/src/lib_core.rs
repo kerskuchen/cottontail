@@ -337,19 +337,12 @@ pub fn common_resolutions(resolutions: &[(u32, u32)]) -> Vec<(u32, u32)> {
 
 /*
 
-// Sort floats
+// Min/Max/Sort floats
 
-v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+let val_min = v.iter().fold(std::f32::MAX, |acc, val| f32::min(acc, *val));
+let val_max = v.iter().fold(std::f32::MIN, |acc, val| f32::max(acc, *val));
+
+v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
 v.sort_by(|a, b| a.partial_cmp(b).unwrap())
 
-
-// Quick random values
-
-use rand::Rng;
-let color = Color::new(
-    rand::thread_rng().gen::<f32>(),
-    rand::thread_rng().gen::<f32>(),
-    rand::thread_rng().gen::<f32>(),
-    1.0,
-);
 */
