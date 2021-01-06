@@ -25,7 +25,7 @@ use std::{
     path::PathBuf,
 };
 
-const TEST_TEXTURE_PACKER: bool = true;
+const TEST_TEXTURE_PACKER: bool = false;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AssetSprite {
@@ -923,6 +923,11 @@ fn main() {
 
     if path_exists("assets") && !path_dir_empty("assets") {
         recreate_directory("resources");
+        std::fs::write(
+            "resources/assetbaker.lock",
+            "Asset baking in progress".as_bytes(),
+        )
+        .expect("Cannot write lockfile");
 
         if path_exists("assets/credits.txt") {
             recreate_directory("target/assets_temp/content");
@@ -1037,6 +1042,10 @@ fn main() {
             contents.insert(content_filename, content_data);
         }
         serialize_to_binary_file(&contents, "resources/content.data");
+    }
+
+    if path_exists("resources/assetbaker.lock") {
+        std::fs::remove_file("resources/assetbaker.lock").expect("Cannot remove lockfile");
     }
 
     log::info!(

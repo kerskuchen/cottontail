@@ -5,6 +5,7 @@
 - adds loadingscreen progressbar
 - reuse drawtext method for draw debug logging
 - Make texture packer size dynamically growing up to a maximum size of 4096
+- rudimentary hotloading of assets on desktop
 
 # CURRENT
 
@@ -12,7 +13,6 @@
 # NEXT:
 
 ## improve asset baking/loading
-- allow hotloading of assets
 - find out why our ogg decoder decodes more frames than exist in ogg file
 - try another texture packer that is more efficient (maybe https://github.com/ChevyRay/crunch-rs
   or https://github.com/chinedufn/rectangle-pack)
@@ -99,6 +99,7 @@
   https://social.technet.microsoft.com/wiki/contents/articles/38117.microsoft-trusted-root-certificate-program-participants-as-of-june-27-2017.aspx#C
 
 # user experience
+- find ways to make our wasm file smaller
 - make app pause on onfocus/lost events more robust
 - show focus lost overlay "press here to continue"
 - give appcode a hint and some time to wind down and save state etc. on focus lost

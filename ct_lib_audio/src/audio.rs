@@ -1689,7 +1689,7 @@ impl Audiostate {
     }
 
     #[inline]
-    pub fn add_audio_recordings(
+    pub fn assign_audio_recordings(
         &mut self,
         audio_recordings: HashMap<String, Rc<RefCell<AudioRecording>>>,
     ) {

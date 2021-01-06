@@ -408,7 +408,7 @@ impl Drawstate {
         }
     }
 
-    pub fn replace_textures(
+    pub fn assign_textures(
         &mut self,
         textures: Vec<Rc<RefCell<Bitmap>>>,
         untextured_sprite: Sprite,

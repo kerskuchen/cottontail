@@ -395,7 +395,7 @@ impl GameAssets {
     }
 
     fn decode_atlas_textures(&mut self) {
-        assert!(self.files_loading_stage == AssetLoadingStage::DecodingProgress);
+        assert!(self.files_loading_stage >= AssetLoadingStage::DecodingProgress);
         self.decoded_atlas_textures =
             GameAssets::decode_png_images(&self.graphics.textures_png_data);
 
@@ -420,7 +420,7 @@ impl GameAssets {
         &self.decoded_audio_recordings
     }
     fn decode_audiorecordings(&mut self) {
-        assert!(self.files_loading_stage == AssetLoadingStage::DecodingProgress);
+        assert!(self.files_loading_stage >= AssetLoadingStage::DecodingProgress);
         self.decoded_audio_recordings = self
             .audio
             .metadata
@@ -568,5 +568,67 @@ impl GameAssets {
                 Rc::new(RefCell::new(bitmap))
             })
             .collect()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn hotreload_assets(&mut self) -> bool {
+        // Maybe someday
+        false
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn hotreload_assets(&mut self) -> bool {
+        let path_graphics = path_join(&self.assets_folder, "graphics.data");
+        let path_content = path_join(&self.assets_folder, "content.data");
+        let path_audio = path_join(&self.assets_folder, "audio.data");
+
+        if path_exists("resources/assetbaker.lock")
+            || !path_exists(&path_graphics)
+            || !path_exists(&path_content)
+            || !path_exists(&path_audio)
+        {
+            // The resource folder is probably currently baking
+            return false;
+        }
+
+        let last_write_time_graphics = path_last_modified_time(&path_graphics);
+        let last_write_time_content = path_last_modified_time(&path_content);
+        let last_write_time_audio = path_last_modified_time(&path_audio);
+
+        static mut LAST_WRITE_TIME_GRAPHICS: f64 = 0.0;
+        static mut LAST_WRITE_TIME_CONTENT: f64 = 0.0;
+        static mut LAST_WRITE_TIME_AUDIO: f64 = 0.0;
+
+        let mut reload_happened = false;
+        unsafe {
+            if LAST_WRITE_TIME_GRAPHICS == 0.0 {
+                LAST_WRITE_TIME_GRAPHICS = last_write_time_graphics;
+            }
+            if LAST_WRITE_TIME_CONTENT == 0.0 {
+                LAST_WRITE_TIME_CONTENT = last_write_time_content;
+            }
+            if LAST_WRITE_TIME_AUDIO == 0.0 {
+                LAST_WRITE_TIME_AUDIO = last_write_time_audio;
+            }
+
+            if LAST_WRITE_TIME_GRAPHICS != last_write_time_graphics {
+                self.graphics = deserialize_from_binary_file(&path_graphics);
+                self.decode_atlas_textures();
+                LAST_WRITE_TIME_GRAPHICS = last_write_time_graphics;
+                reload_happened = true;
+            }
+            if LAST_WRITE_TIME_CONTENT != last_write_time_content {
+                self.content = deserialize_from_binary_file(&path_content);
+                LAST_WRITE_TIME_CONTENT = last_write_time_content;
+                reload_happened = true;
+            }
+            if LAST_WRITE_TIME_AUDIO != last_write_time_audio {
+                self.audio = deserialize_from_binary_file(&path_audio);
+                self.decode_audiorecordings();
+                LAST_WRITE_TIME_AUDIO = last_write_time_audio;
+                reload_happened = true;
+            }
+        }
+        reload_happened
     }
 }

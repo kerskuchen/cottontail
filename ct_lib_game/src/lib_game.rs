@@ -197,11 +197,10 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 let debug_log_font = self.assets.get_font(&debug_log_font_name).clone();
 
                 let draw = self.draw.as_mut().unwrap();
-                draw.replace_textures(textures, untextured_sprite, debug_log_font);
+                draw.assign_textures(textures, untextured_sprite, debug_log_font);
 
                 assert!(self.audio.is_none());
 
-                let audio_recordings = self.assets.get_audiorecordings().clone();
                 if self.audio.is_none() {
                     let window_config = GameStateType::get_window_config();
                     self.audio = Some(Audiostate::new(
@@ -211,7 +210,8 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                     ));
                 }
                 let audio = self.audio.as_mut().unwrap();
-                audio.add_audio_recordings(audio_recordings);
+                let audio_recordings = self.assets.get_audiorecordings().clone();
+                audio.assign_audio_recordings(audio_recordings);
 
                 assert!(self.game.is_none());
                 assert!(self.globals.is_none());
@@ -260,6 +260,22 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 self.loadingscreen.start_fading_out();
             }
             AssetLoadingStage::Idle => {}
+        }
+
+        // Asset hotreloading
+        if self.assets.hotreload_assets() {
+            let audio = self.audio.as_mut().unwrap();
+            let draw = self.draw.as_mut().unwrap();
+
+            let textures = self.assets.get_atlas_textures().clone();
+            let untextured_sprite = self.assets.get_sprite("untextured").clone();
+            let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
+            let debug_log_font = self.assets.get_font(&debug_log_font_name).clone();
+            draw.assign_textures(textures, untextured_sprite, debug_log_font);
+
+            let audio_recordings = self.assets.get_audiorecordings().clone();
+            audio.assign_audio_recordings(audio_recordings);
+            log::info!("Hotreloaded assets");
         }
 
         let draw = self.draw.as_mut().unwrap();
