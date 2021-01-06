@@ -155,6 +155,22 @@ impl GameAssets {
         result
     }
 
+    pub fn get_loading_percentage(&self) -> Option<f32> {
+        match self.files_loading_stage {
+            AssetLoadingStage::StartLoadingSplash => None,
+            AssetLoadingStage::LoadingSplash => None,
+            AssetLoadingStage::FinishedLoadingSplash => None,
+            AssetLoadingStage::WaitingToStartLoadingFiles => None,
+            AssetLoadingStage::StartLoadingFiles => Some(0.0),
+            AssetLoadingStage::LoadingFiles => Some(0.2),
+            AssetLoadingStage::FinishedLoadingFiles => Some(0.3),
+            AssetLoadingStage::StartDecodingAssets => Some(0.5),
+            AssetLoadingStage::DecodingAssets => Some(0.7),
+            AssetLoadingStage::FinishedDecodingAssets => Some(1.0),
+            AssetLoadingStage::Idle => Some(1.0),
+        }
+    }
+
     pub fn update(&mut self) -> AssetLoadingStage {
         match self.files_loading_stage {
             AssetLoadingStage::StartLoadingSplash => {
@@ -166,7 +182,6 @@ impl GameAssets {
                 );
 
                 self.files_loading_stage = AssetLoadingStage::LoadingSplash;
-                AssetLoadingStage::StartLoadingSplash
             }
             AssetLoadingStage::LoadingSplash => {
                 let mut finished_loaders = Vec::new();
@@ -206,15 +221,12 @@ impl GameAssets {
                     }
                     log::info!("Finished loading splash asset files");
                 }
-                AssetLoadingStage::LoadingSplash
             }
             AssetLoadingStage::FinishedLoadingSplash => {
                 self.files_loading_stage = AssetLoadingStage::WaitingToStartLoadingFiles;
-                AssetLoadingStage::FinishedLoadingSplash
             }
             AssetLoadingStage::WaitingToStartLoadingFiles => {
                 // We wait here until our `start_loading_files` method is called
-                AssetLoadingStage::WaitingToStartLoadingFiles
             }
             AssetLoadingStage::StartLoadingFiles => {
                 let graphics_filepath = path_join(&self.assets_folder, "graphics.data");
@@ -239,7 +251,6 @@ impl GameAssets {
                 );
 
                 self.files_loading_stage = AssetLoadingStage::LoadingFiles;
-                AssetLoadingStage::StartLoadingFiles
             }
             AssetLoadingStage::LoadingFiles => {
                 let mut finished_loaders = Vec::new();
@@ -285,15 +296,12 @@ impl GameAssets {
                     self.files_loading_stage = AssetLoadingStage::FinishedLoadingFiles;
                     log::info!("Finished loading asset files");
                 }
-                AssetLoadingStage::LoadingFiles
             }
             AssetLoadingStage::FinishedLoadingFiles => {
                 self.files_loading_stage = AssetLoadingStage::StartDecodingAssets;
-                AssetLoadingStage::FinishedLoadingFiles
             }
             AssetLoadingStage::StartDecodingAssets => {
                 self.files_loading_stage = AssetLoadingStage::DecodingAssets;
-                AssetLoadingStage::StartDecodingAssets
             }
             AssetLoadingStage::DecodingAssets => {
                 if self.decoded_atlas_textures.is_empty() {
@@ -308,14 +316,15 @@ impl GameAssets {
 
                 log::info!("Finished decoding assset files");
                 self.files_loading_stage = AssetLoadingStage::FinishedDecodingAssets;
-                AssetLoadingStage::DecodingAssets
             }
             AssetLoadingStage::FinishedDecodingAssets => {
                 self.files_loading_stage = AssetLoadingStage::Idle;
-                AssetLoadingStage::FinishedDecodingAssets
             }
-            AssetLoadingStage::Idle => AssetLoadingStage::Idle,
+            AssetLoadingStage::Idle => {
+                // Nothing to do
+            }
         }
+        self.files_loading_stage
     }
 
     pub fn start_loading_files(&mut self) {

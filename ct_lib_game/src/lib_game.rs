@@ -53,7 +53,7 @@ pub struct GameInfo {
 }
 
 pub trait GameStateInterface: Clone {
-    fn get_game_config() -> GameInfo;
+    fn get_game_info() -> GameInfo;
     fn get_window_config() -> WindowConfig;
     fn new(
         draw: &mut Drawstate,
@@ -90,9 +90,14 @@ pub struct AppContext<GameStateType: GameStateInterface> {
 
 impl<GameStateType: GameStateInterface> Default for AppContext<GameStateType> {
     fn default() -> Self {
+        let window_config = GameStateType::get_window_config();
         AppContext {
             assets: GameAssets::new("resources"),
-            loadingscreen: LoadingScreen::new(SPLASHSCREEN_FADEIN_TIME, SPLASHSCREEN_FADEOUT_TIME),
+            loadingscreen: LoadingScreen::new(
+                SPLASHSCREEN_FADEIN_TIME,
+                SPLASHSCREEN_FADEOUT_TIME,
+                window_config.color_splash_progressbar,
+            ),
             game: None,
             draw: None,
             audio: None,
@@ -104,7 +109,7 @@ impl<GameStateType: GameStateInterface> Default for AppContext<GameStateType> {
 
 impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppContext<GameStateType> {
     fn get_app_info() -> window::AppInfo {
-        let config = GameStateType::get_game_config();
+        let config = GameStateType::get_game_info();
         AppInfo {
             window_title: config.game_window_title,
             save_folder_name: config.game_save_folder_name,
@@ -275,6 +280,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                     canvas_width,
                     canvas_height,
                     splash_sprite,
+                    self.assets.get_loading_percentage(),
                 );
             }
 
@@ -1004,6 +1010,7 @@ pub struct WindowConfig {
     pub grab_input: bool,
 
     pub color_clear: Color,
+    pub color_splash_progressbar: Color,
 }
 
 pub fn game_setup_window(
@@ -1635,16 +1642,18 @@ pub enum LoadingScreenState {
 pub struct LoadingScreen {
     time_fade_in: f32,
     time_fade_out: f32,
+    color_progressbar: Color,
 
     fader: CanvasFader,
     state: LoadingScreenState,
 }
 
 impl LoadingScreen {
-    pub fn new(time_fade_in: f32, time_fade_out: f32) -> LoadingScreen {
+    pub fn new(time_fade_in: f32, time_fade_out: f32, color_progressbar: Color) -> LoadingScreen {
         LoadingScreen {
             time_fade_in,
             time_fade_out,
+            color_progressbar,
             fader: CanvasFader::new(Color::black(), Color::white(), time_fade_in),
             state: LoadingScreenState::StartedFadingIn,
         }
@@ -1675,6 +1684,7 @@ impl LoadingScreen {
         canvas_width: u32,
         canvas_height: u32,
         sprite: &Sprite,
+        progress_percentage: Option<f32>,
     ) {
         if self.state == LoadingScreenState::IsDone || self.state == LoadingScreenState::Idle {
             return;
@@ -1715,6 +1725,24 @@ impl LoadingScreen {
                 true,
                 DEPTH_SCREEN_FADER,
                 opacity * Color::white(),
+                ADDITIVITY_NONE,
+                DrawSpace::Canvas,
+            );
+        }
+
+        // Draw progress bar
+        if let Some(progress_percentage) = progress_percentage {
+            let progress_bar_height = (canvas_height as f32 / 25.0).round();
+            draw.draw_rect(
+                Rect::from_bounds_left_top_right_bottom(
+                    0.0,
+                    canvas_height as f32 - progress_bar_height,
+                    canvas_width as f32 * progress_percentage,
+                    canvas_height as f32,
+                ),
+                true,
+                DEPTH_SCREEN_FADER,
+                opacity * self.color_progressbar,
                 ADDITIVITY_NONE,
                 DrawSpace::Canvas,
             );

@@ -1,27 +1,10 @@
 # DONE:
 
-- simplifies font asset baking by creating default metadata files if missing
-- removes relative paths from asset names (this has the consequence that every resource of the same
-  type needs to have a unique name)
-- assetbaker now checks for font and audio metadata files without corresponding font/audio file
-- adds content.data resource pack
-- evaluate if we want to either get rid of the blit canvas offset (and don't have a smooth camera
-  but get rid of much complexity) or implement the blit offset feature properly including
-  an extra 1 pixel canvas padding and correct coordinate transformation from/to screenspace in the 
-  camera struct which all need to use. Additionally we would need to overthink the canvas-space 
-  drawing because it will either jitter when moving the camera or we need to draw the canvas space
-  as a separate pass into its own framebuffer. but then we will have pixels between canvas and world
-  that won't align properly. 
-  - NOTE: Our dungeontracks and many other games like Celeste and Downwell don't use pixel smoothing
-          and it looks ok!
-- gets rid of screenspace blit offset because it adds too much complexity
-- bake a minimal graphics pack with splashscreen only
-- move controllerdb into executable on sdl2 platform
-
-# CURRENT
-
 - use prelude graphics pack that loads quickly to show splashscreen
 - improve wasm startup speed (load graphic assets first to show splash screen, then later sound assets)
+- adds loadingscreen progressbar
+
+# CURRENT
 
 # NEXT:
 
@@ -267,3 +250,21 @@
           error
 - remove the need to have a 'untextured.png' in assets folder
 - now using graphics.data pack for graphics similar to audio.data for audio
+
+- simplifies font asset baking by creating default metadata files if missing
+- removes relative paths from asset names (this has the consequence that every resource of the same
+  type needs to have a unique name)
+- assetbaker now checks for font and audio metadata files without corresponding font/audio file
+- adds content.data resource pack
+- evaluate if we want to either get rid of the blit canvas offset (and don't have a smooth camera
+  but get rid of much complexity) or implement the blit offset feature properly including
+  an extra 1 pixel canvas padding and correct coordinate transformation from/to screenspace in the 
+  camera struct which all need to use. Additionally we would need to overthink the canvas-space 
+  drawing because it will either jitter when moving the camera or we need to draw the canvas space
+  as a separate pass into its own framebuffer. but then we will have pixels between canvas and world
+  that won't align properly. 
+  - NOTE: Our dungeontracks and many other games like Celeste and Downwell don't use pixel smoothing
+          and it looks ok!
+- gets rid of screenspace blit offset because it adds too much complexity
+- bake a minimal graphics pack with splashscreen only
+- move controllerdb into executable on sdl2 platform
