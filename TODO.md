@@ -10,9 +10,8 @@
 
 
 ## improve asset baking/loading
+- allow hotloading of assets
 - Make texture packer more smart and calculating its max texture size on its own
-- refactor gamememory/audio/draw/asset initialization to 
-  - allow hotloading of assets
 - find out why our ogg decoder decodes more frames than exist in ogg file
 
 ## renderer flexibility + speed + cleanup
