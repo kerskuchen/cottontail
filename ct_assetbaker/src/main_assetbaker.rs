@@ -170,36 +170,47 @@ fn bake_graphics_resources() {
     result_sheet.pack_and_serialize("graphics", 1024);
 
     // Create minimal prelude graphics sheet that starts up fast and only shows splashscreen
-    if path_exists("assets_executable") {
-        let mut prelude_sheet = GraphicsSheet::new_empty();
+    let mut prelude_sheet = GraphicsSheet::new_empty();
 
-        let splashscreen_sheet =
-            aseprite::create_sheet("assets_executable/splashscreen.png", "splashscreen");
-        // Create fonts and its correspronding sprites
-        let default_font_sheet = create_sheet_from_ttf(
-            FONT_DEFAULT_TINY_NAME,
-            FONT_DEFAULT_TINY_TTF,
-            FONT_DEFAULT_TINY_PIXEL_HEIGHT,
-            FONT_DEFAULT_TINY_RASTER_OFFSET,
-            true,
-            PixelRGBA::white(),
-            PixelRGBA::black(),
+    let splashcreen_path = {
+        let mut splashcreen_paths = collect_files_by_glob_pattern("assets", "**/splashscreen.*");
+        assert!(
+            !splashcreen_paths.is_empty(),
+            "No 'splashscreen.png' or 'splashscreen.ase' found in assets directory"
         );
-        prelude_sheet.extend_by(default_font_sheet);
-        prelude_sheet.extend_by(untextured_sheet);
-        prelude_sheet.extend_by(splashscreen_sheet);
+        assert!(
+        splashcreen_paths.len() == 1,
+        "There can only exist exactly one 'splashscreen' sprite in the assets directory - found at least '{}' and '{}'",
+        splashcreen_paths[0], splashcreen_paths[1]
+        );
+        splashcreen_paths.pop().unwrap()
+    };
 
-        let texture_size = {
-            // TODO: Make packing smarter by working its texture size by itself
-            let texture_size = prelude_sheet
-                .images
-                .values()
-                .fold(0, |_max_size, image| i32::max(image.width, image.height))
-                as u32;
-            (texture_size + 1).next_power_of_two()
-        };
-        prelude_sheet.pack_and_serialize("graphics_splash", texture_size);
-    }
+    let splashscreen_sheet = aseprite::create_sheet(&splashcreen_path, "splashscreen");
+    // Create fonts and its correspronding sprites
+    let default_font_sheet = create_sheet_from_ttf(
+        FONT_DEFAULT_TINY_NAME,
+        FONT_DEFAULT_TINY_TTF,
+        FONT_DEFAULT_TINY_PIXEL_HEIGHT,
+        FONT_DEFAULT_TINY_RASTER_OFFSET,
+        true,
+        PixelRGBA::white(),
+        PixelRGBA::black(),
+    );
+    prelude_sheet.extend_by(default_font_sheet);
+    prelude_sheet.extend_by(untextured_sheet);
+    prelude_sheet.extend_by(splashscreen_sheet);
+
+    let texture_size = {
+        // TODO: Make packing smarter by working its texture size by itself
+        let texture_size = prelude_sheet
+            .images
+            .values()
+            .fold(0, |_max_size, image| i32::max(image.width, image.height))
+            as u32;
+        (texture_size + 1).next_power_of_two()
+    };
+    prelude_sheet.pack_and_serialize("graphics_splash", texture_size);
 }
 
 fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {

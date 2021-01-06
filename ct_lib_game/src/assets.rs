@@ -131,7 +131,7 @@ pub struct GameAssets {
 
 impl Clone for GameAssets {
     fn clone(&self) -> Self {
-        assert!(self.files_loading_stage != AssetLoadingStage::LoadingFiles);
+        assert!(self.files_loading_stage == AssetLoadingStage::Idle);
         assert!(self.files_loaders.is_empty());
 
         let mut result = GameAssets::default();
@@ -306,6 +306,7 @@ impl GameAssets {
                     return AssetLoadingStage::DecodingAssets;
                 }
 
+                log::info!("Finished decoding assset files");
                 self.files_loading_stage = AssetLoadingStage::FinishedDecodingAssets;
                 AssetLoadingStage::DecodingAssets
             }
@@ -330,9 +331,13 @@ impl GameAssets {
         self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets
     }
 
-    pub fn get_atlas_textures_splash(&self) -> &Vec<Rc<RefCell<Bitmap>>> {
-        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedLoadingSplash);
-        &self.decoded_atlas_textures_splash
+    pub fn get_atlas_textures(&self) -> &Vec<Rc<RefCell<Bitmap>>> {
+        if self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets {
+            &self.decoded_atlas_textures
+        } else {
+            assert!(self.files_loading_stage >= AssetLoadingStage::FinishedLoadingSplash);
+            &self.decoded_atlas_textures_splash
+        }
     }
     fn decode_atlas_textures_splash(&mut self) {
         assert!(self.files_loading_stage == AssetLoadingStage::FinishedLoadingSplash);
@@ -344,10 +349,6 @@ impl GameAssets {
         log::info!("Decoded splash bitmap textures");
     }
 
-    pub fn get_atlas_textures(&self) -> &Vec<Rc<RefCell<Bitmap>>> {
-        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets);
-        &self.decoded_atlas_textures
-    }
     fn decode_atlas_textures(&mut self) {
         assert!(self.files_loading_stage == AssetLoadingStage::DecodingAssets);
         self.decoded_atlas_textures = GameAssets::decode_png_images(
@@ -372,27 +373,9 @@ impl GameAssets {
 
         log::info!("Decoded bitmap textures");
     }
-    pub fn get_sprite_splash(&self, sprite_name: &str) -> &Sprite {
-        if let Some(result) = self.graphics_splash.sprites.get(sprite_name) {
-            result
-        } else {
-            // NOTE: By adding ".0" automatically we can conveniently call the first (or only) frame
-            //       of a sprite without the ".0" suffix
-            self.graphics_splash
-                .sprites
-                .get(&format!("{}.0", sprite_name))
-                .unwrap_or_else(|| panic!("Sprite with name '{}' does not exist", sprite_name))
-        }
-    }
-    pub fn get_font_splash(&self, font_name: &str) -> &SpriteFont {
-        self.graphics_splash
-            .fonts
-            .get(font_name)
-            .unwrap_or_else(|| panic!("Could not find font '{}'", font_name))
-    }
 
     pub fn get_audiorecordings(&self) -> &HashMap<ResourceName, Rc<RefCell<AudioRecording>>> {
-        assert!(self.files_loading_stage == AssetLoadingStage::FinishedDecodingAssets);
+        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets);
         &self.decoded_audio_recordings
     }
     fn decode_audiorecordings(&mut self) {
@@ -431,6 +414,7 @@ impl GameAssets {
         draw_offset: Vec2i,
         has_translucency: bool,
     ) -> Sprite {
+        assert!(self.files_loading_stage >= AssetLoadingStage::DecodingAssets);
         debug_assert!(!self.graphics.sprites.contains_key(&sprite_name));
 
         let sprite_rect = Rect::from(sprite_rect);
@@ -454,12 +438,14 @@ impl GameAssets {
     }
 
     pub fn get_content_filedata(&self, filename: &str) -> &[u8] {
+        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets);
         self.content
             .get(filename)
             .unwrap_or_else(|| panic!("Could not find file '{}'", filename))
     }
 
     pub fn get_anim(&self, animation_name: &str) -> &Animation<Sprite> {
+        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets);
         self.graphics
             .animations
             .get(animation_name)
@@ -467,6 +453,7 @@ impl GameAssets {
     }
 
     pub fn get_anim_3d(&self, animation_name: &str) -> &Animation<Sprite3D> {
+        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets);
         self.graphics
             .animations_3d
             .get(animation_name)
@@ -474,26 +461,39 @@ impl GameAssets {
     }
 
     pub fn get_font(&self, font_name: &str) -> &SpriteFont {
-        self.graphics
-            .fonts
+        let fonts = if self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets {
+            &self.graphics.fonts
+        } else {
+            assert!(self.files_loading_stage >= AssetLoadingStage::FinishedLoadingSplash);
+            &self.graphics_splash.fonts
+        };
+
+        fonts
             .get(font_name)
             .unwrap_or_else(|| panic!("Could not find font '{}'", font_name))
     }
 
     pub fn get_sprite(&self, sprite_name: &str) -> &Sprite {
-        if let Some(result) = self.graphics.sprites.get(sprite_name) {
+        let sprites = if self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets {
+            &self.graphics.sprites
+        } else {
+            assert!(self.files_loading_stage >= AssetLoadingStage::FinishedLoadingSplash);
+            &self.graphics_splash.sprites
+        };
+
+        if let Some(result) = sprites.get(sprite_name) {
             result
         } else {
             // NOTE: By adding ".0" automatically we can conveniently call the first (or only) frame
             //       of a sprite without the ".0" suffix
-            self.graphics
-                .sprites
+            sprites
                 .get(&format!("{}.0", sprite_name))
                 .unwrap_or_else(|| panic!("Sprite with name '{}' does not exist", sprite_name))
         }
     }
 
     pub fn get_sprite_3d(&self, sprite_name: &str) -> &Sprite3D {
+        assert!(self.files_loading_stage >= AssetLoadingStage::FinishedDecodingAssets);
         if let Some(result) = self.graphics.sprites_3d.get(sprite_name) {
             result
         } else {

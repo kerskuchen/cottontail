@@ -79,10 +79,10 @@ const SPLASHSCREEN_FADEOUT_TIME: f32 = 0.5;
 #[derive(Clone)]
 pub struct AppContext<GameStateType: GameStateInterface> {
     pub assets: GameAssets,
+    pub loadingscreen: LoadingScreen,
     pub game: Option<GameStateType>,
     pub draw: Option<Drawstate>,
     pub audio: Option<Audiostate>,
-    pub loadingscreen: Option<LoadingScreen>,
     pub globals: Option<Globals>,
 
     audio_chunk_timer: f32,
@@ -92,10 +92,10 @@ impl<GameStateType: GameStateInterface> Default for AppContext<GameStateType> {
     fn default() -> Self {
         AppContext {
             assets: GameAssets::new("resources"),
+            loadingscreen: LoadingScreen::new(SPLASHSCREEN_FADEIN_TIME, SPLASHSCREEN_FADEOUT_TIME),
             game: None,
             draw: None,
             audio: None,
-            loadingscreen: None,
             globals: None,
             audio_chunk_timer: 0.0,
         }
@@ -134,7 +134,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
             AssetLoadingStage::FinishedLoadingSplash => {
                 assert!(self.draw.is_none());
 
-                let textures_splash = self.assets.get_atlas_textures_splash().clone();
+                let textures_splash = self.assets.get_atlas_textures().clone();
                 let untextured_sprite = self.assets.get_sprite("untextured").clone();
                 let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
                 let debug_log_font = self.assets.get_font(&debug_log_font_name).clone();
@@ -171,12 +171,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 );
                 self.draw = Some(draw);
 
-                assert!(self.loadingscreen.is_none());
-                self.loadingscreen = Some(LoadingScreen::new(
-                    SPLASHSCREEN_FADEIN_TIME,
-                    SPLASHSCREEN_FADEOUT_TIME,
-                ));
-                self.loadingscreen.start_fade_in();
+                self.loadingscreen.start_fading_in();
             }
             AssetLoadingStage::WaitingToStartLoadingFiles => {
                 if self.loadingscreen.is_faded_in() {
@@ -191,10 +186,10 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
             AssetLoadingStage::FinishedDecodingAssets => {
                 assert!(self.draw.is_some());
 
-                let textures = self.assets.get_atlas_textures_splash().clone();
-                let untextured_sprite = self.assets.get_sprite_splash("untextured").clone();
+                let textures = self.assets.get_atlas_textures().clone();
+                let untextured_sprite = self.assets.get_sprite("untextured").clone();
                 let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-                let debug_log_font = self.assets.get_font_splash(&debug_log_font_name).clone();
+                let debug_log_font = self.assets.get_font(&debug_log_font_name).clone();
 
                 let draw = self.draw.as_mut().unwrap();
                 draw.replace_textures(textures, untextured_sprite, debug_log_font);
@@ -257,29 +252,29 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 ));
                 self.globals = Some(globals);
 
-                self.loadingscreen.start_fade_out();
+                self.loadingscreen.start_fading_out();
             }
             AssetLoadingStage::Idle => {}
         }
 
-        if input.has_focus || !self.loadingscreen.unwrap().is_faded_out() {
-            let draw = self.draw.as_mut().unwrap();
+        let draw = self.draw.as_mut().unwrap();
+
+        if input.has_focus || !self.loadingscreen.is_faded_out() {
             draw.begin_frame();
 
             // Draw loadscreen if necessary
-            let loadingscreen = self.loadingscreen.unwrap();
-            if !loadingscreen.is_faded_out() {
+            if !self.loadingscreen.is_faded_out() {
                 let (canvas_width, canvas_height) = draw.get_canvas_dimensions().unwrap_or((
                     input.screen_framebuffer_width,
                     input.screen_framebuffer_height,
                 ));
-                let splash_sprite = self.assets.get_sprite_splash("splashscreen").clone();
-                loadingscreen.update_and_draw(
+                let splash_sprite = self.assets.get_sprite("splashscreen");
+                self.loadingscreen.update_and_draw(
                     draw,
                     input.deltatime,
-                    splash_sprite,
                     canvas_width,
                     canvas_height,
+                    splash_sprite,
                 );
             }
 
@@ -443,9 +438,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
             draw.finish_frame();
         }
 
-        if let Some(draw) = self.draw {
-            draw.render_frame(renderer);
-        }
+        draw.render_frame(renderer);
     }
 }
 
@@ -1626,7 +1619,8 @@ impl CanvasFader {
 // Splashscreen
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum SplashscreenState {
+pub enum LoadingScreenState {
+    Idle,
     StartedFadingIn,
     IsFadingIn,
     FinishedFadingIn,
@@ -1641,34 +1635,37 @@ pub enum SplashscreenState {
 pub struct LoadingScreen {
     time_fade_in: f32,
     time_fade_out: f32,
-    time_sustain_max: f32,
-    time_sustain_current: f32,
 
-    sprite: Sprite,
     fader: CanvasFader,
-    state: SplashscreenState,
+    state: LoadingScreenState,
 }
 
 impl LoadingScreen {
-    pub fn new(
-        sprite: Sprite,
-        time_fade_in: f32,
-        time_fade_out: f32,
-        time_sustain: f32,
-    ) -> LoadingScreen {
+    pub fn new(time_fade_in: f32, time_fade_out: f32) -> LoadingScreen {
         LoadingScreen {
             time_fade_in,
             time_fade_out,
-            time_sustain_max: time_sustain,
-            time_sustain_current: 0.0,
-            sprite,
             fader: CanvasFader::new(Color::black(), Color::white(), time_fade_in),
-            state: SplashscreenState::StartedFadingIn,
+            state: LoadingScreenState::StartedFadingIn,
         }
     }
 
-    pub fn force_fast_forward(&mut self) {
-        self.time_sustain_current = self.time_sustain_max;
+    pub fn start_fading_in(&mut self) {
+        self.state = LoadingScreenState::StartedFadingIn;
+        self.fader = CanvasFader::new(Color::black(), Color::white(), self.time_fade_in);
+    }
+
+    pub fn start_fading_out(&mut self) {
+        self.state = LoadingScreenState::StartedFadingOut;
+        self.fader = CanvasFader::new(Color::white(), Color::transparent(), self.time_fade_out);
+    }
+
+    pub fn is_faded_in(&self) -> bool {
+        self.state == LoadingScreenState::Sustain
+    }
+
+    pub fn is_faded_out(&self) -> bool {
+        self.state == LoadingScreenState::IsDone
     }
 
     pub fn update_and_draw(
@@ -1677,28 +1674,29 @@ impl LoadingScreen {
         deltatime: f32,
         canvas_width: u32,
         canvas_height: u32,
-    ) -> SplashscreenState {
-        if self.state == SplashscreenState::IsDone {
-            return self.state;
+        sprite: &Sprite,
+    ) {
+        if self.state == LoadingScreenState::IsDone || self.state == LoadingScreenState::Idle {
+            return;
         }
 
         self.fader
             .update_and_draw(draw, deltatime, canvas_width, canvas_height);
 
-        let opacity = if self.state <= SplashscreenState::Sustain {
+        let opacity = if self.state <= LoadingScreenState::Sustain {
             self.fader.completion_ratio()
         } else {
             1.0 - self.fader.completion_ratio()
         };
 
         let (splash_rect, letterbox_rects) = letterbox_rects_create(
-            self.sprite.untrimmed_dimensions.x as i32,
-            self.sprite.untrimmed_dimensions.y as i32,
+            sprite.untrimmed_dimensions.x as i32,
+            sprite.untrimmed_dimensions.y as i32,
             canvas_width as i32,
             canvas_height as i32,
         );
         draw.draw_sprite(
-            &self.sprite,
+            &sprite,
             Transform::from_pos(Vec2::new(
                 splash_rect.left() as f32,
                 splash_rect.top() as f32,
@@ -1723,45 +1721,31 @@ impl LoadingScreen {
         }
 
         match self.state {
-            SplashscreenState::StartedFadingIn => {
-                self.state = SplashscreenState::IsFadingIn;
-                SplashscreenState::StartedFadingIn
+            LoadingScreenState::Idle => {}
+            LoadingScreenState::StartedFadingIn => {
+                self.state = LoadingScreenState::IsFadingIn;
             }
-            SplashscreenState::IsFadingIn => {
+            LoadingScreenState::IsFadingIn => {
                 if self.fader.completion_ratio() == 1.0 {
-                    self.state = SplashscreenState::FinishedFadingIn;
+                    self.state = LoadingScreenState::FinishedFadingIn;
                 }
-                SplashscreenState::IsFadingIn
             }
-            SplashscreenState::FinishedFadingIn => {
-                self.state = SplashscreenState::Sustain;
-                SplashscreenState::FinishedFadingIn
+            LoadingScreenState::FinishedFadingIn => {
+                self.state = LoadingScreenState::Sustain;
             }
-            SplashscreenState::Sustain => {
-                if self.time_sustain_current < self.time_sustain_max {
-                    self.time_sustain_current += deltatime;
-                } else {
-                    self.state = SplashscreenState::StartedFadingOut;
-                    self.fader =
-                        CanvasFader::new(Color::white(), Color::transparent(), self.time_fade_out);
-                }
-                SplashscreenState::Sustain
+            LoadingScreenState::Sustain => {}
+            LoadingScreenState::StartedFadingOut => {
+                self.state = LoadingScreenState::IsFadingOut;
             }
-            SplashscreenState::StartedFadingOut => {
-                self.state = SplashscreenState::IsFadingOut;
-                SplashscreenState::StartedFadingOut
-            }
-            SplashscreenState::IsFadingOut => {
+            LoadingScreenState::IsFadingOut => {
                 if self.fader.completion_ratio() == 1.0 {
-                    self.state = SplashscreenState::FinishedFadingOut;
+                    self.state = LoadingScreenState::FinishedFadingOut;
                 }
-                SplashscreenState::IsFadingOut
             }
-            SplashscreenState::FinishedFadingOut => {
-                self.state = SplashscreenState::IsDone;
-                SplashscreenState::FinishedFadingOut
+            LoadingScreenState::FinishedFadingOut => {
+                self.state = LoadingScreenState::IsDone;
             }
-            SplashscreenState::IsDone => SplashscreenState::IsDone,
+            LoadingScreenState::IsDone => {}
         }
     }
 }
