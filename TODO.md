@@ -8,13 +8,13 @@
 - rudimentary hotloading of assets on desktop
 - Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and 
   implement it (drawing the depthbuffer and various debug grids should be useful). Throw out the rest 
+- Fix screenspace coordinate transformation for cases where we have letterboxing
 
 # CURRENT
 
 
 # NEXT:
 
-- Fix screenspace coordinate transformation for cases where we have letterboxing
 
 ## improve examples
 - find a good way to switch/disable audio when switching scenes

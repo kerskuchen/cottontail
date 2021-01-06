@@ -893,20 +893,20 @@ impl CursorCoords {
         let screen_cursor_pos_previous_y = screen_cursor_pos_y - screen_cursor_delta_y;
 
         let canvas_pos = screen_point_to_canvas_point(
-            screen_width,
-            screen_height,
-            canvas_width,
-            canvas_height,
             screen_cursor_pos_x,
             screen_cursor_pos_y,
-        );
-        let canvas_pos_previous = screen_point_to_canvas_point(
             screen_width,
             screen_height,
             canvas_width,
             canvas_height,
+        );
+        let canvas_pos_previous = screen_point_to_canvas_point(
             screen_cursor_pos_previous_x,
             screen_cursor_pos_previous_y,
+            screen_width,
+            screen_height,
+            canvas_width,
+            canvas_height,
         );
 
         // NOTE: We don't transform the screen cursor delta directly because that leads to rounding
@@ -2301,8 +2301,22 @@ pub fn debug_draw_grid(
         let start = camera.worldpoint_to_canvaspoint(start);
         let end = camera.worldpoint_to_canvaspoint(end);
 
-        let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
-        let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+        let start = canvas_point_to_screen_point(
+            start.x,
+            start.y,
+            screen_width as u32,
+            screen_height as u32,
+            camera.dim_canvas.x as u32,
+            camera.dim_canvas.y as u32,
+        );
+        let end = canvas_point_to_screen_point(
+            end.x,
+            end.y,
+            screen_width as u32,
+            screen_height as u32,
+            camera.dim_canvas.x as u32,
+            camera.dim_canvas.y as u32,
+        );
 
         let rect = Rect::from_bounds_left_top_right_bottom(
             start.x,
@@ -2322,8 +2336,22 @@ pub fn debug_draw_grid(
         let start = camera.worldpoint_to_canvaspoint(start);
         let end = camera.worldpoint_to_canvaspoint(end);
 
-        let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
-        let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+        let start = canvas_point_to_screen_point(
+            start.x,
+            start.y,
+            screen_width as u32,
+            screen_height as u32,
+            camera.dim_canvas.x as u32,
+            camera.dim_canvas.y as u32,
+        );
+        let end = canvas_point_to_screen_point(
+            end.x,
+            end.y,
+            screen_width as u32,
+            screen_height as u32,
+            camera.dim_canvas.x as u32,
+            camera.dim_canvas.y as u32,
+        );
 
         let rect = Rect::from_bounds_left_top_right_bottom(
             start.x,
@@ -2356,8 +2384,22 @@ pub fn debug_draw_crosshair(
     let start = camera.worldpoint_to_canvaspoint(start);
     let end = camera.worldpoint_to_canvaspoint(end);
 
-    let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
-    let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+    let start = canvas_point_to_screen_point(
+        start.x,
+        start.y,
+        screen_width as u32,
+        screen_height as u32,
+        camera.dim_canvas.x as u32,
+        camera.dim_canvas.y as u32,
+    );
+    let end = canvas_point_to_screen_point(
+        end.x,
+        end.y,
+        screen_width as u32,
+        screen_height as u32,
+        camera.dim_canvas.x as u32,
+        camera.dim_canvas.y as u32,
+    );
 
     draw.draw_line_with_thickness(
         start,
@@ -2376,8 +2418,22 @@ pub fn debug_draw_crosshair(
     let start = camera.worldpoint_to_canvaspoint(start);
     let end = camera.worldpoint_to_canvaspoint(end);
 
-    let start = (start / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
-    let end = (end / camera.dim_canvas) * Vec2::new(screen_width, screen_height);
+    let start = canvas_point_to_screen_point(
+        start.x,
+        start.y,
+        screen_width as u32,
+        screen_height as u32,
+        camera.dim_canvas.x as u32,
+        camera.dim_canvas.y as u32,
+    );
+    let end = canvas_point_to_screen_point(
+        end.x,
+        end.y,
+        screen_width as u32,
+        screen_height as u32,
+        camera.dim_canvas.x as u32,
+        camera.dim_canvas.y as u32,
+    );
 
     draw.draw_line_with_thickness(
         start,

@@ -175,12 +175,12 @@ impl BlitRect {
 ///
 #[inline]
 pub fn screen_point_to_canvas_point(
+    screen_pos_x: i32,
+    screen_pos_y: i32,
     screen_width: u32,
     screen_height: u32,
     canvas_width: u32,
     canvas_height: u32,
-    screen_pos_x: i32,
-    screen_pos_y: i32,
 ) -> Pointi {
     let blit_rect = BlitRect::new_for_fixed_canvas_size(
         screen_width,
@@ -196,6 +196,32 @@ pub fn screen_point_to_canvas_point(
     let pos_canvas_y = canvas_height as f32 * (pos_blitrect_y as f32 / blit_rect.height as f32);
 
     Pointi::new(floori(pos_canvas_x), floori(pos_canvas_y))
+}
+
+/// Inverse of `screen_point_to_canvas_point`
+#[inline]
+pub fn canvas_point_to_screen_point(
+    canvas_pos_x: f32,
+    canvas_pos_y: f32,
+    screen_width: u32,
+    screen_height: u32,
+    canvas_width: u32,
+    canvas_height: u32,
+) -> Point {
+    let blit_rect = BlitRect::new_for_fixed_canvas_size(
+        screen_width,
+        screen_height,
+        canvas_width,
+        canvas_height,
+    );
+
+    let canvas_pos_ratio_x = canvas_pos_x / canvas_width as f32;
+    let canvas_pos_ratio_y = canvas_pos_y / canvas_height as f32;
+
+    let screen_pos_x = blit_rect.offset_x as f32 + canvas_pos_ratio_x * blit_rect.width as f32;
+    let screen_pos_y = blit_rect.offset_y as f32 + canvas_pos_ratio_y * blit_rect.height as f32;
+
+    Point::new(screen_pos_x, screen_pos_y)
 }
 
 pub fn letterbox_rects_create(
