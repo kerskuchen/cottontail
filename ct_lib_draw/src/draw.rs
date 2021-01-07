@@ -54,15 +54,15 @@ impl Vertex for VertexBlit {}
 // Drawawbles
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum DrawSpace {
+pub enum Drawspace {
     World,
     Canvas,
     Screen,
 }
 
-impl Default for DrawSpace {
+impl Default for Drawspace {
     fn default() -> Self {
-        DrawSpace::World
+        Drawspace::World
     }
 }
 
@@ -83,15 +83,11 @@ enum Geometry {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct Drawable {
     pub texture_index: TextureIndex,
     pub uv_region_contains_translucency: bool,
-    pub depth: Depth,
-    pub color_modulate: Color,
-    pub additivity: Additivity,
-
-    pub drawspace: DrawSpace,
+    pub drawparams: Drawparams,
     pub geometry: Geometry,
 }
 
@@ -99,11 +95,11 @@ impl Drawable {
     #[inline]
     pub fn compare(a: &Drawable, b: &Drawable) -> Ordering {
         let a_has_translucency = a.uv_region_contains_translucency
-            || (a.color_modulate.a < 1.0)
-            || (a.additivity != ADDITIVITY_NONE);
+            || (a.drawparams.color_modulate.a < 1.0)
+            || (a.drawparams.additivity != ADDITIVITY_NONE);
         let b_has_translucency = b.uv_region_contains_translucency
-            || (b.color_modulate.a < 1.0)
-            || (b.additivity != ADDITIVITY_NONE);
+            || (b.drawparams.color_modulate.a < 1.0)
+            || (b.drawparams.additivity != ADDITIVITY_NONE);
 
         // NOTE: We want all translucent objectes to be rendered last
         if a_has_translucency != b_has_translucency {
@@ -124,9 +120,9 @@ impl Drawable {
 
         // NOTE: We want to draw the items with smaller z-level first
         //       so a.depth < b.depth => a is first
-        if a.depth < b.depth {
+        if a.drawparams.depth < b.drawparams.depth {
             return Ordering::Less;
-        } else if a.depth > b.depth {
+        } else if a.drawparams.depth > b.drawparams.depth {
             return Ordering::Greater;
         }
 
@@ -168,9 +164,9 @@ impl<VertexType: Vertex> Vertexbuffer<VertexType> {
 impl VertexbufferSimple {
     /// Returns index count of pushed object
     pub fn push_drawable(&mut self, drawable: Drawable) -> usize {
-        let depth = drawable.depth;
-        let color = drawable.color_modulate;
-        let additivity = drawable.additivity;
+        let depth = drawable.drawparams.depth;
+        let color = drawable.drawparams.color_modulate;
+        let additivity = drawable.drawparams.additivity;
         let indices_start_offset = self.vertices.len() as VertexIndex;
 
         let index_count = match drawable.geometry {
@@ -297,16 +293,98 @@ struct TextureInfo {
 const FRAMEBUFFER_NAME_CANVAS: &str = "canvas";
 
 #[derive(Copy, Clone)]
-struct Drawparams {
+pub struct Drawparams {
     pub depth: Depth,
     pub color_modulate: Color,
     pub additivity: Additivity,
-    pub space: DrawSpace,
+    pub drawspace: Drawspace,
+}
+
+impl Default for Drawparams {
+    #[inline]
+    fn default() -> Self {
+        Drawparams {
+            depth: 0.0,
+            color_modulate: Color::white(),
+            additivity: ADDITIVITY_NONE,
+            drawspace: Drawspace::World,
+        }
+    }
+}
+
+impl Drawparams {
+    #[inline]
+    pub fn new(
+        depth: Depth,
+        color_modulate: Color,
+        additivity: Additivity,
+        drawspace: Drawspace,
+    ) -> Drawparams {
+        Drawparams {
+            depth,
+            color_modulate,
+            additivity,
+            drawspace,
+        }
+    }
+
+    #[inline]
+    pub fn with_depth(depth: Depth) -> Drawparams {
+        Drawparams {
+            depth,
+            ..Drawparams::default()
+        }
+    }
+    #[inline]
+    pub fn with_debug_depth(
+        color_modulate: Color,
+        additivity: Additivity,
+        drawspace: Drawspace,
+    ) -> Drawparams {
+        Drawparams {
+            depth: DEPTH_MAX,
+            color_modulate,
+            additivity,
+            drawspace,
+        }
+    }
+
+    #[inline]
+    pub fn with_depth_color(depth: Depth, color_modulate: Color) -> Drawparams {
+        Drawparams {
+            depth,
+            color_modulate,
+            ..Drawparams::default()
+        }
+    }
+
+    #[inline]
+    pub fn with_depth_drawspace(depth: Depth, drawspace: Drawspace) -> Drawparams {
+        Drawparams {
+            depth,
+            drawspace,
+            ..Drawparams::default()
+        }
+    }
+
+    #[inline]
+    pub fn without_additivity(
+        depth: Depth,
+        color_modulate: Color,
+        drawspace: Drawspace,
+    ) -> Drawparams {
+        Drawparams {
+            depth,
+            color_modulate,
+            drawspace,
+            additivity: ADDITIVITY_NONE,
+        }
+    }
 }
 
 #[derive(Clone)]
 struct DrawBatch {
-    pub drawspace: DrawSpace,
+    pub drawspace: Drawspace,
     pub texture_index: TextureIndex,
     pub indices_start_offset: VertexIndex,
     pub indices_count: usize,
@@ -492,12 +570,10 @@ impl Drawstate {
     pub fn debug_enable_flat_color_mode(&mut self, enable: bool) {
         self.debug_use_flat_color_mode = enable;
     }
-}
 
-//--------------------------------------------------------------------------------------------------
-// Beginning and ending frames
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Beginning and ending frames
 
-impl Drawstate {
     pub fn begin_frame(&mut self) {
         self.simple_drawables.clear();
         self.debug_log_offset = Vec2::zero();
@@ -515,7 +591,7 @@ impl Drawstate {
 
         // Collect draw batches
         let mut current_batch = DrawBatch {
-            drawspace: self.simple_drawables[0].drawspace,
+            drawspace: self.simple_drawables[0].drawparams.drawspace,
             texture_index: self.simple_drawables[0].texture_index,
             indices_start_offset: 0,
             indices_count: 0,
@@ -525,15 +601,15 @@ impl Drawstate {
         self.simple_vertexbuffer_dirty = true;
         for drawable in self.simple_drawables.drain(..) {
             if drawable.texture_index != current_batch.texture_index
-                || drawable.drawspace != current_batch.drawspace
+                || drawable.drawparams.drawspace != current_batch.drawspace
             {
                 match current_batch.drawspace {
-                    DrawSpace::World => self.simple_batches_world.push(current_batch),
-                    DrawSpace::Canvas => self.simple_batches_canvas.push(current_batch),
-                    DrawSpace::Screen => self.simple_batches_screen.push(current_batch),
+                    Drawspace::World => self.simple_batches_world.push(current_batch),
+                    Drawspace::Canvas => self.simple_batches_canvas.push(current_batch),
+                    Drawspace::Screen => self.simple_batches_screen.push(current_batch),
                 }
                 current_batch = DrawBatch {
-                    drawspace: drawable.drawspace,
+                    drawspace: drawable.drawparams.drawspace,
                     texture_index: drawable.texture_index,
                     indices_start_offset: self.simple_vertexbuffer.current_offset(),
                     indices_count: 0,
@@ -545,9 +621,9 @@ impl Drawstate {
         }
 
         match current_batch.drawspace {
-            DrawSpace::World => self.simple_batches_world.push(current_batch),
-            DrawSpace::Canvas => self.simple_batches_canvas.push(current_batch),
-            DrawSpace::Screen => self.simple_batches_screen.push(current_batch),
+            Drawspace::World => self.simple_batches_world.push(current_batch),
+            Drawspace::Canvas => self.simple_batches_canvas.push(current_batch),
+            Drawspace::Screen => self.simple_batches_screen.push(current_batch),
         }
     }
 
@@ -675,14 +751,9 @@ impl Drawstate {
             );
         }
     }
-}
 
-//--------------------------------------------------------------------------------------------------
-// Drawing
-
-impl Drawstate {
-    //----------------------------------------------------------------------------------------------
-    // Quad drawing
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Drawing
 
     #[inline]
     pub fn draw_quad(
@@ -691,19 +762,13 @@ impl Drawstate {
         uvs: AAQuad,
         uv_region_contains_translucency: bool,
         texture_index: TextureIndex,
-        depth: Depth,
-        color_modulate: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
+        drawparams: Drawparams,
     ) {
         if !self.debug_use_flat_color_mode {
             self.simple_drawables.push(Drawable {
-                drawspace,
                 texture_index,
                 uv_region_contains_translucency,
-                depth,
-                color_modulate,
-                additivity,
+                drawparams,
                 geometry: Geometry::QuadMesh { uvs, quad: *quad },
             });
         } else {
@@ -717,12 +782,9 @@ impl Drawstate {
             };
 
             self.simple_drawables.push(Drawable {
-                drawspace,
                 texture_index,
                 uv_region_contains_translucency,
-                depth,
-                color_modulate,
-                additivity,
+                drawparams,
                 geometry: Geometry::QuadMesh { uvs, quad: *quad },
             });
         };
@@ -739,10 +801,7 @@ impl Drawstate {
         xform: Transform,
         flip_horizontally: bool,
         flip_vertically: bool,
-        depth: Depth,
-        color_modulate: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
+        drawparams: Drawparams,
     ) {
         let (sprite_quad, sprite_uvs, texture_index, has_translucency) = {
             let quad = sprite.get_quad_transformed(xform);
@@ -768,10 +827,7 @@ impl Drawstate {
             sprite_uvs,
             has_translucency,
             texture_index,
-            depth,
-            color_modulate,
-            additivity,
-            drawspace,
+            drawparams,
         );
     }
 
@@ -782,10 +838,7 @@ impl Drawstate {
         pos: Vec2,
         scale: Vec2,
         clipping_rect: Rect,
-        depth: Depth,
-        color_modulate: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
+        drawparams: Drawparams,
     ) {
         let mut sprite_rect = sprite.trimmed_rect.scaled_from_origin(scale);
 
@@ -807,16 +860,7 @@ impl Drawstate {
             RectIntersectionResult::AContainsB(_) => {
                 // Our clipping rect contains our sprite fully - no clipping needed
                 let quad = Quad::from_rect(rect);
-                self.draw_quad(
-                    &quad,
-                    uvs,
-                    has_translucency,
-                    atlas_page,
-                    depth,
-                    color_modulate,
-                    additivity,
-                    drawspace,
-                );
+                self.draw_quad(&quad, uvs, has_translucency, atlas_page, drawparams);
                 return;
             }
             RectIntersectionResult::BContainsA(_) => {
@@ -855,25 +899,14 @@ impl Drawstate {
                     intersection_uvs,
                     has_translucency,
                     atlas_page,
-                    depth,
-                    color_modulate,
-                    additivity,
-                    drawspace,
+                    drawparams,
                 );
             }
         }
     }
 
     #[inline]
-    pub fn draw_sprite_3d(
-        &mut self,
-        sprite: &Sprite3D,
-        xform: Transform,
-        depth: Depth,
-        color_modulate: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
-    ) {
+    pub fn draw_sprite_3d(&mut self, sprite: &Sprite3D, xform: Transform, drawparams: Drawparams) {
         let depth_increment = 1.0 / sprite.layers.len() as f32;
         let xform_snapped = xform.pixel_snapped();
         for (index, sprite) in sprite.layers.iter().rev().enumerate() {
@@ -886,10 +919,10 @@ impl Drawstate {
                 },
                 false,
                 false,
-                depth - (index as f32) * 0.5 * depth_increment,
-                color_modulate,
-                additivity,
-                drawspace,
+                Drawparams {
+                    depth: drawparams.depth - (index as f32) * 0.5 * depth_increment,
+                    ..drawparams
+                },
             );
         }
     }
@@ -900,15 +933,7 @@ impl Drawstate {
     /// This fills the following pixels:
     /// [left, right[ x [top, bottom[
     #[inline]
-    pub fn draw_rect(
-        &mut self,
-        rect: Rect,
-        filled: bool,
-        depth: Depth,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
-    ) {
+    pub fn draw_rect(&mut self, rect: Rect, filled: bool, drawparams: Drawparams) {
         let rect = rect.pixel_snapped();
         if filled {
             let quad = Quad::from_rect(rect);
@@ -917,10 +942,7 @@ impl Drawstate {
                 self.untextured_uv_center_coord,
                 false,
                 self.untextured_uv_center_atlas_page,
-                depth,
-                color,
-                additivity,
-                drawspace,
+                drawparams,
             );
         } else {
             let dim = rect.dim;
@@ -938,7 +960,7 @@ impl Drawstate {
             let left_bottom = left_top + Vec2::filled_y(dim.y - 1.0);
 
             let linestrip = [left_top, right_top, right_bottom, left_bottom, left_top];
-            self.draw_linestrip_bresenham(&linestrip, true, depth, color, additivity, drawspace);
+            self.draw_linestrip_bresenham(&linestrip, true, drawparams);
         }
     }
 
@@ -955,10 +977,7 @@ impl Drawstate {
         centered: bool,
         pivot: Vec2,
         xform: Transform,
-        depth: Depth,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
+        drawparams: Drawparams,
     ) {
         let pivot = pivot
             + if centered {
@@ -974,14 +993,11 @@ impl Drawstate {
                 self.untextured_uv_center_coord,
                 false,
                 self.untextured_uv_center_atlas_page,
-                depth,
-                color,
-                additivity,
-                drawspace,
+                drawparams,
             );
         } else {
             let linestrip = quad.to_linestrip();
-            self.draw_linestrip_bresenham(&linestrip, true, depth, color, additivity, drawspace);
+            self.draw_linestrip_bresenham(&linestrip, true, drawparams);
         }
     }
 
@@ -992,10 +1008,7 @@ impl Drawstate {
         vertices: &[Vec2],
         pivot: Vec2,
         xform: Transform,
-        depth: Depth,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
+        drawparams: Drawparams,
     ) {
         let vertices = Vec2::multi_transformed(vertices, pivot, xform);
         let indices = (0..vertices.len() as u32).collect();
@@ -1010,30 +1023,19 @@ impl Drawstate {
         self.simple_drawables.push(Drawable {
             texture_index: self.untextured_uv_center_atlas_page,
             uv_region_contains_translucency: false,
-            depth,
-            color_modulate: color,
-            additivity,
+            drawparams,
             geometry: Geometry::PolygonMesh {
                 vertices,
                 uvs,
                 indices,
             },
-            drawspace,
         });
     }
 
     #[inline]
-    pub fn draw_circle_filled(
-        &mut self,
-        center: Vec2,
-        radius: f32,
-        depth: Depth,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
-    ) {
+    pub fn draw_circle_filled(&mut self, center: Vec2, radius: f32, drawparams: Drawparams) {
         if radius < 0.5 {
-            self.draw_pixel(center, depth, color, additivity, drawspace);
+            self.draw_pixel(center, drawparams);
             return;
         }
 
@@ -1080,28 +1082,17 @@ impl Drawstate {
         self.simple_drawables.push(Drawable {
             texture_index: self.untextured_uv_center_atlas_page,
             uv_region_contains_translucency: false,
-            depth,
-            color_modulate: color,
-            additivity,
+            drawparams,
             geometry: Geometry::PolygonMesh {
                 vertices,
                 uvs,
                 indices,
             },
-            drawspace,
         });
     }
 
     #[inline]
-    pub fn draw_circle_bresenham(
-        &mut self,
-        center: Vec2,
-        radius: f32,
-        depth: Depth,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
-    ) {
+    pub fn draw_circle_bresenham(&mut self, center: Vec2, radius: f32, drawparams: Drawparams) {
         // Based on the Paper "A Fast Bresenham Type Algorithm For Drawing Circles" by John Kennedy
         // https://web.engr.oregonstate.edu/~sllu/bcircle.pdf
 
@@ -1109,7 +1100,7 @@ impl Drawstate {
         let radius = roundi(radius);
 
         if radius == 0 {
-            self.draw_pixel(center, depth, color, additivity, drawspace);
+            self.draw_pixel(center, drawparams);
             return;
         }
 
@@ -1144,10 +1135,10 @@ impl Drawstate {
             let octant5 = Vec2::new(-x as f32, -y as f32);
             let octant8 = Vec2::new(x as f32, -y as f32);
 
-            self.draw_pixel(center + octant1, depth, color, additivity, drawspace);
-            self.draw_pixel(center + octant4, depth, color, additivity, drawspace);
-            self.draw_pixel(center + octant5, depth, color, additivity, drawspace);
-            self.draw_pixel(center + octant8, depth, color, additivity, drawspace);
+            self.draw_pixel(center + octant1, drawparams);
+            self.draw_pixel(center + octant4, drawparams);
+            self.draw_pixel(center + octant5, drawparams);
+            self.draw_pixel(center + octant8, drawparams);
 
             // NOTE: For x == y the below points have been already drawn in octants 1,4,5,8
             if x != y {
@@ -1156,10 +1147,10 @@ impl Drawstate {
                 let octant6 = Vec2::new(-y as f32, -x as f32);
                 let octant7 = Vec2::new(y as f32, -x as f32);
 
-                self.draw_pixel(center + octant2, depth, color, additivity, drawspace);
-                self.draw_pixel(center + octant3, depth, color, additivity, drawspace);
-                self.draw_pixel(center + octant6, depth, color, additivity, drawspace);
-                self.draw_pixel(center + octant7, depth, color, additivity, drawspace);
+                self.draw_pixel(center + octant2, drawparams);
+                self.draw_pixel(center + octant3, drawparams);
+                self.draw_pixel(center + octant6, drawparams);
+                self.draw_pixel(center + octant7, drawparams);
             }
 
             y += 1;
@@ -1180,10 +1171,7 @@ impl Drawstate {
         center: Vec2,
         radius_x: f32,
         radius_y: f32,
-        depth: Depth,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
+        drawparams: Drawparams,
     ) {
         // Based on the Paper "A Fast Bresenham Type AlgorithmFor Drawing Ellipses"
         // https://dai.fmph.uniba.sk/upload/0/01/Ellipse.pdf
@@ -1192,7 +1180,7 @@ impl Drawstate {
         let radius_y = roundi(radius_y);
 
         if radius_x == 0 || radius_y == 0 {
-            self.draw_pixel(center, depth, color, additivity, drawspace);
+            self.draw_pixel(center, drawparams);
             return;
         }
 
@@ -1200,18 +1188,9 @@ impl Drawstate {
     }
 
     #[inline]
-    pub fn draw_ring(
-        &mut self,
-        center: Vec2,
-        radius: f32,
-        thickness: f32,
-        depth: Depth,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
-    ) {
+    pub fn draw_ring(&mut self, center: Vec2, radius: f32, thickness: f32, drawparams: Drawparams) {
         if radius < 0.5 {
-            self.draw_pixel(center, depth, color, additivity, drawspace);
+            self.draw_pixel(center, drawparams);
             return;
         }
 
@@ -1248,10 +1227,7 @@ impl Drawstate {
                 self.untextured_uv_center_coord,
                 false,
                 self.untextured_uv_center_atlas_page,
-                depth,
-                color,
-                additivity,
-                drawspace,
+                drawparams,
             );
 
             angle_current += angle_increment;
@@ -1261,22 +1237,8 @@ impl Drawstate {
 
     /// WARNING: This can be slow if used often
     #[inline]
-    pub fn draw_pixel(
-        &mut self,
-        pos: Vec2,
-        depth: Depth,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
-    ) {
-        self.draw_rect(
-            Rect::from_pos_dim(pos, Vec2::ones()),
-            true,
-            depth,
-            color,
-            additivity,
-            drawspace,
-        );
+    pub fn draw_pixel(&mut self, pos: Vec2, drawparams: Drawparams) {
+        self.draw_rect(Rect::from_pos_dim(pos, Vec2::ones()), true, drawparams);
     }
 
     /// WARNING: This can be slow if used often
@@ -1287,16 +1249,13 @@ impl Drawstate {
         &mut self,
         points: &[Vec2],
         skip_last_pixel: bool,
-        depth: Depth,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
+        drawparams: Drawparams,
     ) {
         for pair in points.windows(2) {
-            self.draw_line_bresenham(pair[0], pair[1], true, depth, color, additivity, drawspace);
+            self.draw_line_bresenham(pair[0], pair[1], true, drawparams);
         }
         if !skip_last_pixel && !points.is_empty() {
-            self.draw_pixel(*points.last().unwrap(), depth, color, additivity, drawspace);
+            self.draw_pixel(*points.last().unwrap(), drawparams);
         }
     }
 
@@ -1309,21 +1268,12 @@ impl Drawstate {
         start: Vec2,
         end: Vec2,
         skip_last_pixel: bool,
-        depth: Depth,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
+        drawparams: Drawparams,
     ) {
         let start = start.pixel_snapped().to_i32();
         let end = end.pixel_snapped().to_i32();
         iterate_line_bresenham(start, end, skip_last_pixel, &mut |x, y| {
-            self.draw_pixel(
-                Vec2::new(x as f32, y as f32),
-                depth,
-                color,
-                additivity,
-                drawspace,
-            )
+            self.draw_pixel(Vec2::new(x as f32, y as f32), drawparams)
         });
     }
 
@@ -1334,10 +1284,7 @@ impl Drawstate {
         end: Vec2,
         thickness: f32,
         smooth_edges: bool,
-        depth: Depth,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
+        drawparams: Drawparams,
     ) {
         let perp_left = 0.5 * thickness * (end - start).perpendicular().normalized();
         let perp_right = -perp_left;
@@ -1356,10 +1303,13 @@ impl Drawstate {
             vert_left_top: end + perp_left,
         };
 
+        let color = drawparams.color_modulate;
+        let depth = drawparams.depth;
+        let additivity = drawparams.additivity;
         let color_edges = if smooth_edges {
             Color::transparent()
         } else {
-            color
+            drawparams.color_modulate
         };
         let uv = Vec2::new(
             self.untextured_uv_center_coord.left,
@@ -1455,11 +1405,13 @@ impl Drawstate {
         self.simple_drawables.push(Drawable {
             texture_index: self.untextured_uv_center_atlas_page,
             uv_region_contains_translucency: true,
-            depth,
-            color_modulate: color,
-            additivity,
+            drawparams: Drawparams {
+                // NOTE: We already set the vertex colors above, we don't need to modulate them
+                //       anymore, so we set it to white
+                color_modulate: Color::white(),
+                ..drawparams
+            },
             geometry: Geometry::LineMesh { vertices, indices },
-            drawspace,
         });
     }
 
@@ -1478,10 +1430,7 @@ impl Drawstate {
         starting_offset: Vec2,
         alignment: Option<TextAlignment>,
         color_background: Option<Color>,
-        depth: Depth,
-        color_modulate: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
+        drawparams: Drawparams,
     ) -> Vec2 {
         let origin = starting_origin.pixel_snapped().to_i32();
         let offset = starting_offset.pixel_snapped().to_i32();
@@ -1506,10 +1455,10 @@ impl Drawstate {
                         self.untextured_uv_center_coord,
                         false,
                         self.untextured_uv_center_atlas_page,
-                        depth,
-                        color_background,
-                        additivity,
-                        drawspace,
+                        Drawparams {
+                            color_modulate: color_background,
+                            ..drawparams
+                        },
                     );
 
                     // Draw glyph
@@ -1518,10 +1467,7 @@ impl Drawstate {
                         Transform::from_pos_scale_uniform(draw_pos.into(), font_scale),
                         false,
                         false,
-                        depth,
-                        color_modulate,
-                        additivity,
-                        drawspace,
+                        drawparams,
                     );
                 },
             )
@@ -1540,10 +1486,7 @@ impl Drawstate {
                         Transform::from_pos_scale_uniform(draw_pos.into(), font_scale),
                         false,
                         false,
-                        depth,
-                        color_modulate,
-                        additivity,
-                        drawspace,
+                        drawparams,
                     );
                 },
             )
@@ -1564,10 +1507,7 @@ impl Drawstate {
         starting_offset: Vec2,
         origin_is_baseline: bool,
         clipping_rect: Rect,
-        depth: Depth,
-        color_modulate: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
+        drawparams: Drawparams,
     ) {
         let origin = starting_origin.pixel_snapped().to_i32();
         let offset = starting_offset.pixel_snapped().to_i32();
@@ -1588,16 +1528,13 @@ impl Drawstate {
                     draw_pos.into(),
                     Vec2::new(font_scale, font_scale),
                     clipping_rect,
-                    depth,
-                    color_modulate,
-                    additivity,
-                    drawspace,
+                    drawparams,
                 );
             },
         )
     }
 
-    //--------------------------------------------------------------------------------------------------
+    ////////////////////////////////////////////////////////////////////////////////////////////////
     // Debug Drawing
 
     #[inline]
@@ -1606,10 +1543,7 @@ impl Drawstate {
         origin: Vec2,
         cells_per_side: i32,
         cell_size: i32,
-        color_a: Color,
-        color_b: Color,
-        depth: Depth,
-        drawspace: DrawSpace,
+        drawparams: Drawparams,
     ) {
         let origin = origin.pixel_snapped();
         for y in 0..cells_per_side {
@@ -1621,19 +1555,27 @@ impl Drawstate {
                     self.draw_rect(
                         cell_rect,
                         true,
-                        depth,
-                        if x % 2 == 0 { color_a } else { color_b },
-                        ADDITIVITY_NONE,
-                        drawspace,
+                        Drawparams {
+                            color_modulate: if x % 2 == 0 {
+                                drawparams.color_modulate
+                            } else {
+                                drawparams.color_modulate * 0.5
+                            },
+                            ..drawparams
+                        },
                     );
                 } else {
                     self.draw_rect(
                         cell_rect,
                         true,
-                        depth,
-                        if x % 2 == 0 { color_b } else { color_a },
-                        ADDITIVITY_NONE,
-                        drawspace,
+                        Drawparams {
+                            color_modulate: if x % 2 == 0 {
+                                drawparams.color_modulate * 0.5
+                            } else {
+                                drawparams.color_modulate
+                            },
+                            ..drawparams
+                        },
                     );
                 }
             }
@@ -1641,16 +1583,9 @@ impl Drawstate {
     }
 
     #[inline]
-    pub fn debug_draw_arrow(
-        &mut self,
-        start: Vec2,
-        dir: Vec2,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
-    ) {
+    pub fn debug_draw_arrow(&mut self, start: Vec2, dir: Vec2, drawparams: Drawparams) {
         let end = start + dir;
-        self.draw_line_bresenham(start, end, false, DEPTH_MAX, color, additivity, drawspace);
+        self.draw_line_bresenham(start, end, false, drawparams);
 
         let size = clampf(dir.magnitude() / 10.0, 1.0, 5.0);
         let perp_left = size * (end - start).perpendicular().normalized();
@@ -1660,27 +1595,13 @@ impl Drawstate {
         let point_stump = end - size * dir.normalized();
         let point_left = point_stump + perp_left;
         let point_right = point_stump + perp_right;
-        self.debug_draw_triangle(
-            point_tip,
-            point_left,
-            point_right,
-            color,
-            additivity,
-            drawspace,
-        );
+        self.debug_draw_triangle(point_tip, point_left, point_right, drawparams);
     }
 
     #[inline]
-    pub fn debug_draw_arrow_line(
-        &mut self,
-        start: Vec2,
-        end: Vec2,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
-    ) {
+    pub fn debug_draw_arrow_line(&mut self, start: Vec2, end: Vec2, drawparams: Drawparams) {
         let dir = end - start;
-        self.debug_draw_arrow(start, dir, color, additivity, drawspace);
+        self.debug_draw_arrow(start, dir, drawparams);
     }
 
     #[inline]
@@ -1689,9 +1610,7 @@ impl Drawstate {
         point_a: Vec2,
         point_b: Vec2,
         point_c: Vec2,
-        color: Color,
-        additivity: Additivity,
-        drawspace: DrawSpace,
+        drawparams: Drawparams,
     ) {
         let vertices = vec![point_a, point_b, point_c];
         let indices = vec![0, 1, 2];
@@ -1706,15 +1625,12 @@ impl Drawstate {
         self.simple_drawables.push(Drawable {
             texture_index: self.untextured_uv_center_atlas_page,
             uv_region_contains_translucency: false,
-            depth: DEPTH_MAX,
-            color_modulate: color,
-            additivity,
+            drawparams,
             geometry: Geometry::PolygonMesh {
                 vertices,
                 uvs,
                 indices,
             },
-            drawspace,
         });
     }
 
@@ -1741,10 +1657,12 @@ impl Drawstate {
             self.debug_log_offset,
             None,
             None,
-            self.debug_log_depth,
-            color,
-            ADDITIVITY_NONE,
-            DrawSpace::Screen,
+            Drawparams::new(
+                self.debug_log_depth,
+                color,
+                ADDITIVITY_NONE,
+                Drawspace::Screen,
+            ),
         );
 
         // Add final '\n'

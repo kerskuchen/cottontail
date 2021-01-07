@@ -1,14 +1,8 @@
 # DONE:
 
-- use prelude graphics pack that loads quickly to show splashscreen
-- improve wasm startup speed (load graphic assets first to show splash screen, then later sound assets)
-- adds loadingscreen progressbar
-- reuse drawtext method for draw debug logging
-- Make texture packer size dynamically growing up to a maximum size of 4096
-- rudimentary hotloading of assets on desktop
-- Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and 
-  implement it (drawing the depthbuffer and various debug grids should be useful). Throw out the rest 
-- Fix screenspace coordinate transformation for cases where we have letterboxing
+- Fixes warnings
+- use drawparams instead of depth,color,additivity,drawspace tuple
+- adds some helper functions to help with text alignment
 
 # CURRENT
 
@@ -33,8 +27,7 @@
   - to use local folder for logging
   - enable debug draw logging
 - Ability to draw debug graphs to i.e. try out attenuation for audio distance
-- We need to add a debug layer to the drawstate with its own drawqueue
-- get rid of scenes system and game events
+  - We need to add a debug layer to the drawstate with its own drawqueue
 - add unified/virtual gamecursor input to gamecursors struct (uses mouse or first touchfinger)
 - simplify touch input query (especially within the appcursors context)
 - Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 
@@ -283,3 +276,13 @@
 - gets rid of screenspace blit offset because it adds too much complexity
 - bake a minimal graphics pack with splashscreen only
 - move controllerdb into executable on sdl2 platform
+
+- use prelude graphics pack that loads quickly to show splashscreen
+- improve wasm startup speed (load graphic assets first to show splash screen, then later sound assets)
+- adds loadingscreen progressbar
+- reuse drawtext method for draw debug logging
+- Make texture packer size dynamically growing up to a maximum size of 4096
+- rudimentary hotloading of assets on desktop
+- Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and 
+  implement it (drawing the depthbuffer and various debug grids should be useful). Throw out the rest 
+- Fix screenspace coordinate transformation for cases where we have letterboxing

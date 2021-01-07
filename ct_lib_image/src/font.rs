@@ -41,6 +41,28 @@ pub struct TextAlignment {
     pub ignore_whitespace: bool,
 }
 
+impl TextAlignment {
+    #[inline]
+    pub fn centered(origin_is_baseline: bool, ignore_whitespace: bool) -> TextAlignment {
+        TextAlignment {
+            horizontal: AlignmentHorizontal::Center,
+            vertical: AlignmentVertical::Center,
+            origin_is_baseline,
+            ignore_whitespace,
+        }
+    }
+
+    #[inline]
+    pub fn top_left(origin_is_baseline: bool, ignore_whitespace: bool) -> TextAlignment {
+        TextAlignment {
+            horizontal: AlignmentHorizontal::Left,
+            vertical: AlignmentVertical::Top,
+            origin_is_baseline,
+            ignore_whitespace,
+        }
+    }
+}
+
 pub trait Glyph {
     fn get_bitmap_rect(&self) -> Recti;
     fn horizontal_advance(&self) -> i32;

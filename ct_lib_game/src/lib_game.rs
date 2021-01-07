@@ -1622,10 +1622,12 @@ impl CanvasFader {
             draw.draw_rect(
                 Rect::from_width_height(canvas_width as f32, canvas_height as f32),
                 true,
-                DEPTH_SCREEN_FADER,
-                color,
-                ADDITIVITY_NONE,
-                DrawSpace::Canvas,
+                Drawparams::new(
+                    DEPTH_SCREEN_FADER,
+                    color,
+                    ADDITIVITY_NONE,
+                    Drawspace::Canvas,
+                ),
             );
         }
     }
@@ -1722,20 +1724,24 @@ impl LoadingScreen {
             )),
             false,
             false,
-            DEPTH_SPLASH,
-            opacity * Color::white(),
-            ADDITIVITY_NONE,
-            DrawSpace::Canvas,
+            Drawparams::new(
+                DEPTH_SPLASH,
+                opacity * Color::white(),
+                ADDITIVITY_NONE,
+                Drawspace::Canvas,
+            ),
         );
 
         for letterbox_rect in &letterbox_rects {
             draw.draw_rect(
                 Rect::from(*letterbox_rect),
                 true,
-                DEPTH_SCREEN_FADER,
-                opacity * Color::white(),
-                ADDITIVITY_NONE,
-                DrawSpace::Canvas,
+                Drawparams::new(
+                    DEPTH_SCREEN_FADER,
+                    opacity * Color::white(),
+                    ADDITIVITY_NONE,
+                    Drawspace::Canvas,
+                ),
             );
         }
 
@@ -1750,10 +1756,12 @@ impl LoadingScreen {
                     canvas_height as f32,
                 ),
                 true,
-                DEPTH_SCREEN_FADER,
-                opacity * self.color_progressbar,
-                ADDITIVITY_NONE,
-                DrawSpace::Canvas,
+                Drawparams::new(
+                    DEPTH_SCREEN_FADER,
+                    opacity * self.color_progressbar,
+                    ADDITIVITY_NONE,
+                    Drawspace::Canvas,
+                ),
             );
         }
 
@@ -2019,7 +2027,7 @@ impl ParticleSystem {
         random: &mut Random,
         deltatime: f32,
         depth: f32,
-        drawspace: DrawSpace,
+        drawspace: Drawspace,
     ) {
         // Update
         for index in 0..self.pos.len() {
@@ -2056,10 +2064,7 @@ impl ParticleSystem {
                 true,
                 Vec2::zero(),
                 Transform::from_pos_scale_uniform(self.pos[index].pixel_snapped(), scale),
-                depth,
-                color,
-                additivity,
-                drawspace,
+                Drawparams::new(depth, color, additivity, drawspace),
             );
         }
 
@@ -2185,7 +2190,7 @@ impl Afterimage {
         draw: &mut Drawstate,
         deltatime: f32,
         draw_depth: f32,
-        drawspace: DrawSpace,
+        drawspace: Drawspace,
     ) {
         for index in 0..self.sprite.len() {
             let age_percentage = self.age[index] / self.lifetime;
@@ -2205,10 +2210,12 @@ impl Afterimage {
                 self.xform[index],
                 self.flip_horizontally[index],
                 self.flip_vertically[index],
-                draw_depth,
-                color * self.color_modulate[index],
-                additivity * self.additivity[index],
-                drawspace,
+                Drawparams::new(
+                    draw_depth,
+                    color * self.color_modulate[index],
+                    additivity * self.additivity[index],
+                    drawspace,
+                ),
             );
         }
 
@@ -2317,7 +2324,11 @@ pub fn debug_draw_grid(
             start.x + line_thickness as f32,
             end.y,
         );
-        draw.draw_rect(rect, true, depth, color, ADDITIVITY_NONE, DrawSpace::Screen);
+        draw.draw_rect(
+            rect,
+            true,
+            Drawparams::new(depth, color, ADDITIVITY_NONE, Drawspace::Screen),
+        );
 
         x += world_grid_size;
     }
@@ -2352,7 +2363,11 @@ pub fn debug_draw_grid(
             end.x,
             start.y + line_thickness as f32,
         );
-        draw.draw_rect(rect, true, depth, color, ADDITIVITY_NONE, DrawSpace::Screen);
+        draw.draw_rect(
+            rect,
+            true,
+            Drawparams::new(depth, color, ADDITIVITY_NONE, Drawspace::Screen),
+        );
 
         y += world_grid_size;
     }
@@ -2399,10 +2414,7 @@ pub fn debug_draw_crosshair(
         end,
         line_thickness,
         true,
-        depth,
-        color,
-        ADDITIVITY_NONE,
-        DrawSpace::Screen,
+        Drawparams::new(depth, color, ADDITIVITY_NONE, Drawspace::Screen),
     );
 
     let start = Vec2::new(pos_world.x, frustum.top());
@@ -2433,9 +2445,6 @@ pub fn debug_draw_crosshair(
         end,
         line_thickness,
         true,
-        depth,
-        color,
-        ADDITIVITY_NONE,
-        DrawSpace::Screen,
+        Drawparams::new(depth, color, ADDITIVITY_NONE, Drawspace::Screen),
     );
 }
