@@ -1382,10 +1382,6 @@ impl AudioStream {
         }
     }
 
-    pub fn get_output_chunk(&self) -> &AudioChunk {
-        &self.chunk_output
-    }
-
     pub fn get_output_chunk_mut(&mut self) -> &mut AudioChunk {
         &mut self.chunk_output
     }

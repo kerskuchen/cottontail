@@ -419,8 +419,8 @@ fn get_appdata_dir(company_name: &str, application_name: &str) -> Result<String,
 
 #[cfg(target_os = "windows")]
 pub fn get_user_savedata_dir(company_name: &str, application_name: &str) -> Result<String, String> {
-    let TODO = "use a `internal_mode` feature here";
     /*
+    // TODO:
     // Try working dir first: Write test file to see if we even have writing permissions for './'
         if std::fs::write("test.txt", "test").is_ok() {
             if std::fs::remove_file("test.txt").is_ok() {

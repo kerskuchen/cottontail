@@ -1,6 +1,6 @@
-use ct_lib_core::{log, transmute_slice_to_byte_slice, transmute_slice_to_byte_slice_mut};
+use ct_lib_core::log;
+use ct_lib_math::Mat4;
 use ct_lib_math::Recti;
-use ct_lib_math::{clampf, Mat4};
 
 use glow::HasContext;
 
@@ -16,8 +16,6 @@ type GlowBuffer = <glow::Context as glow::HasContext>::Buffer;
 
 // NOTE: This translates to the depth range [0, 100] from farthest to nearest (like a paperstack)
 //       For more information see: https://stackoverflow.com/a/36046924
-const todo: &str =
-    "this currently is used for blitting and duplicates drawstate - what do we do with it?";
 pub const DEFAULT_WORLD_ZNEAR: f32 = 0.0;
 pub const DEFAULT_WORLD_ZFAR: f32 = -100.0;
 
@@ -1393,8 +1391,8 @@ impl Renderer {
                 .get("blit")
                 .expect("Blit drawobject not found for shader");
             drawobject_blit.assign_buffers(
-                transmute_slice_to_byte_slice(&vertices),
-                transmute_slice_to_byte_slice(&indices),
+                ct_lib_core::transmute_slice_to_byte_slice(&vertices),
+                ct_lib_core::transmute_slice_to_byte_slice(&indices),
             );
             drawobject_blit.draw(0, 6);
         }
@@ -1408,6 +1406,7 @@ impl Renderer {
 
     /// Draws the depthbuffer content of the given framebuffer onto itself
     #[inline]
+    #[allow(dead_code)]
     #[cfg(target_arch = "wasm32")]
     pub fn debug_draw_depthbuffer(&mut self, _framebuffer: &str) {
         // Not implemented yet
@@ -1415,6 +1414,7 @@ impl Renderer {
 
     /// Draws the depthbuffer content of the given framebuffer onto itself
     #[inline]
+    #[allow(dead_code)]
     #[cfg(not(target_arch = "wasm32"))]
     pub fn debug_draw_depthbuffer(&mut self, framebuffer: &str) {
         unsafe {
@@ -1469,7 +1469,8 @@ impl Renderer {
 
         // Upload depth pixel to texture
         unsafe {
-            let depthbuffer_pixels_raw = transmute_slice_to_byte_slice(&depthbuffer_pixels[..]);
+            let depthbuffer_pixels_raw =
+                ct_lib_core::transmute_slice_to_byte_slice(&depthbuffer_pixels[..]);
             self.texture_create_or_update_whole(
                 "debug_depth",
                 framebuffer_width,
@@ -1546,8 +1547,8 @@ impl Renderer {
                 .get("blit")
                 .expect("Blit drawobject not found for shader");
             drawobject_blit.assign_buffers(
-                transmute_slice_to_byte_slice(&vertices),
-                transmute_slice_to_byte_slice(&indices),
+                ct_lib_core::transmute_slice_to_byte_slice(&vertices),
+                ct_lib_core::transmute_slice_to_byte_slice(&indices),
             );
             drawobject_blit.draw(0, 6);
         }
@@ -1558,6 +1559,7 @@ impl Renderer {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn debug_read_depthbuffer(&mut self, framebuffer: &str) -> Vec<f32> {
         let (framebuffer_width, framebuffer_height) = {
             let framebuffer = self
@@ -1573,7 +1575,7 @@ impl Renderer {
         unsafe {
             let gl = &self.gl;
             let mut depthbuffer_values_raw =
-                transmute_slice_to_byte_slice_mut(&mut depthbuffer_values[..]);
+                ct_lib_core::transmute_slice_to_byte_slice_mut(&mut depthbuffer_values[..]);
             gl.read_pixels(
                 0,
                 0,

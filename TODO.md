@@ -16,6 +16,7 @@
 # NEXT:
 
 
+
 ## improve examples
 - find a good way to switch/disable audio when switching scenes
 - restore gui/credits displaying as an example scene
@@ -28,16 +29,20 @@
   - one that just centers text in rect
   - macro based debug log with format strings?
   - other ideas?
+- create a internal mode feature flag and
+  - to use local folder for logging
+  - enable debug draw logging
 - Ability to draw debug graphs to i.e. try out attenuation for audio distance
 - We need to add a debug layer to the drawstate with its own drawqueue
 - get rid of scenes system and game events
 - add unified/virtual gamecursor input to gamecursors struct (uses mouse or first touchfinger)
-- simplify query for finger press events
+- simplify touch input query (especially within the appcursors context)
 - Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 
   sized rectangle drawing and the `skip_last_vertex` 
 - Fix Vec2 to work with flipped_y only and remove special suffixes?
 - Add modulators like in https://www.youtube.com/watch?v=n-txrCMvdms especially shift register 
   modulator and newtonian following modulator
+- replace math::Interval by Rust range with trait methods
 - Future tutorial games:
   - https://simplegametutorials.github.io/
   - https://github.com/noooway/love2d_arkanoid_tutorial
@@ -48,6 +53,8 @@
   - https://bfnightly.bracketproductions.com/rustbook/chapter_0.html
 
 ## better platform layer
+- implement appcommands in wasm
+- make screen orientation settable
 - rename things that are not necessarily game related to app
 - also do we need resize callbacks at all? (also in sdl2)?
 - fix mouseup/touchup events that happen outside of browser window (i.e. affects leaving fullscreen)
@@ -91,9 +98,9 @@
 # user experience
 - find ways to make our wasm file smaller
 - make app pause on onfocus/lost events more robust
-- show focus lost overlay "press here to continue"
-- give appcode a hint and some time to wind down and save state etc. on focus lost
-- let appcode respond with an ACK that it won't need to update anymore on focus lost
+  - show focus lost overlay "press here to continue"
+  - give appcode a hint and some time to wind down and save state etc. on focus lost
+  - let appcode respond with an ACK that it won't need to update anymore on focus lost
 - add icon, title and tags to html (look at other projects we did)
 - check out the output of https://realfavicongenerator.net/
 - add splash screen on first run as html canvas background image + some "run game" icon
@@ -117,6 +124,8 @@
 - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)
 
 ## Drawstate / Renderer
+- evaluate what to do with DEFAULT_WORLD_ZNEAR and DEFAULT_WORLD_ZFAR constants that are duplicated
+  in renderer and drawstate
 - can we make the sorting faster? alternatively can we get rid of sorting for non-translucent 
   drawobjects by dividing them up into two drawbatches?
 - add ability to add new shaders from drawstate

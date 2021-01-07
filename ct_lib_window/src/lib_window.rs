@@ -53,7 +53,7 @@ pub trait AppContextInterface: Clone {
 }
 
 pub fn run_main<AppContextType: 'static + AppContextInterface>() {
-    platform::run_main::<AppContextType>();
+    platform::run_main::<AppContextType>().ok();
 }
 
 fn snap_deltatime_to_nearest_common_refresh_rate(deltatime: f32) -> f32 {

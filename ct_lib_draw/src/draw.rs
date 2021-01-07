@@ -1,7 +1,6 @@
 use ct_lib_window::renderer_opengl::Renderer;
 
 use super::image::bitmap::*;
-use super::image::font::*;
 use super::sprite::*;
 use super::*;
 

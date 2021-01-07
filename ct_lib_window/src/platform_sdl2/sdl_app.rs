@@ -134,7 +134,7 @@ fn log_frametimes(
     }
 }
 
-pub fn run_main<AppContextType: AppContextInterface>() {
+pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
     timer_initialize();
     let app_config = AppContextType::get_app_info();
     let savedata_dir =
@@ -294,7 +294,6 @@ pub fn run_main<AppContextType: AppContextInterface>() {
     let mut mouse_pos_previous_x = input.mouse.pos_x;
     let mut mouse_pos_previous_y = input.mouse.pos_y;
 
-    let mut current_tick = 0;
     let mut is_running = true;
 
     let mut app_context = AppContextType::new(&mut renderer, &input, &mut audio);
@@ -304,8 +303,6 @@ pub fn run_main<AppContextType: AppContextInterface>() {
 
     while is_running {
         let pre_input_time = timer_current_time_seconds();
-
-        current_tick += 1;
 
         //--------------------------------------------------------------------------------------
         // Event loop
@@ -355,9 +352,7 @@ pub fn run_main<AppContextType: AppContextInterface>() {
                     }
                     let keycode = sdl_input::keycode_to_our_keycode(sdl2_keycode);
                     let scancode = sdl_input::scancode_to_our_scancode(sdl2_scancode);
-                    input
-                        .keyboard
-                        .process_key_event(scancode, keycode, true, repeat, current_tick);
+                    input.keyboard.process_key_press_event(scancode, keycode);
                 }
                 Event::KeyUp {
                     scancode: Some(sdl2_scancode),
@@ -367,9 +362,7 @@ pub fn run_main<AppContextType: AppContextInterface>() {
                     input.keyboard.has_release_event = true;
                     let keycode = sdl_input::keycode_to_our_keycode(sdl2_keycode);
                     let scancode = sdl_input::scancode_to_our_scancode(sdl2_scancode);
-                    input
-                        .keyboard
-                        .process_key_event(scancode, keycode, false, false, current_tick);
+                    input.keyboard.process_key_release_event(scancode, keycode);
                 }
                 //----------------------------------------------------------------------------------
                 // Textinput
@@ -402,18 +395,14 @@ pub fn run_main<AppContextType: AppContextInterface>() {
                 } => {
                     let pos_x = f32::round(x * screen_width as f32) as i32;
                     let pos_y = f32::round(y * screen_height as f32) as i32;
-                    input
-                        .touch
-                        .process_finger_down(finger_id, pos_x, pos_y, current_tick);
+                    input.touch.process_finger_down(finger_id, pos_x, pos_y);
                 }
                 Event::FingerUp {
                     finger_id, x, y, ..
                 } => {
                     let pos_x = f32::round(x * screen_width as f32) as i32;
                     let pos_y = f32::round(y * screen_height as f32) as i32;
-                    input
-                        .touch
-                        .process_finger_up(finger_id, pos_x, pos_y, current_tick);
+                    input.touch.process_finger_up(finger_id, pos_x, pos_y);
                 }
                 Event::FingerMotion {
                     finger_id, x, y, ..
@@ -431,76 +420,46 @@ pub fn run_main<AppContextType: AppContextInterface>() {
                 Event::MouseButtonDown { mouse_btn, .. } => match mouse_btn {
                     sdl2::mouse::MouseButton::Left => {
                         input.mouse.has_press_event = true;
-                        input
-                            .mouse
-                            .button_left
-                            .process_event(true, false, current_tick)
+                        input.mouse.button_left.process_press_event()
                     }
                     sdl2::mouse::MouseButton::Middle => {
                         input.mouse.has_press_event = true;
-                        input
-                            .mouse
-                            .button_middle
-                            .process_event(true, false, current_tick)
+                        input.mouse.button_middle.process_press_event()
                     }
                     sdl2::mouse::MouseButton::Right => {
                         input.mouse.has_press_event = true;
-                        input
-                            .mouse
-                            .button_right
-                            .process_event(true, false, current_tick)
+                        input.mouse.button_right.process_press_event()
                     }
                     sdl2::mouse::MouseButton::X1 => {
                         input.mouse.has_press_event = true;
-                        input
-                            .mouse
-                            .button_x1
-                            .process_event(true, false, current_tick)
+                        input.mouse.button_x1.process_press_event()
                     }
                     sdl2::mouse::MouseButton::X2 => {
                         input.mouse.has_press_event = true;
-                        input
-                            .mouse
-                            .button_x2
-                            .process_event(true, false, current_tick)
+                        input.mouse.button_x2.process_press_event()
                     }
                     _ => {}
                 },
                 Event::MouseButtonUp { mouse_btn, .. } => match mouse_btn {
                     sdl2::mouse::MouseButton::Left => {
                         input.mouse.has_release_event = true;
-                        input
-                            .mouse
-                            .button_left
-                            .process_event(false, false, current_tick)
+                        input.mouse.button_left.process_release_event()
                     }
                     sdl2::mouse::MouseButton::Middle => {
                         input.mouse.has_release_event = true;
-                        input
-                            .mouse
-                            .button_middle
-                            .process_event(false, false, current_tick)
+                        input.mouse.button_middle.process_release_event()
                     }
                     sdl2::mouse::MouseButton::Right => {
                         input.mouse.has_release_event = true;
-                        input
-                            .mouse
-                            .button_right
-                            .process_event(false, false, current_tick)
+                        input.mouse.button_right.process_release_event()
                     }
                     sdl2::mouse::MouseButton::X1 => {
                         input.mouse.has_release_event = true;
-                        input
-                            .mouse
-                            .button_x1
-                            .process_event(false, false, current_tick)
+                        input.mouse.button_x1.process_release_event()
                     }
                     sdl2::mouse::MouseButton::X2 => {
                         input.mouse.has_release_event = true;
-                        input
-                            .mouse
-                            .button_x2
-                            .process_event(false, false, current_tick)
+                        input.mouse.button_x2.process_release_event()
                     }
                     _ => {}
                 },
@@ -580,7 +539,11 @@ pub fn run_main<AppContextType: AppContextInterface>() {
                     };
 
                     if let Some(button) = gamepad_button {
-                        button.process_event(is_pressed, false, current_tick);
+                        if is_pressed {
+                            button.process_press_event();
+                        } else {
+                            button.process_release_event();
+                        }
                     }
                 }
             }
@@ -780,7 +743,11 @@ pub fn run_main<AppContextType: AppContextInterface>() {
     let app_uptime = timer_current_time_seconds() - app_start_time;
     log::debug!("Application uptime: {:.3}s", app_uptime);
 
-    // Make sure our sound output has time to wind down
-    let TODO = "sleep duration based on audiobuffersize + buffers in queue";
-    std::thread::sleep(Duration::from_secs_f32(0.1));
+    // Make sure our sound output has time to wind down so it does not crack
+    let audio_winddown_time_sec = (2.0 * audio.get_audiobuffer_size_in_frames() as f32
+        + audio.get_num_frames_in_queue() as f32)
+        / input.audio_playback_rate_hz as f32;
+    std::thread::sleep(Duration::from_secs_f32(audio_winddown_time_sec));
+
+    Ok(())
 }

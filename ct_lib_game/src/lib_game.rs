@@ -88,8 +88,17 @@ pub struct AppContext<GameStateType: GameStateInterface> {
     audio_chunk_timer: f32,
 }
 
-impl<GameStateType: GameStateInterface> Default for AppContext<GameStateType> {
-    fn default() -> Self {
+impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppContext<GameStateType> {
+    fn get_app_info() -> window::AppInfo {
+        let config = GameStateType::get_game_info();
+        AppInfo {
+            window_title: config.game_window_title,
+            save_folder_name: config.game_save_folder_name,
+            company_name: config.game_company_name,
+        }
+    }
+
+    fn new(_renderer: &mut Renderer, _input: &InputState, _audio: &mut AudioOutput) -> Self {
         let window_config = GameStateType::get_window_config();
         AppContext {
             assets: GameAssets::new("resources"),
@@ -104,22 +113,6 @@ impl<GameStateType: GameStateInterface> Default for AppContext<GameStateType> {
             globals: None,
             audio_chunk_timer: 0.0,
         }
-    }
-}
-
-impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppContext<GameStateType> {
-    fn get_app_info() -> window::AppInfo {
-        let config = GameStateType::get_game_info();
-        AppInfo {
-            window_title: config.game_window_title,
-            save_folder_name: config.game_save_folder_name,
-            company_name: config.game_company_name,
-        }
-    }
-
-    fn new(renderer: &mut Renderer, input: &InputState, audio: &mut AudioOutput) -> Self {
-        let TODO = "we can get rid of all the optional fields here";
-        Self::default()
     }
 
     fn reset(&mut self) {

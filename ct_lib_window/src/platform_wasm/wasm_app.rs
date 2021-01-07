@@ -18,7 +18,6 @@ use wasm_bindgen::JsCast;
 
 use std::{cell::RefCell, rc::Rc};
 
-const ENABLE_PANIC_MESSAGES: bool = false;
 const ENABLE_FRAMETIME_LOGGING: bool = false;
 
 fn html_get_window() -> &'static web_sys::Window {
@@ -275,13 +274,8 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     let mut frame_start_time = app_start_time;
     log::debug!("Startup took {:.3}ms", app_start_time * 1000.0,);
 
-    let mut current_tick = 0;
-
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // INPUT CALLBACKS
-
-    const SCREEN_ORIENTATION: web_sys::OrientationLockType =
-        web_sys::OrientationLockType::Landscape;
 
     let dpr = html_get_window().device_pixel_ratio();
     let input = Rc::new(RefCell::new(InputState::new()));
@@ -294,16 +288,13 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
         let keydown_callback = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
             let mut input = input.borrow_mut();
 
-            let repeat = event.repeat();
             input.keyboard.has_press_event = true;
-            if repeat {
+            if event.repeat() {
                 input.keyboard.has_system_repeat_event = true;
             }
             let scancode = wasm_input::scancode_to_our_scancode(&event.code());
             let keycode = wasm_input::keycode_to_our_keycode(&event.key(), scancode);
-            input
-                .keyboard
-                .process_key_event(scancode, keycode, true, repeat, current_tick);
+            input.keyboard.process_key_press_event(scancode, keycode);
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
             "keydown",
@@ -320,9 +311,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
             input.keyboard.has_release_event = true;
             let scancode = wasm_input::scancode_to_our_scancode(&event.code());
             let keycode = wasm_input::keycode_to_our_keycode(&event.key(), scancode);
-            input
-                .keyboard
-                .process_key_event(scancode, keycode, false, false, current_tick);
+            input.keyboard.process_key_release_event(scancode, keycode);
         }) as Box<dyn FnMut(_)>);
         html_get_canvas()
             .add_event_listener_with_callback("keyup", keyup_callback.as_ref().unchecked_ref())?;
@@ -342,18 +331,9 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
             input.mouse.pos_x = (event.offset_x() as f64 * dpr).floor() as i32;
             input.mouse.pos_y = (event.offset_y() as f64 * dpr).floor() as i32;
             match event.button() {
-                0 => input
-                    .mouse
-                    .button_left
-                    .process_event(true, false, current_tick),
-                1 => input
-                    .mouse
-                    .button_middle
-                    .process_event(true, false, current_tick),
-                2 => input
-                    .mouse
-                    .button_right
-                    .process_event(true, false, current_tick),
+                0 => input.mouse.button_left.process_press_event(),
+                1 => input.mouse.button_middle.process_press_event(),
+                2 => input.mouse.button_right.process_press_event(),
                 _ => {}
             }
         }) as Box<dyn FnMut(_)>);
@@ -377,18 +357,9 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
             input.mouse.pos_x = (event.offset_x() as f64 * dpr).floor() as i32;
             input.mouse.pos_y = (event.offset_y() as f64 * dpr).floor() as i32;
             match event.button() {
-                0 => input
-                    .mouse
-                    .button_left
-                    .process_event(false, false, current_tick),
-                1 => input
-                    .mouse
-                    .button_middle
-                    .process_event(false, false, current_tick),
-                2 => input
-                    .mouse
-                    .button_right
-                    .process_event(false, false, current_tick),
+                0 => input.mouse.button_left.process_release_event(),
+                1 => input.mouse.button_middle.process_release_event(),
+                2 => input.mouse.button_right.process_release_event(),
                 _ => {}
             }
         }) as Box<dyn FnMut(_)>);
@@ -443,7 +414,6 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                         touch.identifier() as FingerPlatformId,
                         pos_x,
                         pos_y,
-                        current_tick,
                     )
                 }
             }
@@ -470,7 +440,6 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                         touch.identifier() as FingerPlatformId,
                         pos_x,
                         pos_y,
-                        current_tick,
                     )
                 }
             }
@@ -523,7 +492,6 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                         touch.identifier() as FingerPlatformId,
                         pos_x,
                         pos_y,
-                        current_tick,
                     )
                 }
             }
@@ -584,8 +552,6 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
 
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
         let pre_input_time = timer_current_time_seconds();
-
-        current_tick += 1;
 
         //--------------------------------------------------------------------------------------
         // Event loop
@@ -680,32 +646,32 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                     fullscreen_handler.toggle_fullscreen();
                 }
                 AppCommand::TextinputStart {
-                    inputrect_x,
-                    inputrect_y,
-                    inputrect_width,
-                    inputrect_height,
+                    inputrect_x: _,
+                    inputrect_y: _,
+                    inputrect_width: _,
+                    inputrect_height: _,
                 } => {
                     todo!();
                 }
                 AppCommand::TextinputStop => {
                     todo!();
                 }
-                AppCommand::WindowedModeAllowResizing(allowed) => {
+                AppCommand::WindowedModeAllowResizing(_allowed) => {
                     log::trace!("`WindowedModeAllowResizing` Not available on this platform");
                 }
-                AppCommand::WindowedModeAllow(allowed) => {
+                AppCommand::WindowedModeAllow(_allowed) => {
                     log::trace!("`WindowedModeAllow` Not available on this platform");
                 }
                 AppCommand::WindowedModeSetSize {
-                    width,
-                    height,
-                    minimum_width,
-                    minimum_height,
+                    width: _,
+                    height: _,
+                    minimum_width: _,
+                    minimum_height: _,
                 } => {
                     log::trace!("`WindowedModeSetSize` Not available on this platform");
                 }
-                AppCommand::ScreenSetGrabInput(grab_input) => {
-                    let TODO = true;
+                AppCommand::ScreenSetGrabInput(_grab_input) => {
+                    todo!()
                 }
                 AppCommand::Shutdown => {
                     log::trace!("`Shutdown` Not available on this platform");

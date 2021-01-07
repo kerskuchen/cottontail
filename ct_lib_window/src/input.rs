@@ -63,23 +63,25 @@ pub struct ButtonState {
     pub is_pressed: bool,
     pub transition_count: u32,
     pub system_repeat_count: u32,
-    // NOTE: This can be used to implement soft key-repeats
-    pub tick_of_last_transition: u64,
 }
 
 impl ButtonState {
     /// Changes state of a button while counting all transitions from pressed -> released and from
     /// released -> pressed
-    pub fn process_event(&mut self, is_pressed: bool, is_repeat: bool, tick: u64) {
-        if self.is_pressed != is_pressed {
+    pub fn process_press_event(&mut self) {
+        if !self.is_pressed {
             self.transition_count += 1;
-            self.is_pressed = is_pressed;
-            self.tick_of_last_transition = tick;
+            self.is_pressed = true;
         } else {
-            debug_assert!(is_pressed);
-            // TODO: Why does this fire on WASM?
-            // debug_assert!(is_repeat);
             self.system_repeat_count += 1;
+        }
+    }
+    pub fn process_release_event(&mut self) {
+        if self.is_pressed {
+            self.transition_count += 1;
+            self.is_pressed = false;
+        } else {
+            debug_assert!(false, "We got a second release event");
         }
     }
 
@@ -192,13 +194,7 @@ pub struct TouchState {
 }
 
 impl TouchState {
-    pub fn process_finger_down(
-        &mut self,
-        platform_id: FingerPlatformId,
-        pos_x: i32,
-        pos_y: i32,
-        current_tick: u64,
-    ) {
+    pub fn process_finger_down(&mut self, platform_id: FingerPlatformId, pos_x: i32, pos_y: i32) {
         // NOTE: It can happen that the implementation re-used a finger ID faster
         //       than we could delete our corresponding finger one. If that happens we just delete
         //       our corresponding finger and create a new one with the same ID.
@@ -211,22 +207,16 @@ impl TouchState {
 
         self.has_press_event = true;
         let mut finger = TouchFinger::new(id, platform_id, pos_x, pos_y);
-        finger.state.process_event(true, false, current_tick);
+        finger.state.process_press_event();
         self.fingers.insert(id, finger);
     }
 
-    pub fn process_finger_up(
-        &mut self,
-        platform_id: FingerPlatformId,
-        pos_x: i32,
-        pos_y: i32,
-        current_tick: u64,
-    ) {
+    pub fn process_finger_up(&mut self, platform_id: FingerPlatformId, pos_x: i32, pos_y: i32) {
         self.has_release_event |= {
             if let Some(finger) = self.get_finger_by_platform_id_mut(platform_id) {
                 finger.pos_x = pos_x;
                 finger.pos_y = pos_y;
-                finger.state.process_event(false, false, current_tick);
+                finger.state.process_release_event();
                 true
             } else {
                 debug_assert!(
@@ -406,16 +396,7 @@ impl KeyboardState {
         });
     }
 
-    /// Changes state of a key while counting all transitions from pressed -> released and from
-    /// released -> pressed
-    pub fn process_key_event(
-        &mut self,
-        scancode: Scancode,
-        keycode: Keycode,
-        is_pressed: bool,
-        is_repeat: bool,
-        tick: u64,
-    ) {
+    pub fn process_key_press_event(&mut self, scancode: Scancode, keycode: Keycode) {
         let mut key = self.keys.entry(scancode).or_insert(KeyState {
             keycode,
             scancode,
@@ -426,7 +407,21 @@ impl KeyboardState {
             // input language)
             key.keycode = keycode;
         }
-        key.button.process_event(is_pressed, is_repeat, tick);
+        key.button.process_press_event();
+    }
+
+    pub fn process_key_release_event(&mut self, scancode: Scancode, keycode: Keycode) {
+        let mut key = self.keys.entry(scancode).or_insert(KeyState {
+            keycode,
+            scancode,
+            button: ButtonState::default(),
+        });
+        if key.keycode != keycode {
+            // NOTE: Update keycode (keycode may differ for example if the user changed their
+            // input language)
+            key.keycode = keycode;
+        }
+        key.button.process_release_event();
     }
 
     pub fn is_down(&self, scancode: Scancode) -> bool {

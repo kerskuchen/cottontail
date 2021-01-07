@@ -1165,8 +1165,8 @@ impl Interval {
         let len = i64::max(0, self.end - self.start);
         usize::try_from(len).unwrap_or_else(|error| {
             panic!(
-                "Failed to determine length of range: cannot convert {} to usize",
-                len
+                "Failed to determine length of range: cannot convert {} to usize: {}",
+                len, error
             )
         })
     }
