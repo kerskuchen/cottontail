@@ -416,7 +416,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
 
             if let Some(audio) = self.audio.as_mut() {
                 let globals = self.globals.as_mut().unwrap();
-                audio.set_listener_pos(globals.camera.center());
+                audio.set_global_listener_pos(globals.camera.center());
 
                 self.audio_chunk_timer += input.deltatime;
 

@@ -1130,7 +1130,7 @@ struct AudioRenderParams {
 #[derive(Clone)]
 struct AudioStream {
     name: String,
-    group_id: AudioGroup,
+    group_id: AudioGroupId,
 
     source: AudioSource,
 
@@ -1158,7 +1158,7 @@ struct AudioStream {
 impl AudioStream {
     fn new(
         name: String,
-        group_id: AudioGroup,
+        group_id: AudioGroupId,
         source: AudioSource,
         delay_framecount: usize,
         playback_speed_percent: f32,
@@ -1194,7 +1194,78 @@ impl AudioStream {
         }
     }
 
+    fn skip_ouput_chunk(&mut self, output_params: AudioRenderParams) {
+        // Mute volume for output chunks
+        self.chunk_internal.volume = 0.0;
+        self.chunk_output.volume = 0.0;
+
+        // Fast path - we are finished
+        if self.has_finished {
+            return;
+        }
+
+        let silence_framecount = {
+            let silence_framecount =
+                usize::min(self.frames_left_till_start, AUDIO_CHUNKSIZE_IN_FRAMES);
+            self.frames_left_till_start =
+                if self.frames_left_till_start >= AUDIO_CHUNKSIZE_IN_FRAMES {
+                    self.frames_left_till_start - AUDIO_CHUNKSIZE_IN_FRAMES
+                } else {
+                    0
+                };
+            silence_framecount
+        };
+
+        // Fast path - our stream won't start this chunk
+        if silence_framecount == AUDIO_CHUNKSIZE_IN_FRAMES {
+            self.chunk_internal.volume = 0.0;
+            self.chunk_output.volume = 0.0;
+            return;
+        }
+
+        // Calculate spatial settings if necessary
+        let (final_volume, final_pan, final_playback_speed_factor) =
+            if let Some(spatial_params) = self.spatial_params {
+                let (spatial_volume_factor, spatial_pan, spatial_playback_speed_factor) =
+                    spatial_params.calculate_volume_pan_playback_speed(&output_params);
+                (
+                    self.volume_base * spatial_volume_factor * self.muted_volume,
+                    spatial_pan,
+                    self.playback_speed_base * spatial_playback_speed_factor,
+                )
+            } else {
+                (
+                    self.volume_base * self.muted_volume,
+                    self.pan_base,
+                    self.playback_speed_base,
+                )
+            };
+
+        // Fastpath - we are muted and already had time to wind-down
+        if self.muted_volume == 0.0 && self.volume_adapter.volume_current == 0.0 {
+            self.source.skip_frames(
+                self.chunk_internal.len() - silence_framecount,
+                final_playback_speed_factor,
+            );
+            self.has_finished = self.source.has_finished();
+
+            self.volume_adapter.set_volume(final_volume);
+            self.volume_adapter.volume_current = self.volume_adapter.volume_target;
+
+            self.pan_adapter.set_pan(final_pan);
+            self.pan_adapter.pan_current = self.pan_adapter.pan_target;
+
+            self.chunk_output.volume = 0.0;
+        }
+    }
+
     fn produce_output_chunk(&mut self, output_params: AudioRenderParams) {
+        // Fastpath - we are muted and already had time to wind-down
+        if self.muted_volume == 0.0 && self.volume_adapter.volume_current == 0.0 {
+            self.skip_ouput_chunk(output_params);
+            return;
+        }
+
         // Reset volume for output chunks
         self.chunk_internal.volume = 1.0;
         self.chunk_output.volume = 1.0;
@@ -1246,19 +1317,6 @@ impl AudioStream {
                     self.playback_speed_base,
                 )
             };
-
-        // Fastpath - we are muted and already had time to wind-down
-        if self.muted_volume == 0.0 && self.volume_adapter.volume_current == 0.0 {
-            self.source.skip_frames(
-                self.chunk_internal.len() - silence_framecount,
-                final_playback_speed_factor,
-            );
-            self.has_finished = self.source.has_finished();
-            self.volume_adapter.volume_current = self.volume_adapter.volume_target;
-            self.pan_adapter.pan_current = self.pan_adapter.pan_target;
-            self.chunk_output.volume = 0.0;
-            return;
-        }
 
         // Source stage
         self.source.fill_chunk(
@@ -1517,7 +1575,17 @@ impl AudioSpatialParams {
 
 /// NOTE: This can never be zero for a valid stream
 pub type AudioStreamId = u64;
-pub type AudioGroup = u32;
+pub type AudioGroupId = u32;
+
+#[derive(Clone)]
+struct AudioGroup {
+    is_muted: bool,
+}
+impl Default for AudioGroup {
+    fn default() -> Self {
+        AudioGroup { is_muted: false }
+    }
+}
 
 #[derive(Clone)]
 struct OutputResampler {
@@ -1698,6 +1766,8 @@ pub struct Audiostate {
     streams: HashMap<AudioStreamId, AudioStream>,
     streams_to_delete_after_finish: HashSet<AudioStreamId>,
 
+    groups: HashMap<AudioGroupId, AudioGroup>,
+
     audio_recordings: HashMap<String, Rc<RefCell<AudioRecording>>>,
 
     resampler: OutputResampler,
@@ -1728,9 +1798,9 @@ impl Audiostate {
             next_stream_id: 0,
             streams: HashMap::new(),
             streams_to_delete_after_finish: HashSet::new(),
+            groups: HashMap::new(),
 
             audio_recordings: HashMap::new(),
-
             resampler: OutputResampler::new_stereo(),
             internal_chunk: AudioChunk::new_stereo(),
         }
@@ -1790,12 +1860,12 @@ impl Audiostate {
     }
 
     #[inline]
-    pub fn set_listener_pos(&mut self, listener_pos: Vec2) {
+    pub fn set_global_listener_pos(&mut self, listener_pos: Vec2) {
         self.render_params.listener_pos = listener_pos;
     }
 
     #[inline]
-    pub fn set_listener_vel(&mut self, listener_vel: Vec2) {
+    pub fn set_global_listener_vel(&mut self, listener_vel: Vec2) {
         self.render_params.listener_vel = listener_vel;
     }
 
@@ -1805,7 +1875,7 @@ impl Audiostate {
     pub fn play(
         &mut self,
         recording_name: &str,
-        group_id: AudioGroup,
+        group_id: AudioGroupId,
         schedule_time_seconds: f64,
         play_looped: bool,
         volume: f32,
@@ -1861,7 +1931,7 @@ impl Audiostate {
     pub fn play_oneshot(
         &mut self,
         recording_name: &str,
-        group_id: AudioGroup,
+        group_id: AudioGroupId,
         schedule_time_seconds: f64,
         volume: f32,
         playback_speed: f32,
@@ -1898,21 +1968,13 @@ impl Audiostate {
     }
 
     #[inline]
-    pub fn group_mute(&mut self, group_id: AudioGroup) {
-        for stream in self.streams.values_mut() {
-            if stream.group_id == group_id {
-                stream.mute();
-            }
-        }
+    pub fn group_mute(&mut self, group_id: AudioGroupId) {
+        self.groups.entry(group_id).or_default().is_muted = true;
     }
 
     #[inline]
-    pub fn group_unmute(&mut self, group_id: AudioGroup) {
-        for stream in self.streams.values_mut() {
-            if stream.group_id == group_id {
-                stream.unmute();
-            }
-        }
+    pub fn group_unmute(&mut self, group_id: AudioGroupId) {
+        self.groups.entry(group_id).or_default().is_muted = false;
     }
 
     #[inline]
@@ -2004,7 +2066,12 @@ impl Audiostate {
         // Render samples
         self.internal_chunk.reset();
         for stream in self.streams.values_mut() {
-            stream.produce_output_chunk(self.render_params);
+            let group_is_muted = self.groups.entry(stream.group_id).or_default().is_muted;
+            if group_is_muted {
+                stream.skip_ouput_chunk(self.render_params);
+            } else {
+                stream.produce_output_chunk(self.render_params);
+            }
             let mut rendered_chunk = stream.get_output_chunk_mut();
             rendered_chunk.volume *= self.global_volume_factor;
             self.internal_chunk.add_from_chunk(rendered_chunk);
