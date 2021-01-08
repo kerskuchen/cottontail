@@ -624,6 +624,229 @@ impl AudioRecording {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Audiosources
 
+#[derive(Clone)]
+struct AudioSourceRecordingTest {
+    source_recording: Rc<RefCell<AudioRecording>>,
+    source_read_cursor_pos: usize,
+    is_looping: bool,
+
+    resampler_frame_current: (AudioSample, AudioSample),
+    resampler_frame_next: (AudioSample, AudioSample),
+    resampler_frame_time_percent: f32,
+}
+impl AudioSourceRecordingTest {
+    pub fn new(
+        recording: Rc<RefCell<AudioRecording>>,
+        play_looped: bool,
+    ) -> AudioSourceRecordingTest {
+        AudioSourceRecordingTest {
+            source_recording: recording,
+            source_read_cursor_pos: 0,
+            is_looping: play_looped,
+
+            resampler_frame_current: (0.0, 0.0),
+            resampler_frame_next: (0.0, 0.0),
+            resampler_frame_time_percent: 0.0,
+        }
+    }
+
+    pub fn sample_rate_hz(&self) -> usize {
+        self.source_recording.borrow().sample_rate_hz
+    }
+
+    pub fn has_finished(&self) -> bool {
+        // NOTE: +2 for resampler latency
+        !self.is_looping
+            && self.source_read_cursor_pos >= self.source_recording.borrow().framechunk.len() + 2
+    }
+
+    pub fn is_looping(&self) -> bool {
+        self.is_looping
+    }
+
+    pub fn completion_ratio(&self) -> Option<f32> {
+        // NOTE: +2 for resampler latency
+        Some(
+            self.source_read_cursor_pos as f32
+                / (self.source_recording.borrow().framechunk.len() + 2) as f32,
+        )
+    }
+
+    /*
+    pub fn produce_chunk(&mut self) {
+        if self.has_finished() {
+            self.out_chunk.volume = 0.0;
+            return;
+        }
+
+        self.out_chunk.volume = 1.0;
+
+        self.source_recording
+            .borrow_mut()
+            .decode_frames_till(self.source_read_cursor_pos + self.out_chunk.len())
+            .unwrap();
+
+        let source = self.source_recording.borrow();
+        if self.is_looping {
+            let loopsection_end =
+                source.loopsection_start_frameindex + source.loopsection_framecount;
+            assert!(self.source_read_cursor_pos < loopsection_end);
+
+            let mut framecount_remaining_to_output = self.out_chunk.len();
+            while framecount_remaining_to_output > 0 {
+                let framecount_remaining_in_loopsection =
+                    loopsection_end - self.source_read_cursor_pos;
+                let write_framecount = usize::min(
+                    framecount_remaining_to_output,
+                    framecount_remaining_in_loopsection,
+                );
+                let out_write_offset = self.out_chunk.len() - framecount_remaining_to_output;
+
+                self.out_chunk.copy_from_chunk(
+                    &source.framechunk,
+                    self.source_read_cursor_pos,
+                    out_write_offset,
+                    write_framecount,
+                );
+
+                self.source_read_cursor_pos += write_framecount;
+                framecount_remaining_to_output -= write_framecount;
+
+                assert!(self.source_read_cursor_pos <= loopsection_end);
+                if self.source_read_cursor_pos == loopsection_end {
+                    self.source_read_cursor_pos = source.loopsection_start_frameindex;
+                }
+            }
+        } else {
+            assert!(self.source_read_cursor_pos < source.len());
+            let framecount_remaining_in_source = source.len() - self.source_read_cursor_pos;
+            let write_framecount = usize::min(self.out_chunk.len(), framecount_remaining_in_source);
+
+            self.out_chunk.copy_from_chunk(
+                &source.framechunk,
+                self.source_read_cursor_pos,
+                0,
+                write_framecount,
+            );
+
+            self.source_read_cursor_pos += write_framecount;
+            let framecount_remaining_to_output = self.out_chunk.len() - write_framecount;
+
+            if framecount_remaining_to_output > 0 {
+                let silence_offset = self.out_chunk.len() - framecount_remaining_to_output;
+                self.out_chunk.fill_silence_from_offset(silence_offset);
+            }
+        }
+    }
+    */
+
+    fn fill_chunk(
+        &mut self,
+        out_chunk: &mut AudioChunk,
+        out_write_offset: usize,
+        playback_speed_factor: f32,
+    ) {
+        assert!(playback_speed_factor > EPSILON);
+
+        let source = self.source_recording.borrow();
+        assert!(out_chunk.channels == source.channels());
+
+        let loopsection_end = source.loopsection_start_frameindex + source.loopsection_framecount;
+        match out_chunk.channels {
+            AudioChannels::Mono => {
+                let source_samples = source.framechunk.get_mono_samples();
+                for out_sample in &mut out_chunk.get_mono_samples_mut()[out_write_offset..] {
+                    self.resampler_frame_time_percent += playback_speed_factor;
+
+                    while self.resampler_frame_time_percent >= 1.0 {
+                        self.resampler_frame_current = self.resampler_frame_next;
+                        self.resampler_frame_next = (
+                            *source_samples
+                                .get(self.source_read_cursor_pos)
+                                .unwrap_or(&0.0),
+                            0.0,
+                        );
+
+                        self.source_read_cursor_pos += 1;
+                        self.resampler_frame_time_percent -= 1.0;
+
+                        if self.is_looping {
+                            debug_assert!(self.source_read_cursor_pos <= loopsection_end);
+                            if self.source_read_cursor_pos == loopsection_end {
+                                self.source_read_cursor_pos = source.loopsection_start_frameindex;
+                            }
+                        }
+                    }
+
+                    *out_sample = lerp(
+                        self.resampler_frame_current.0,
+                        self.resampler_frame_next.0,
+                        self.resampler_frame_time_percent,
+                    );
+                }
+            }
+            AudioChannels::Stereo => {
+                let (source_samples_left, source_samples_right) =
+                    source.framechunk.get_stereo_samples();
+                let (out_samples_left, out_samples_right) = out_chunk.get_stereo_samples_mut();
+                let out_samples_left = &mut out_samples_left[out_write_offset..];
+                let out_samples_right = &mut out_samples_right[out_write_offset..];
+
+                for (out_left, out_right) in out_samples_left
+                    .iter_mut()
+                    .zip(out_samples_right.iter_mut())
+                {
+                    self.resampler_frame_time_percent += playback_speed_factor;
+
+                    while self.resampler_frame_time_percent >= 1.0 {
+                        self.resampler_frame_current = self.resampler_frame_next;
+                        self.resampler_frame_next = (
+                            *source_samples_left
+                                .get(self.source_read_cursor_pos)
+                                .unwrap_or(&0.0),
+                            *source_samples_right
+                                .get(self.source_read_cursor_pos)
+                                .unwrap_or(&0.0),
+                        );
+                        self.source_read_cursor_pos += 1;
+                        self.resampler_frame_time_percent -= 1.0;
+
+                        if self.is_looping {
+                            debug_assert!(self.source_read_cursor_pos <= loopsection_end);
+                            if self.source_read_cursor_pos == loopsection_end {
+                                self.source_read_cursor_pos = source.loopsection_start_frameindex;
+                            }
+                        }
+                    }
+
+                    *out_left = lerp(
+                        self.resampler_frame_current.0,
+                        self.resampler_frame_next.0,
+                        self.resampler_frame_time_percent,
+                    );
+                    *out_right = lerp(
+                        self.resampler_frame_current.1,
+                        self.resampler_frame_next.1,
+                        self.resampler_frame_time_percent,
+                    );
+                }
+            }
+        }
+    }
+
+    fn channels(&self) -> AudioChannels {
+        self.source_recording.borrow().channels()
+    }
+
+    fn framecount(&self) -> Option<usize> {
+        Some(self.source_recording.borrow().framechunk.len())
+    }
+
+    fn playcursor_pos(&self) -> Option<usize> {
+        Some(self.source_read_cursor_pos)
+    }
+}
+
 trait AudioSourceTrait: Clone {
     fn sample_rate_hz(&self) -> usize;
     fn has_finished(&self) -> bool;
