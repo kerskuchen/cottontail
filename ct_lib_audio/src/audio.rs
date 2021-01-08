@@ -1083,15 +1083,10 @@ impl MonoToStereoAdapter {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Audiostreams Basic
+// Audiostreams
 
 #[derive(Clone, Copy)]
 struct AudioRenderParams {
-    /// The samplerate of our audio recordings
-    pub internal_sample_rate_hz: usize,
-    pub global_playback_speed: f32,
-    pub global_volume: f32,
-
     pub listener_pos: Vec2,
     pub listener_vel: Vec2,
     pub doppler_effect_medium_velocity_abs_max: f32,
@@ -1255,10 +1250,6 @@ impl AudioStream {
 
     pub fn completion_ratio(&self) -> Option<f32> {
         if self.has_started() {
-            if self.source.framecount().is_none() || self.source.playcursor_pos().is_none() {
-                return None;
-            }
-
             self.source.completion_ratio()
         } else {
             None
@@ -1630,6 +1621,11 @@ pub struct Audiostate {
     audio_time: f64,
     audio_time_smoothed: f64,
 
+    /// The samplerate of our audio recordings
+    internal_sample_rate_hz: usize,
+    global_playback_speed_factor: f32,
+    global_volume_factor: f32,
+
     render_params: AudioRenderParams,
 
     /// This can never be zero when used with `get_next_stream_id` method
@@ -1655,10 +1651,10 @@ impl Audiostate {
             audio_time: 0.0,
             audio_time_smoothed: 0.0,
 
+            internal_sample_rate_hz,
+            global_playback_speed_factor: 1.0,
+            global_volume_factor: 1.0,
             render_params: AudioRenderParams {
-                internal_sample_rate_hz,
-                global_playback_speed: 1.0,
-                global_volume: 1.0,
                 listener_pos: Vec2::zero(),
                 listener_vel: Vec2::zero(),
                 doppler_effect_medium_velocity_abs_max,
@@ -1678,15 +1674,13 @@ impl Audiostate {
 
     #[inline]
     pub fn reset(&mut self) {
-        self.next_frame_index_to_output = 0;
-
-        self.render_params.global_playback_speed = 1.0;
-        self.render_params.listener_pos = Vec2::zero();
-        self.render_params.listener_vel = Vec2::zero();
-
-        self.next_stream_id = 0;
-        self.streams = HashMap::new();
-        self.streams_to_delete_after_finish = HashSet::new();
+        let mut new_audiostate = Audiostate::new(
+            self.internal_sample_rate_hz,
+            self.render_params.distance_for_max_pan,
+            self.render_params.doppler_effect_medium_velocity_abs_max,
+        );
+        new_audiostate.audio_recordings = self.audio_recordings.drain().collect();
+        *self = new_audiostate;
     }
 
     #[inline]
@@ -1697,11 +1691,11 @@ impl Audiostate {
         for (name, recording) in audio_recordings.iter() {
             let recording = recording.borrow();
             assert!(
-                recording.sample_rate_hz == self.render_params.internal_sample_rate_hz,
+                recording.sample_rate_hz == self.internal_sample_rate_hz,
                 "Resource '{}' has sample_rate {}Hz - expected {}Hz",
                 name,
                 recording.sample_rate_hz,
-                self.render_params.internal_sample_rate_hz
+                self.internal_sample_rate_hz
             );
         }
         self.audio_recordings = audio_recordings;
@@ -1723,12 +1717,12 @@ impl Audiostate {
 
     #[inline]
     pub fn set_global_volume(&mut self, volume: f32) {
-        self.render_params.global_volume = volume;
+        self.global_volume_factor = volume;
     }
 
     #[inline]
     pub fn set_global_playback_speed_factor(&mut self, global_playback_speed: f32) {
-        self.render_params.global_playback_speed = global_playback_speed;
+        self.global_playback_speed_factor = global_playback_speed;
     }
 
     #[inline]
@@ -1755,7 +1749,7 @@ impl Audiostate {
         let id = self.create_next_stream_id();
         let start_delay_framecount = self.start_time_to_delay_framecount(schedule_time_seconds);
         let source = if recording_name == "sine" {
-            AudioSource::new_from_sine(440.0, self.render_params.internal_sample_rate_hz)
+            AudioSource::new_from_sine(440.0, self.internal_sample_rate_hz)
         } else {
             let buffer = self
                 .audio_recordings
@@ -1935,9 +1929,9 @@ impl Audiostate {
     #[inline]
     pub fn render_audio_chunk(&mut self, out_chunk: &mut AudioChunk, output_sample_rate_hz: usize) {
         let playback_speed_factor = calculate_playback_speed_ratio(
-            self.render_params.internal_sample_rate_hz,
+            self.internal_sample_rate_hz,
             output_sample_rate_hz,
-            self.render_params.global_playback_speed,
+            self.global_playback_speed_factor,
         );
         let mut resampler_write_offset = 0;
         loop {
@@ -1974,7 +1968,7 @@ impl Audiostate {
         for stream in self.streams.values_mut() {
             stream.produce_output_chunk(self.render_params);
             let mut rendered_chunk = stream.get_output_chunk_mut();
-            rendered_chunk.volume *= self.render_params.global_volume;
+            rendered_chunk.volume *= self.global_volume_factor;
             self.internal_chunk.add_from_chunk(rendered_chunk);
         }
 
@@ -1982,7 +1976,7 @@ impl Audiostate {
         self.next_frame_index_to_output += AUDIO_CHUNKSIZE_IN_FRAMES as AudioFrameIndex;
         let new_audio_time = audio_frames_to_seconds(
             self.next_frame_index_to_output,
-            self.render_params.internal_sample_rate_hz,
+            self.internal_sample_rate_hz,
         );
         if self.audio_time != new_audio_time {
             self.audio_time = new_audio_time;
@@ -1991,11 +1985,9 @@ impl Audiostate {
     }
 
     fn start_time_to_delay_framecount(&self, schedule_time_seconds: f64) -> usize {
-        let start_frame_index = audio_seconds_to_frames(
-            schedule_time_seconds,
-            self.render_params.internal_sample_rate_hz,
-        )
-        .round() as AudioFrameIndex;
+        let start_frame_index =
+            audio_seconds_to_frames(schedule_time_seconds, self.internal_sample_rate_hz).round()
+                as AudioFrameIndex;
 
         (start_frame_index - self.next_frame_index_to_output).max(0) as usize
     }
