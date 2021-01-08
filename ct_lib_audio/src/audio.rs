@@ -699,9 +699,11 @@ impl AudioSourceTrait for AudioSourceRecording {
             return;
         }
 
+        let resampled_framecount_upperbound =
+            (playback_speed_factor * (out_chunk.len() - out_write_offset) as f32).ceil() as usize;
         self.source_recording
             .borrow_mut()
-            .decode_frames_till(self.source_read_cursor_pos + (out_chunk.len() - out_write_offset))
+            .decode_frames_till(self.source_read_cursor_pos + resampled_framecount_upperbound)
             .unwrap();
 
         let source = self.source_recording.borrow();
@@ -800,9 +802,11 @@ impl AudioSourceTrait for AudioSourceRecording {
             return;
         }
 
+        let resampled_framecount_upperbound =
+            (playback_speed_factor * framecount as f32).ceil() as usize;
         self.source_recording
             .borrow_mut()
-            .decode_frames_till(self.source_read_cursor_pos + framecount)
+            .decode_frames_till(self.source_read_cursor_pos + resampled_framecount_upperbound)
             .unwrap();
 
         let source = self.source_recording.borrow();
@@ -1117,7 +1121,7 @@ struct AudioStream {
     chunk_internal: AudioChunk,
     chunk_output: AudioChunk,
 
-    spatial_params: Option<SpatialParams>,
+    spatial_params: Option<AudioSpatialParams>,
 }
 
 impl AudioStream {
@@ -1128,7 +1132,7 @@ impl AudioStream {
         playback_speed_percent: f32,
         volume: f32,
         pan: f32,
-        spatial_params: Option<SpatialParams>,
+        spatial_params: Option<AudioSpatialParams>,
     ) -> AudioStream {
         let chunk_internal = match source.channels() {
             AudioChannels::Mono => AudioChunk::new_mono(),
@@ -1343,7 +1347,7 @@ impl AudioFalloffType {
 }
 
 #[derive(Copy, Clone)]
-struct SpatialParams {
+pub struct AudioSpatialParams {
     pub pos: Vec2,
     pub vel: Vec2,
     pub doppler_effect_strength: f32,
@@ -1352,7 +1356,7 @@ struct SpatialParams {
     pub falloff_distance_end: f32,
 }
 
-impl SpatialParams {
+impl AudioSpatialParams {
     pub fn new(
         pos: Vec2,
         vel: Vec2,
@@ -1360,8 +1364,8 @@ impl SpatialParams {
         falloff_type: AudioFalloffType,
         falloff_distance_start: f32,
         falloff_distance_end: f32,
-    ) -> SpatialParams {
-        SpatialParams {
+    ) -> AudioSpatialParams {
+        AudioSpatialParams {
             pos,
             vel,
             doppler_effect_strength,
@@ -1371,23 +1375,23 @@ impl SpatialParams {
         }
     }
 
-    pub fn calculate_volume_pan_playback_speed(
+    fn calculate_volume_pan_playback_speed(
         &self,
         output_params: &AudioRenderParams,
     ) -> (f32, f32, f32) {
-        let volume_factor = SpatialParams::calculate_spatial_volume_factor(
+        let volume_factor = AudioSpatialParams::calculate_spatial_volume_factor(
             self.pos,
             output_params.listener_pos,
             self.falloff_type,
             self.falloff_distance_start,
             self.falloff_distance_end,
         );
-        let pan = SpatialParams::calculate_spatial_pan(
+        let pan = AudioSpatialParams::calculate_spatial_pan(
             self.pos,
             output_params.listener_pos,
             output_params.distance_for_max_pan,
         );
-        let playback_speed_factor = SpatialParams::calculate_spatial_playback_speed_factor(
+        let playback_speed_factor = AudioSpatialParams::calculate_spatial_playback_speed_factor(
             self.pos,
             self.vel,
             output_params.listener_pos,
@@ -1735,6 +1739,7 @@ impl Audiostate {
         self.render_params.listener_vel = listener_vel;
     }
 
+    /// If spatial_params is Some(..) then pan will be ignored
     #[must_use]
     #[inline]
     pub fn play(
@@ -1745,27 +1750,46 @@ impl Audiostate {
         volume: f32,
         playback_speed: f32,
         pan: f32,
+        spatial_params: Option<AudioSpatialParams>,
     ) -> AudioStreamId {
         let id = self.create_next_stream_id();
         let start_delay_framecount = self.start_time_to_delay_framecount(schedule_time_seconds);
-        let source = if recording_name == "sine" {
-            AudioSource::new_from_sine(440.0, self.internal_sample_rate_hz)
-        } else {
-            let buffer = self
-                .audio_recordings
-                .get(recording_name)
-                .unwrap_or_else(|| panic!("Recording '{}' not found", recording_name));
-            AudioSource::new_from_recording(buffer.clone(), play_looped)
+        let stream = {
+            let source = if recording_name == "sine" {
+                AudioSource::new_from_sine(440.0, self.internal_sample_rate_hz)
+            } else {
+                let buffer = self
+                    .audio_recordings
+                    .get(recording_name)
+                    .unwrap_or_else(|| panic!("Recording '{}' not found", recording_name));
+                AudioSource::new_from_recording(buffer.clone(), play_looped)
+            };
+
+            let initial_pan = if let Some(params) = spatial_params {
+                assert!(
+                    source.channels() == AudioChannels::Mono,
+                    "Cannot play stereo recording '{}' spatially",
+                    recording_name
+                );
+                AudioSpatialParams::calculate_spatial_pan(
+                    params.pos,
+                    self.render_params.listener_pos,
+                    self.render_params.distance_for_max_pan,
+                )
+            } else {
+                pan
+            };
+
+            AudioStream::new(
+                format!("{}:{}", recording_name, id),
+                source,
+                start_delay_framecount,
+                playback_speed,
+                volume,
+                initial_pan,
+                spatial_params,
+            )
         };
-        let stream = AudioStream::new(
-            format!("{}:{}", recording_name, id),
-            source,
-            start_delay_framecount,
-            playback_speed,
-            volume,
-            pan,
-            None,
-        );
         self.streams.insert(id, stream);
         id
     }
@@ -1778,6 +1802,7 @@ impl Audiostate {
         volume: f32,
         playback_speed: f32,
         pan: f32,
+        spatial_params: Option<AudioSpatialParams>,
     ) {
         let id = self.play(
             recording_name,
@@ -1786,89 +1811,7 @@ impl Audiostate {
             volume,
             playback_speed,
             pan,
-        );
-        self.stream_forget(id);
-    }
-
-    #[must_use]
-    #[inline]
-    pub fn play_spatial(
-        &mut self,
-        recording_name: &str,
-        schedule_time_seconds: f64,
-        play_looped: bool,
-        volume: f32,
-        playback_speed: f32,
-        pos: Vec2,
-        vel: Vec2,
-        doppler_effect_strength: f32,
-        falloff_type: AudioFalloffType,
-        falloff_distance_start: f32,
-        falloff_distance_end: f32,
-    ) -> AudioStreamId {
-        let id = self.create_next_stream_id();
-        let start_delay_framecount = self.start_time_to_delay_framecount(schedule_time_seconds);
-        let stream = {
-            let initial_pan = SpatialParams::calculate_spatial_pan(
-                pos,
-                self.render_params.listener_pos,
-                self.render_params.distance_for_max_pan,
-            );
-            let source = {
-                let buffer = self
-                    .audio_recordings
-                    .get(recording_name)
-                    .unwrap_or_else(|| panic!("Recording '{}' not found", recording_name));
-                AudioSource::new_from_recording(buffer.clone(), play_looped)
-            };
-            AudioStream::new(
-                format!("{}:{}", recording_name, id),
-                source,
-                start_delay_framecount,
-                playback_speed,
-                volume,
-                initial_pan,
-                Some(SpatialParams::new(
-                    pos,
-                    vel,
-                    doppler_effect_strength,
-                    falloff_type,
-                    falloff_distance_start,
-                    falloff_distance_end,
-                )),
-            )
-        };
-        self.streams.insert(id, stream);
-        id
-    }
-
-    #[must_use]
-    #[inline]
-    pub fn play_spatial_oneshot(
-        &mut self,
-        recording_name: &str,
-        schedule_time_seconds: f64,
-        volume: f32,
-        playback_speed: f32,
-        pos: Vec2,
-        vel: Vec2,
-        doppler_effect_strength: f32,
-        falloff_type: AudioFalloffType,
-        falloff_distance_start: f32,
-        falloff_distance_end: f32,
-    ) {
-        let id = self.play_spatial(
-            recording_name,
-            schedule_time_seconds,
-            false,
-            volume,
-            playback_speed,
-            pos,
-            vel,
-            doppler_effect_strength,
-            falloff_type,
-            falloff_distance_start,
-            falloff_distance_end,
+            spatial_params,
         );
         self.stream_forget(id);
     }
