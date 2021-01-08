@@ -1,8 +1,6 @@
 # DONE:
 
-- Fixes warnings
-- use drawparams instead of depth,color,additivity,drawspace tuple
-- adds some helper functions to help with text alignment
+- let audiosources resample their output
 
 # CURRENT
 
@@ -286,3 +284,7 @@
 - Clean up old stuff code at the end of draw.rs and sdl_window.rs. Determine what is needed and 
   implement it (drawing the depthbuffer and various debug grids should be useful). Throw out the rest 
 - Fix screenspace coordinate transformation for cases where we have letterboxing
+
+- Fixes warnings
+- use drawparams instead of depth,color,additivity,drawspace tuple
+- adds some helper functions to help with text alignment

@@ -1066,7 +1066,9 @@ pub fn game_setup_window(
         }
     }
 
-    out_systemcommands.push(AppCommand::ScreenSetGrabInput(config.grab_input));
+    if config.grab_input {
+        out_systemcommands.push(AppCommand::ScreenSetGrabInput(config.grab_input));
+    }
 }
 
 pub fn game_handle_system_keys(keyboard: &KeyboardState, out_systemcommands: &mut Vec<AppCommand>) {
