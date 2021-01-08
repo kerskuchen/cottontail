@@ -633,6 +633,7 @@ trait AudioSourceTrait: Clone {
         out_write_offset: usize,
         playback_speed_factor: f32,
     );
+    fn skip_frames(&mut self, framecount: usize, playback_speed_factor: f32);
     fn framecount(&self) -> Option<usize>;
     fn playcursor_pos(&self) -> Option<usize>;
 }
@@ -794,6 +795,81 @@ impl AudioSourceTrait for AudioSourceRecording {
         }
     }
 
+    fn skip_frames(&mut self, framecount: usize, playback_speed_factor: f32) {
+        if self.has_finished() {
+            return;
+        }
+
+        self.source_recording
+            .borrow_mut()
+            .decode_frames_till(self.source_read_cursor_pos + framecount)
+            .unwrap();
+
+        let source = self.source_recording.borrow();
+
+        let loopsection_end = source.loopsection_start_frameindex + source.loopsection_framecount;
+        if self.is_looping {
+            assert!(self.source_read_cursor_pos <= loopsection_end);
+        }
+
+        match source.channels() {
+            AudioChannels::Mono => {
+                let source_samples = source.framechunk.get_mono_samples();
+                for _ in 0..framecount {
+                    self.resampler_frame_time_percent += playback_speed_factor;
+
+                    while self.resampler_frame_time_percent >= 1.0 {
+                        self.resampler_frame_current = self.resampler_frame_next;
+                        self.resampler_frame_next = (
+                            *source_samples
+                                .get(self.source_read_cursor_pos)
+                                .unwrap_or(&0.0),
+                            0.0,
+                        );
+
+                        self.source_read_cursor_pos += 1;
+                        self.resampler_frame_time_percent -= 1.0;
+
+                        if self.is_looping {
+                            debug_assert!(self.source_read_cursor_pos <= loopsection_end);
+                            if self.source_read_cursor_pos == loopsection_end {
+                                self.source_read_cursor_pos = source.loopsection_start_frameindex;
+                            }
+                        }
+                    }
+                }
+            }
+            AudioChannels::Stereo => {
+                let (source_samples_left, source_samples_right) =
+                    source.framechunk.get_stereo_samples();
+                for _ in 0..framecount {
+                    self.resampler_frame_time_percent += playback_speed_factor;
+
+                    while self.resampler_frame_time_percent >= 1.0 {
+                        self.resampler_frame_current = self.resampler_frame_next;
+                        self.resampler_frame_next = (
+                            *source_samples_left
+                                .get(self.source_read_cursor_pos)
+                                .unwrap_or(&0.0),
+                            *source_samples_right
+                                .get(self.source_read_cursor_pos)
+                                .unwrap_or(&0.0),
+                        );
+                        self.source_read_cursor_pos += 1;
+                        self.resampler_frame_time_percent -= 1.0;
+
+                        if self.is_looping {
+                            debug_assert!(self.source_read_cursor_pos <= loopsection_end);
+                            if self.source_read_cursor_pos == loopsection_end {
+                                self.source_read_cursor_pos = source.loopsection_start_frameindex;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn channels(&self) -> AudioChannels {
         self.source_recording.borrow().channels()
     }
@@ -853,7 +929,12 @@ impl AudioSourceTrait for AudioSourceSine {
             self.sine_time += self.sine_frequency * time_increment;
             *out_frame = sine_amplitude as AudioSample;
         }
-        todo!()
+    }
+
+    fn skip_frames(&mut self, framecount: usize, playback_speed_factor: f32) {
+        let time_increment = playback_speed_factor as f64
+            * audio_frames_to_seconds(framecount as AudioFrameIndex, self.sample_rate_hz);
+        self.sine_time += self.sine_frequency * time_increment;
     }
 
     fn channels(&self) -> AudioChannels {
@@ -924,6 +1005,13 @@ impl AudioSourceTrait for AudioSource {
             AudioSource::Sine(sine) => {
                 sine.fill_chunk(out_chunk, out_write_offset, playback_speed_factor)
             }
+        }
+    }
+
+    fn skip_frames(&mut self, framecount: usize, playback_speed_factor: f32) {
+        match self {
+            AudioSource::Recording(buffer) => buffer.skip_frames(framecount, playback_speed_factor),
+            AudioSource::Sine(sine) => sine.skip_frames(framecount, playback_speed_factor),
         }
     }
 
