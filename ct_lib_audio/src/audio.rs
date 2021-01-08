@@ -29,14 +29,17 @@ pub struct AudioChunk {
     frames: [Vec<AudioSample>; 2],
 }
 impl AudioChunk {
+    #[inline]
     pub fn new_mono() -> AudioChunk {
         AudioChunk::new_mono_with_framecount(AUDIO_CHUNKSIZE_IN_FRAMES)
     }
 
+    #[inline]
     pub fn new_mono_with_framecount(framecount: usize) -> AudioChunk {
         AudioChunk::new_mono_from_frames(vec![0.0; framecount])
     }
 
+    #[inline]
     pub fn new_mono_from_frames(samples: Vec<AudioSample>) -> AudioChunk {
         AudioChunk {
             channels: AudioChannels::Mono,
@@ -45,14 +48,17 @@ impl AudioChunk {
         }
     }
 
+    #[inline]
     pub fn new_stereo() -> AudioChunk {
         AudioChunk::new_stereo_with_framecount(AUDIO_CHUNKSIZE_IN_FRAMES)
     }
 
+    #[inline]
     pub fn new_stereo_with_framecount(framecount: usize) -> AudioChunk {
         AudioChunk::new_stereo_from_frames(vec![0.0; framecount], vec![0.0; framecount])
     }
 
+    #[inline]
     pub fn new_stereo_from_frames(
         samples_left: Vec<AudioSample>,
         samples_right: Vec<AudioSample>,
@@ -64,14 +70,17 @@ impl AudioChunk {
         }
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.frames[0].len()
     }
 
+    #[inline]
     pub fn length_in_seconds(&self, audio_samplerate_hz: usize) -> f64 {
         audio_frames_to_seconds(self.len() as i64, audio_samplerate_hz)
     }
 
+    #[inline]
     pub fn channelcount(&self) -> usize {
         match self.channels {
             AudioChannels::Mono => 1,
@@ -122,6 +131,7 @@ impl AudioChunk {
         &mut self.frames[1]
     }
 
+    #[inline]
     pub fn reset(&mut self) {
         self.volume = 1.0;
 
@@ -142,6 +152,7 @@ impl AudioChunk {
         }
     }
 
+    #[inline]
     pub fn add_from_chunk(&mut self, other: &AudioChunk) {
         assert!(self.channels == other.channels);
         assert!(self.len() == other.len());
@@ -181,6 +192,7 @@ impl AudioChunk {
         }
     }
 
+    #[inline]
     pub fn copy_chunks(
         source: &AudioChunk,
         target: &mut AudioChunk,
@@ -225,6 +237,7 @@ impl AudioChunk {
         }
     }
 
+    #[inline]
     pub fn copy_from_chunk(
         &mut self,
         other: &AudioChunk,
@@ -235,6 +248,7 @@ impl AudioChunk {
         AudioChunk::copy_chunks(other, self, read_offset, write_offset, framecount);
     }
 
+    #[inline]
     pub fn copy_from_chunk_complete(&mut self, other: &AudioChunk) {
         assert!(self.channels == other.channels);
         assert!(self.len() == other.len());
@@ -249,6 +263,7 @@ impl AudioChunk {
         AudioChunk::copy_chunks(other, self, 0, 0, other.len());
     }
 
+    #[inline]
     pub fn copy_from_slice_mono(&mut self, source: &[AudioSample], offset: usize) {
         assert!(self.channels == AudioChannels::Mono);
         assert!(offset < self.len());
@@ -259,6 +274,7 @@ impl AudioChunk {
         target.copy_from_slice(source);
     }
 
+    #[inline]
     pub fn copy_from_slice_stereo(
         &mut self,
         source_left: &[AudioSample],
@@ -283,20 +299,24 @@ impl AudioChunk {
         target_right.copy_from_slice(source_right);
     }
 
+    #[inline]
     pub fn fill_silence_complete(&mut self) {
         self.volume = 0.0;
     }
 
+    #[inline]
     pub fn fill_silence_from_offset(&mut self, offset: usize) {
         self.fill_silence_range(offset, self.len());
     }
 
+    #[inline]
     pub fn fill_silence_offset_framecount(&mut self, offset: usize, framecount: usize) {
         self.fill_silence_range(offset, offset + framecount);
     }
 
     // NOTE: `end` is not inclusive and can be `end == chunk.len()`
     // Example: To fill the whole range we can call `chunk.fill_silence_range(0, chunk.len())`
+    #[inline]
     pub fn fill_silence_range(&mut self, start: usize, end: usize) {
         assert!(start <= end);
         assert!(start < self.len());
@@ -325,6 +345,7 @@ impl AudioChunk {
         }
     }
 
+    #[inline]
     pub fn multipliy_volume_ramp(&mut self, volume_start: f32, volume_end: f32) {
         // Fast path - chunk is silent
         if self.volume == 0.0 {
@@ -465,11 +486,13 @@ pub struct AudioRecording {
 }
 
 impl AudioRecording {
+    #[inline]
     pub fn new(name: String, sample_rate_hz: usize, chunk: AudioChunk) -> AudioRecording {
         let framecount = chunk.len();
         AudioRecording::new_with_loopsection(name, sample_rate_hz, chunk, 0, framecount)
     }
 
+    #[inline]
     pub fn new_with_loopsection(
         name: String,
         sample_rate_hz: usize,
@@ -489,6 +512,7 @@ impl AudioRecording {
         }
     }
 
+    #[inline]
     pub fn new_from_ogg_stream(
         name: String,
         framecount: usize,
@@ -499,6 +523,7 @@ impl AudioRecording {
         )
     }
 
+    #[inline]
     pub fn new_from_ogg_stream_with_loopsection(
         name: String,
         framecount: usize,
@@ -548,15 +573,18 @@ impl AudioRecording {
         Ok(result)
     }
 
+    #[inline]
     pub fn channels(&self) -> AudioChannels {
         self.framechunk.channels
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.framechunk.len()
     }
 
     // NOTE: `frameindex` is allowed to be out of range and will default to maximum possible value
+    #[inline]
     pub fn decode_frames_till(&mut self, frameindex: usize) -> Result<(), String> {
         let frameindex = usize::min(frameindex, self.framechunk.len());
         if frameindex < self.stream_reader_decoded_framecount {
@@ -650,7 +678,7 @@ struct AudioSourceRecording {
 }
 
 impl AudioSourceRecording {
-    pub fn new(recording: Rc<RefCell<AudioRecording>>, play_looped: bool) -> AudioSourceRecording {
+    fn new(recording: Rc<RefCell<AudioRecording>>, play_looped: bool) -> AudioSourceRecording {
         AudioSourceRecording {
             source_recording: recording,
             source_read_cursor_pos: 0,
@@ -1046,8 +1074,8 @@ impl AudioSourceTrait for AudioSource {
 
 #[derive(Clone)]
 struct VolumeAdapter {
-    pub volume_current: f32,
-    pub volume_target: f32,
+    volume_current: f32,
+    volume_target: f32,
 }
 impl VolumeAdapter {
     fn new(volume: f32) -> VolumeAdapter {
@@ -1067,8 +1095,8 @@ impl VolumeAdapter {
 
 #[derive(Clone)]
 struct MonoToStereoAdapter {
-    pub pan_current: f32,
-    pub pan_target: f32,
+    pan_current: f32,
+    pan_target: f32,
 }
 impl MonoToStereoAdapter {
     fn new(pan: f32) -> MonoToStereoAdapter {
@@ -1091,17 +1119,18 @@ impl MonoToStereoAdapter {
 
 #[derive(Clone, Copy)]
 struct AudioRenderParams {
-    pub listener_pos: Vec2,
-    pub listener_vel: Vec2,
-    pub doppler_effect_medium_velocity_abs_max: f32,
+    listener_pos: Vec2,
+    listener_vel: Vec2,
+    doppler_effect_medium_velocity_abs_max: f32,
     /// Tells how much units to the left/right an audio source position needs to be away from the
     /// listener_pos to max out the pan to -1.0/1.0
-    pub distance_for_max_pan: f32,
+    distance_for_max_pan: f32,
 }
 
 #[derive(Clone)]
 struct AudioStream {
-    pub name: String,
+    name: String,
+    group_id: AudioGroup,
 
     source: AudioSource,
 
@@ -1114,6 +1143,8 @@ struct AudioStream {
     volume_adapter: VolumeAdapter,
     volume_base: f32,
 
+    muted_volume: f32,
+
     pan_adapter: MonoToStereoAdapter,
     /// Only used when we don't have spatial params
     pan_base: f32,
@@ -1125,8 +1156,9 @@ struct AudioStream {
 }
 
 impl AudioStream {
-    pub fn new(
+    fn new(
         name: String,
+        group_id: AudioGroup,
         source: AudioSource,
         delay_framecount: usize,
         playback_speed_percent: f32,
@@ -1140,6 +1172,7 @@ impl AudioStream {
         };
         AudioStream {
             name,
+            group_id,
             source,
 
             frames_left_till_start: delay_framecount,
@@ -1149,6 +1182,7 @@ impl AudioStream {
 
             volume_adapter: VolumeAdapter::new(volume),
             volume_base: volume,
+            muted_volume: 1.0,
 
             pan_adapter: MonoToStereoAdapter::new(0.0),
             pan_base: pan,
@@ -1160,7 +1194,7 @@ impl AudioStream {
         }
     }
 
-    pub fn produce_output_chunk(&mut self, output_params: AudioRenderParams) {
+    fn produce_output_chunk(&mut self, output_params: AudioRenderParams) {
         // Reset volume for output chunks
         self.chunk_internal.volume = 1.0;
         self.chunk_output.volume = 1.0;
@@ -1201,13 +1235,30 @@ impl AudioStream {
                 let (spatial_volume_factor, spatial_pan, spatial_playback_speed_factor) =
                     spatial_params.calculate_volume_pan_playback_speed(&output_params);
                 (
-                    self.volume_base * spatial_volume_factor,
+                    self.volume_base * spatial_volume_factor * self.muted_volume,
                     spatial_pan,
                     self.playback_speed_base * spatial_playback_speed_factor,
                 )
             } else {
-                (self.volume_base, self.pan_base, self.playback_speed_base)
+                (
+                    self.volume_base * self.muted_volume,
+                    self.pan_base,
+                    self.playback_speed_base,
+                )
             };
+
+        // Fastpath - we are muted and already had time to wind-down
+        if self.muted_volume == 0.0 && self.volume_adapter.volume_current == 0.0 {
+            self.source.skip_frames(
+                self.chunk_internal.len() - silence_framecount,
+                final_playback_speed_factor,
+            );
+            self.has_finished = self.source.has_finished();
+            self.volume_adapter.volume_current = self.volume_adapter.volume_target;
+            self.pan_adapter.pan_current = self.pan_adapter.pan_target;
+            self.chunk_output.volume = 0.0;
+            return;
+        }
 
         // Source stage
         self.source.fill_chunk(
@@ -1236,23 +1287,23 @@ impl AudioStream {
         }
     }
 
-    pub fn get_output_chunk_mut(&mut self) -> &mut AudioChunk {
+    fn get_output_chunk_mut(&mut self) -> &mut AudioChunk {
         &mut self.chunk_output
     }
 
-    pub fn has_started(&self) -> bool {
+    fn has_started(&self) -> bool {
         self.frames_left_till_start == 0
     }
 
-    pub fn has_finished(&self) -> bool {
+    fn has_finished(&self) -> bool {
         self.has_finished
     }
 
-    pub fn is_looping(&self) -> bool {
+    fn is_looping(&self) -> bool {
         self.source.is_looping()
     }
 
-    pub fn completion_ratio(&self) -> Option<f32> {
+    fn completion_ratio(&self) -> Option<f32> {
         if self.has_started() {
             self.source.completion_ratio()
         } else {
@@ -1260,19 +1311,27 @@ impl AudioStream {
         }
     }
 
-    pub fn set_volume(&mut self, volume: f32) {
+    fn mute(&mut self) {
+        self.muted_volume = 0.0;
+    }
+
+    fn unmute(&mut self) {
+        self.muted_volume = 1.0;
+    }
+
+    fn set_volume(&mut self, volume: f32) {
         self.volume_base = volume;
     }
 
-    pub fn set_pan(&mut self, pan: f32) {
+    fn set_pan(&mut self, pan: f32) {
         self.pan_base = pan;
     }
 
-    pub fn set_playback_speed(&mut self, playback_speed_percent: f32) {
+    fn set_playback_speed(&mut self, playback_speed_percent: f32) {
         self.playback_speed_base = playback_speed_percent;
     }
 
-    pub fn set_spatial_pos(&mut self, pos: Vec2) {
+    fn set_spatial_pos(&mut self, pos: Vec2) {
         if let Some(spatial) = &mut self.spatial_params {
             spatial.pos = pos;
         } else {
@@ -1283,7 +1342,7 @@ impl AudioStream {
         }
     }
 
-    pub fn set_spatial_vel(&mut self, vel: Vec2) {
+    fn set_spatial_vel(&mut self, vel: Vec2) {
         if let Some(spatial) = &mut self.spatial_params {
             spatial.vel = vel;
         } else {
@@ -1311,7 +1370,7 @@ pub enum AudioFalloffType {
     },
 }
 impl AudioFalloffType {
-    pub fn value_for_distance(
+    fn value_for_distance(
         &self,
         distance: f32,
         falloff_distance_start: f32,
@@ -1458,6 +1517,7 @@ impl AudioSpatialParams {
 
 /// NOTE: This can never be zero for a valid stream
 pub type AudioStreamId = u64;
+pub type AudioGroup = u32;
 
 #[derive(Clone)]
 struct OutputResampler {
@@ -1470,7 +1530,7 @@ struct OutputResampler {
 }
 
 impl OutputResampler {
-    pub fn new_stereo() -> OutputResampler {
+    fn new_stereo() -> OutputResampler {
         let internal_chunk = AudioChunk::new_stereo();
         let internal_chunk_readpos = internal_chunk.len();
         OutputResampler {
@@ -1483,11 +1543,11 @@ impl OutputResampler {
         }
     }
 
-    pub fn internal_buffer_depleted(&self) -> bool {
+    fn internal_buffer_depleted(&self) -> bool {
         self.internal_chunk_readpos >= self.internal_chunk.len()
     }
 
-    pub fn assign_input_chunk(&mut self, input: &AudioChunk) {
+    fn assign_input_chunk(&mut self, input: &AudioChunk) {
         assert!(
             self.internal_buffer_depleted(),
             "Previous input buffer is not empty"
@@ -1504,7 +1564,7 @@ impl OutputResampler {
 
     // Returns the number of actually written frames. It can be lower than
     // `output.len() - out_write_offset` if the internal buffer was depleted while processing
-    pub fn fill_chunk(
+    fn fill_chunk(
         &mut self,
         output: &mut AudioChunk,
         out_write_offset: usize,
@@ -1739,12 +1799,13 @@ impl Audiostate {
         self.render_params.listener_vel = listener_vel;
     }
 
-    /// If spatial_params is Some(..) then pan will be ignored
+    /// NOTE: If spatial_params is Some(..) then pan will be ignored
     #[must_use]
     #[inline]
     pub fn play(
         &mut self,
         recording_name: &str,
+        group_id: AudioGroup,
         schedule_time_seconds: f64,
         play_looped: bool,
         volume: f32,
@@ -1782,6 +1843,7 @@ impl Audiostate {
 
             AudioStream::new(
                 format!("{}:{}", recording_name, id),
+                group_id,
                 source,
                 start_delay_framecount,
                 playback_speed,
@@ -1794,10 +1856,12 @@ impl Audiostate {
         id
     }
 
+    /// NOTE: If spatial_params is Some(..) then pan will be ignored
     #[inline]
     pub fn play_oneshot(
         &mut self,
         recording_name: &str,
+        group_id: AudioGroup,
         schedule_time_seconds: f64,
         volume: f32,
         playback_speed: f32,
@@ -1806,6 +1870,7 @@ impl Audiostate {
     ) {
         let id = self.play(
             recording_name,
+            group_id,
             schedule_time_seconds,
             false,
             volume,
@@ -1830,6 +1895,36 @@ impl Audiostate {
             stream_id
         );
         self.streams_to_delete_after_finish.insert(stream_id);
+    }
+
+    #[inline]
+    pub fn group_mute(&mut self, group_id: AudioGroup) {
+        for stream in self.streams.values_mut() {
+            if stream.group_id == group_id {
+                stream.mute();
+            }
+        }
+    }
+
+    #[inline]
+    pub fn group_unmute(&mut self, group_id: AudioGroup) {
+        for stream in self.streams.values_mut() {
+            if stream.group_id == group_id {
+                stream.unmute();
+            }
+        }
+    }
+
+    #[inline]
+    pub fn stream_mute(&mut self, stream_id: AudioStreamId) {
+        let stream = self.get_stream_mut(stream_id);
+        stream.mute();
+    }
+
+    #[inline]
+    pub fn stream_unmute(&mut self, stream_id: AudioStreamId) {
+        let stream = self.get_stream_mut(stream_id);
+        stream.unmute();
     }
 
     #[inline]

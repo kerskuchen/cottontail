@@ -1,16 +1,22 @@
 # DONE:
 
 - let audiosources resample their output
+- simplyfies audio api
+- rudimentary mute/unmute of audio streams
+- rudimentary audiogroups concept
+- rudimentary way to switch/disable audio when switching scenes
 
 # CURRENT
 
 
 # NEXT:
 
+- make audiogroup muting more persistent. currently we just mute all streams in a group once, if
+  later we would play more sounds in the same group we would hear them nontheless
+
 
 
 ## improve examples
-- find a good way to switch/disable audio when switching scenes
 - restore gui/credits displaying as an example scene
 - convert debug scene to example in a dedicated examples folder with its own assets and build scripts
 
