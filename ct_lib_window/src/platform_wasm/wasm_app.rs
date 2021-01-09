@@ -408,7 +408,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
             //       to be simulated), we need to manually focus our canvas
             html_canvas
                 .focus()
-                .unwrap_or_else(|error| panic!("Cannot focus on canvas"));
+                .unwrap_or_else(|error| panic!("Cannot focus on canvas: {}", error));
             let offset_x = html_canvas.get_bounding_client_rect().left();
             let offset_y = html_canvas.get_bounding_client_rect().top();
             let mut input = input.borrow_mut();
