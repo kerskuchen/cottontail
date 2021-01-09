@@ -19,6 +19,7 @@ use std::{collections::VecDeque, time::Duration};
 
 const ENABLE_PANIC_MESSAGES: bool = false;
 const ENABLE_FRAMETIME_LOGGING: bool = false;
+const ENABLE_TOUCH_EMULATION: bool = true;
 
 #[derive(Serialize, Deserialize)]
 struct LauncherConfig {
@@ -417,58 +418,92 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
                 // NOTE: The mouse position is checked just once after
                 //       all events are processed
                 //
-                Event::MouseButtonDown { mouse_btn, .. } => match mouse_btn {
-                    sdl2::mouse::MouseButton::Left => {
-                        input.mouse.has_press_event = true;
-                        input.mouse.button_left.process_press_event()
+                Event::MouseButtonDown {
+                    mouse_btn, x, y, ..
+                } => {
+                    if ENABLE_TOUCH_EMULATION {
+                        match mouse_btn {
+                            sdl2::mouse::MouseButton::Left => {
+                                input.touch.process_finger_down(0, x, y);
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        match mouse_btn {
+                            sdl2::mouse::MouseButton::Left => {
+                                input.mouse.has_press_event = true;
+                                input.mouse.button_left.process_press_event()
+                            }
+                            sdl2::mouse::MouseButton::Middle => {
+                                input.mouse.has_press_event = true;
+                                input.mouse.button_middle.process_press_event()
+                            }
+                            sdl2::mouse::MouseButton::Right => {
+                                input.mouse.has_press_event = true;
+                                input.mouse.button_right.process_press_event()
+                            }
+                            sdl2::mouse::MouseButton::X1 => {
+                                input.mouse.has_press_event = true;
+                                input.mouse.button_x1.process_press_event()
+                            }
+                            sdl2::mouse::MouseButton::X2 => {
+                                input.mouse.has_press_event = true;
+                                input.mouse.button_x2.process_press_event()
+                            }
+                            _ => {}
+                        }
                     }
-                    sdl2::mouse::MouseButton::Middle => {
-                        input.mouse.has_press_event = true;
-                        input.mouse.button_middle.process_press_event()
+                }
+                Event::MouseButtonUp {
+                    mouse_btn, x, y, ..
+                } => {
+                    if ENABLE_TOUCH_EMULATION {
+                        match mouse_btn {
+                            sdl2::mouse::MouseButton::Left => {
+                                input.touch.process_finger_up(0, x, y);
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        match mouse_btn {
+                            sdl2::mouse::MouseButton::Left => {
+                                input.mouse.has_release_event = true;
+                                input.mouse.button_left.process_release_event()
+                            }
+                            sdl2::mouse::MouseButton::Middle => {
+                                input.mouse.has_release_event = true;
+                                input.mouse.button_middle.process_release_event()
+                            }
+                            sdl2::mouse::MouseButton::Right => {
+                                input.mouse.has_release_event = true;
+                                input.mouse.button_right.process_release_event()
+                            }
+                            sdl2::mouse::MouseButton::X1 => {
+                                input.mouse.has_release_event = true;
+                                input.mouse.button_x1.process_release_event()
+                            }
+                            sdl2::mouse::MouseButton::X2 => {
+                                input.mouse.has_release_event = true;
+                                input.mouse.button_x2.process_release_event()
+                            }
+                            _ => {}
+                        }
                     }
-                    sdl2::mouse::MouseButton::Right => {
-                        input.mouse.has_press_event = true;
-                        input.mouse.button_right.process_press_event()
+                }
+                Event::MouseMotion { x, y, .. } => {
+                    if ENABLE_TOUCH_EMULATION {
+                        if input.touch.is_pressed(0) {
+                            input.touch.process_finger_move(0, x, y);
+                        }
+                    } else {
+                        input.mouse.has_moved = true;
                     }
-                    sdl2::mouse::MouseButton::X1 => {
-                        input.mouse.has_press_event = true;
-                        input.mouse.button_x1.process_press_event()
-                    }
-                    sdl2::mouse::MouseButton::X2 => {
-                        input.mouse.has_press_event = true;
-                        input.mouse.button_x2.process_press_event()
-                    }
-                    _ => {}
-                },
-                Event::MouseButtonUp { mouse_btn, .. } => match mouse_btn {
-                    sdl2::mouse::MouseButton::Left => {
-                        input.mouse.has_release_event = true;
-                        input.mouse.button_left.process_release_event()
-                    }
-                    sdl2::mouse::MouseButton::Middle => {
-                        input.mouse.has_release_event = true;
-                        input.mouse.button_middle.process_release_event()
-                    }
-                    sdl2::mouse::MouseButton::Right => {
-                        input.mouse.has_release_event = true;
-                        input.mouse.button_right.process_release_event()
-                    }
-                    sdl2::mouse::MouseButton::X1 => {
-                        input.mouse.has_release_event = true;
-                        input.mouse.button_x1.process_release_event()
-                    }
-                    sdl2::mouse::MouseButton::X2 => {
-                        input.mouse.has_release_event = true;
-                        input.mouse.button_x2.process_release_event()
-                    }
-                    _ => {}
-                },
-                Event::MouseMotion { .. } => {
-                    input.mouse.has_moved = true;
                 }
                 Event::MouseWheel { y, .. } => {
-                    input.mouse.has_wheel_event = true;
-                    input.mouse.wheel_delta = y;
+                    if !ENABLE_TOUCH_EMULATION {
+                        input.mouse.has_wheel_event = true;
+                        input.mouse.wheel_delta = y;
+                    }
                 }
                 _ => {}
             }
@@ -554,10 +589,12 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
         //
         // NOTE: We get the mouse position and delta from querying SDL instead of accumulating
         //       events, as it is faster, more accurate and less error-prone
-        input.mouse.pos_x = event_pump.mouse_state().x();
-        input.mouse.pos_y = event_pump.mouse_state().y();
-        input.mouse.delta_x = input.mouse.pos_x - mouse_pos_previous_x;
-        input.mouse.delta_y = input.mouse.pos_y - mouse_pos_previous_y;
+        if !ENABLE_TOUCH_EMULATION {
+            input.mouse.pos_x = event_pump.mouse_state().x();
+            input.mouse.pos_y = event_pump.mouse_state().y();
+            input.mouse.delta_x = input.mouse.pos_x - mouse_pos_previous_x;
+            input.mouse.delta_y = input.mouse.pos_y - mouse_pos_previous_y;
+        }
         input.touch.calculate_move_deltas();
         input.screen_is_fullscreen = window.fullscreen_active;
 

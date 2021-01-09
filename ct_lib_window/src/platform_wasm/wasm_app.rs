@@ -402,7 +402,13 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     {
         let input = input.clone();
         let touchstart_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
+            event.prevent_default();
             let html_canvas = html_get_canvas();
+            // NOTE: Because we do `prevent_default` on the event (because we don't want mouseclicks
+            //       to be simulated), we need to manually focus our canvas
+            html_canvas
+                .focus()
+                .unwrap_or_else(|error| panic!("Cannot focus on canvas"));
             let offset_x = html_canvas.get_bounding_client_rect().left();
             let offset_y = html_canvas.get_bounding_client_rect().top();
             let mut input = input.borrow_mut();
@@ -443,6 +449,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                     )
                 }
             }
+            event.prevent_default();
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
             "touchend",
@@ -469,6 +476,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                     )
                 }
             }
+            event.prevent_default();
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
             "touchmove",

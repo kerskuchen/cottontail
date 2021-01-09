@@ -1,6 +1,8 @@
 pub mod assets;
+pub mod gui;
 
 pub use assets::*;
+pub use gui::*;
 
 use ct_lib_audio as audio;
 use ct_lib_core as core;
@@ -308,28 +310,25 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
 
                 // DEBUG GAMESPEED MANIPULATION
                 //
-                if input
-                    .keyboard
-                    .recently_pressed_or_repeated(Scancode::NumpadAdd)
-                {
+                if input.keyboard.recently_pressed(Scancode::NumpadAdd) {
                     globals.debug_deltatime_speed_factor += 0.1;
                 }
-                if input
-                    .keyboard
-                    .recently_pressed_or_repeated(Scancode::NumpadSubtract)
-                {
+                if input.keyboard.recently_pressed(Scancode::NumpadSubtract) {
                     globals.debug_deltatime_speed_factor -= 0.1;
                     if globals.debug_deltatime_speed_factor < 0.1 {
                         globals.debug_deltatime_speed_factor = 0.1;
                     }
                 }
-                if input.keyboard.recently_pressed(Scancode::Space) {
+                if input
+                    .keyboard
+                    .recently_pressed_ignore_repeat(Scancode::Space)
+                {
                     globals.is_paused = !globals.is_paused;
                 }
                 let deltatime_speed_factor =
                     globals.deltatime_speed_factor * globals.debug_deltatime_speed_factor;
                 let deltatime = if globals.is_paused {
-                    if input.keyboard.recently_pressed_or_repeated(Scancode::N) {
+                    if input.keyboard.recently_pressed(Scancode::N) {
                         input.deltatime * deltatime_speed_factor
                     } else {
                         0.0
@@ -356,6 +355,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 }
                 draw.debug_log(format!("Deltatime: {:.6}", globals.deltatime));
 
+                gui_begin_frame(&globals.cursors, input);
                 game.update(
                     draw,
                     audio,
@@ -364,6 +364,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                     globals,
                     out_systemcommands,
                 );
+                gui_end_frame();
 
                 let mouse_coords = globals.cursors.mouse;
                 game_handle_mouse_camera_zooming_panning(

@@ -86,11 +86,11 @@ impl ButtonState {
     }
 
     pub fn recently_pressed(&self) -> bool {
-        self.is_pressed && (self.transition_count > 0)
+        self.is_pressed && ((self.transition_count > 0) || (self.system_repeat_count > 0))
     }
 
-    pub fn recently_pressed_or_repeated(&self) -> bool {
-        self.is_pressed && ((self.transition_count > 0) || (self.system_repeat_count > 0))
+    pub fn recently_pressed_ignore_repeat(&self) -> bool {
+        self.is_pressed && (self.transition_count > 0)
     }
 
     pub fn recently_released(&self) -> bool {
@@ -281,6 +281,39 @@ impl TouchState {
         self.fingers_previous = self.fingers.clone();
     }
 
+    pub fn pos(&self, finger: FingerId) -> Option<(i32, i32)> {
+        self.fingers
+            .get(&finger)
+            .map(|finger| (finger.pos_x, finger.pos_y))
+    }
+
+    pub fn pos_delta(&self, finger: FingerId) -> Option<(i32, i32)> {
+        self.fingers
+            .get(&finger)
+            .map(|finger| (finger.delta_x, finger.delta_y))
+    }
+
+    pub fn recently_pressed(&self, finger: FingerId) -> bool {
+        self.fingers
+            .get(&finger)
+            .map(|finger| finger.state.recently_pressed())
+            .unwrap_or(false)
+    }
+
+    pub fn recently_released(&self, finger: FingerId) -> bool {
+        self.fingers
+            .get(&finger)
+            .map(|finger| finger.state.recently_released())
+            .unwrap_or(false)
+    }
+
+    pub fn is_pressed(&self, finger: FingerId) -> bool {
+        self.fingers
+            .get(&finger)
+            .map(|finger| finger.state.is_pressed)
+            .unwrap_or(false)
+    }
+
     fn get_next_free_finger_id(&self) -> FingerId {
         if self.fingers.is_empty() {
             0
@@ -440,9 +473,9 @@ impl KeyboardState {
         }
     }
 
-    pub fn recently_pressed_or_repeated(&self, scancode: Scancode) -> bool {
+    pub fn recently_pressed_ignore_repeat(&self, scancode: Scancode) -> bool {
         if let Some(key) = self.keys.get(&scancode) {
-            key.button.recently_pressed_or_repeated()
+            key.button.recently_pressed_ignore_repeat()
         } else {
             false
         }
@@ -499,10 +532,11 @@ impl KeyboardState {
         self.recently_pressed(code) || self.recently_pressed(code_keypad)
     }
 
-    pub fn recently_pressed_or_repeated_digit(&self, digit: usize) -> bool {
+    pub fn recently_pressed_digit_ignore_repeat(&self, digit: usize) -> bool {
         let code = SCANCODE_DIGITS[digit];
         let code_keypad = SCANCODE_DIGITS_KEYPAD[digit];
-        self.recently_pressed_or_repeated(code) || self.recently_pressed_or_repeated(code_keypad)
+        self.recently_pressed_ignore_repeat(code)
+            || self.recently_pressed_ignore_repeat(code_keypad)
     }
 
     pub fn recently_released_digit(&self, digit: usize) -> bool {

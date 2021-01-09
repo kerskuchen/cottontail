@@ -335,7 +335,28 @@ impl Color {
         Color::lerp(start, end, percent)
     }
 
+    #[inline]
+    pub fn with_multiplied_color(self, factor: f32) -> Color {
+        Color {
+            r: self.r * factor,
+            g: self.g * factor,
+            b: self.b * factor,
+            a: self.a,
+        }
+    }
+
+    #[inline]
+    pub fn with_translucency(self, alpha: f32) -> Color {
+        Color {
+            r: self.r,
+            g: self.g,
+            b: self.b,
+            a: self.a * alpha,
+        }
+    }
+
     /// Based on https://en.wikipedia.org/wiki/SRGB#The_reverse_transformation
+    #[inline]
     pub fn convert_to_srgba(self) -> Color {
         fn rgb_component_to_srgb_component(component: f32) -> f32 {
             if component < 0.04045 {
@@ -354,6 +375,7 @@ impl Color {
     }
 
     /// Based on https://en.wikipedia.org/wiki/Relative_luminance
+    #[inline]
     pub fn to_relative_luminance(self) -> f32 {
         let color_srgba = self.convert_to_srgba();
         0.2126 * color_srgba.r + 0.7152 * color_srgba.g + 0.0722 * color_srgba.b
