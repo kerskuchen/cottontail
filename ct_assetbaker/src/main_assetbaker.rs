@@ -249,7 +249,7 @@ fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {
                     panic!("Cannot decode audio file '{}': {}", filepath, error)
                 });
             let channelcount = audiochunk.channelcount();
-            let framecount = audiochunk.len();
+            let framecount = audiochunk.framecount();
 
             let original = AudioMetadata {
                 samplerate_hz,

@@ -138,10 +138,12 @@ pub fn write_audio_samples_to_wav_file(filepath: &str, chunk: &AudioChunk, sampl
         bits_per_sample: 32,
         sample_format: hound::SampleFormat::Float,
     };
-    let mut writer = hound::WavWriter::create(filepath, header).expect(&format!(
-        "Could not open '{}' for writing wav data",
-        filepath
-    ));
+    let mut writer = hound::WavWriter::create(filepath, header).unwrap_or_else(|error| {
+        panic!(
+            "Could not open '{}' for writing wav data: {}",
+            filepath, error
+        )
+    });
     match chunk.channels {
         AudioChannels::Mono => {
             for sample in chunk.get_mono_samples() {
@@ -158,7 +160,7 @@ pub fn write_audio_samples_to_wav_file(filepath: &str, chunk: &AudioChunk, sampl
     }
     writer
         .finalize()
-        .expect(&format!("Could not finalize wav file '{}'", filepath));
+        .unwrap_or_else(|error| panic!("Could not finalize wav file '{}': {}", filepath, error));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -71,13 +71,13 @@ impl AudioChunk {
     }
 
     #[inline]
-    pub fn len(&self) -> usize {
+    pub fn framecount(&self) -> usize {
         self.frames[0].len()
     }
 
     #[inline]
     pub fn length_in_seconds(&self, audio_samplerate_hz: usize) -> f64 {
-        audio_frames_to_seconds(self.len() as i64, audio_samplerate_hz)
+        audio_frames_to_seconds(self.framecount() as i64, audio_samplerate_hz)
     }
 
     #[inline]
@@ -155,7 +155,7 @@ impl AudioChunk {
     #[inline]
     pub fn add_from_chunk(&mut self, other: &AudioChunk) {
         assert!(self.channels == other.channels);
-        assert!(self.len() == other.len());
+        assert!(self.framecount() == other.framecount());
 
         // Fastpath: Other chunk is silent
         if other.volume == 0.0 {
@@ -202,10 +202,10 @@ impl AudioChunk {
     ) {
         assert!(source.volume == target.volume);
         assert!(source.channels == target.channels);
-        assert!(source_offset < source.len());
-        assert!(target_offset < target.len());
-        assert!(source_offset + framecount <= source.len());
-        assert!(target_offset + framecount <= target.len());
+        assert!(source_offset < source.framecount());
+        assert!(target_offset < target.framecount());
+        assert!(source_offset + framecount <= source.framecount());
+        assert!(target_offset + framecount <= target.framecount());
 
         match source.channels {
             AudioChannels::Mono => {
@@ -251,7 +251,7 @@ impl AudioChunk {
     #[inline]
     pub fn copy_from_chunk_complete(&mut self, other: &AudioChunk) {
         assert!(self.channels == other.channels);
-        assert!(self.len() == other.len());
+        assert!(self.framecount() == other.framecount());
 
         self.volume = other.volume;
 
@@ -260,14 +260,14 @@ impl AudioChunk {
             return;
         }
 
-        AudioChunk::copy_chunks(other, self, 0, 0, other.len());
+        AudioChunk::copy_chunks(other, self, 0, 0, other.framecount());
     }
 
     #[inline]
     pub fn copy_from_slice_mono(&mut self, source: &[AudioSample], offset: usize) {
         assert!(self.channels == AudioChannels::Mono);
-        assert!(offset < self.len());
-        assert!(offset + source.len() <= self.len());
+        assert!(offset < self.framecount());
+        assert!(offset + source.len() <= self.framecount());
 
         let target: &mut [f32] = self.get_mono_samples_mut();
         let target = &mut target[offset..offset + source.len()];
@@ -283,8 +283,8 @@ impl AudioChunk {
     ) {
         assert!(self.channels == AudioChannels::Stereo);
         assert!(source_left.len() == source_right.len());
-        assert!(offset < self.len());
-        assert!(offset + source_left.len() <= self.len());
+        assert!(offset < self.framecount());
+        assert!(offset + source_left.len() <= self.framecount());
 
         let framecount = source_left.len();
         let (target_left, target_right) = {
@@ -306,7 +306,7 @@ impl AudioChunk {
 
     #[inline]
     pub fn fill_silence_from_offset(&mut self, offset: usize) {
-        self.fill_silence_range(offset, self.len());
+        self.fill_silence_range(offset, self.framecount());
     }
 
     #[inline]
@@ -319,11 +319,11 @@ impl AudioChunk {
     #[inline]
     pub fn fill_silence_range(&mut self, start: usize, end: usize) {
         assert!(start <= end);
-        assert!(start < self.len());
-        assert!(end <= self.len());
+        assert!(start < self.framecount());
+        assert!(end <= self.framecount());
 
         // Fastpath: Whole chunk is silent
-        if start == 0 && end == self.len() {
+        if start == 0 && end == self.framecount() {
             self.fill_silence_complete();
             return;
         }
@@ -359,20 +359,21 @@ impl AudioChunk {
         }
 
         // Slow path - need to ramp up/down volume
-        let volume_increment = (volume_end - volume_start) / self.len() as f32;
+        let volume_increment = (volume_end - volume_start) / self.framecount() as f32;
         let mut volume_current = volume_start;
         match self.channels {
             AudioChannels::Mono => {
                 for out_sample in self.get_mono_samples_mut().iter_mut() {
-                    *out_sample = volume_current * *out_sample;
+                    *out_sample *= volume_current;
+
                     volume_current += volume_increment;
                 }
             }
             AudioChannels::Stereo => {
                 let (samples_left, samples_right) = self.get_stereo_samples_mut();
                 for (left, right) in samples_left.iter_mut().zip(samples_right.iter_mut()) {
-                    *left = volume_current * *left;
-                    *right = volume_current * *right;
+                    *left *= volume_current;
+                    *right *= volume_current;
                     volume_current += volume_increment;
                 }
             }
@@ -387,7 +388,7 @@ impl AudioChunk {
     ) {
         assert!(input.channels == AudioChannels::Mono);
         assert!(output.channels == AudioChannels::Stereo);
-        assert!(input.len() == output.len());
+        assert!(input.framecount() == output.framecount());
 
         output.volume = input.volume;
 
@@ -416,7 +417,7 @@ impl AudioChunk {
         // Slow path - need to ramp up/down pan
         let percent_end = 0.5 * (pan_end + 1.0); // Transform [-1,1] -> [0,1]
         let percent_start = 0.5 * (pan_start + 1.0); // Transform [-1,1] -> [0,1]
-        let percent_increment = (percent_end - percent_start) / input.len() as f32;
+        let percent_increment = (percent_end - percent_start) / input.framecount() as f32;
         let mut percent_current = percent_start;
 
         let (samples_left, samples_right) = output.get_stereo_samples_mut();
@@ -488,7 +489,7 @@ pub struct AudioRecording {
 impl AudioRecording {
     #[inline]
     pub fn new(name: String, sample_rate_hz: usize, chunk: AudioChunk) -> AudioRecording {
-        let framecount = chunk.len();
+        let framecount = chunk.framecount();
         AudioRecording::new_with_loopsection(name, sample_rate_hz, chunk, 0, framecount)
     }
 
@@ -500,7 +501,7 @@ impl AudioRecording {
         loopsection_start_frameindex: usize,
         loopsection_framecount: usize,
     ) -> AudioRecording {
-        let framecount = framechunk.len();
+        let framecount = framechunk.framecount();
         AudioRecording {
             name,
             sample_rate_hz,
@@ -580,13 +581,13 @@ impl AudioRecording {
 
     #[inline]
     pub fn len(&self) -> usize {
-        self.framechunk.len()
+        self.framechunk.framecount()
     }
 
     // NOTE: `frameindex` is allowed to be out of range and will default to maximum possible value
     #[inline]
     pub fn decode_frames_till(&mut self, frameindex: usize) -> Result<(), String> {
-        let frameindex = usize::min(frameindex, self.framechunk.len());
+        let frameindex = usize::min(frameindex, self.framechunk.framecount());
         if frameindex < self.stream_reader_decoded_framecount {
             // Nothing to do
             return Ok(());
@@ -603,11 +604,13 @@ impl AudioRecording {
             .map_err(|error| format!("Could not decode ogg packet: {}", error))?
         {
             let decoded_framecount = decoded_samples[0].len();
-            if self.stream_reader_decoded_framecount + decoded_framecount > self.framechunk.len() {
+            if self.stream_reader_decoded_framecount + decoded_framecount
+                > self.framechunk.framecount()
+            {
                 log::trace!(
                     "Decoded {} frames but expected {} frames in '{}'",
                     self.stream_reader_decoded_framecount + decoded_framecount,
-                    self.framechunk.len(),
+                    self.framechunk.framecount(),
                     &self.name
                 );
             }
@@ -615,7 +618,7 @@ impl AudioRecording {
             // Make sure we don't try to write more frames than we have
             let framecount_to_write = usize::min(
                 decoded_samples[0].len(),
-                self.framechunk.len() - self.stream_reader_decoded_framecount,
+                self.framechunk.framecount() - self.stream_reader_decoded_framecount,
             );
             match self.framechunk.channels {
                 AudioChannels::Mono => {
@@ -634,7 +637,7 @@ impl AudioRecording {
             }
 
             self.stream_reader_decoded_framecount += decoded_samples[0].len();
-            if self.stream_reader_decoded_framecount == self.framechunk.len() {
+            if self.stream_reader_decoded_framecount == self.framechunk.framecount() {
                 log::trace!("Finished decoding '{}'", &self.name);
             }
             if self.stream_reader_decoded_framecount >= frameindex {
@@ -699,7 +702,8 @@ impl AudioSourceTrait for AudioSourceRecording {
     fn has_finished(&self) -> bool {
         // NOTE: +2 for resampler latency
         !self.is_looping
-            && self.source_read_cursor_pos >= self.source_recording.borrow().framechunk.len() + 2
+            && self.source_read_cursor_pos
+                >= self.source_recording.borrow().framechunk.framecount() + 2
     }
 
     fn is_looping(&self) -> bool {
@@ -710,7 +714,7 @@ impl AudioSourceTrait for AudioSourceRecording {
         // NOTE: +2 for resampler latency
         Some(
             self.source_read_cursor_pos as f32
-                / (self.source_recording.borrow().framechunk.len() + 2) as f32,
+                / (self.source_recording.borrow().framechunk.framecount() + 2) as f32,
         )
     }
 
@@ -720,15 +724,16 @@ impl AudioSourceTrait for AudioSourceRecording {
         out_write_offset: usize,
         playback_speed_factor: f32,
     ) {
-        assert!(out_write_offset < out_chunk.len());
+        assert!(out_write_offset < out_chunk.framecount());
         assert!(playback_speed_factor > EPSILON);
         if self.has_finished() {
             out_chunk.volume = 0.0;
             return;
         }
 
-        let resampled_framecount_upperbound =
-            (playback_speed_factor * (out_chunk.len() - out_write_offset) as f32).ceil() as usize;
+        let resampled_framecount_upperbound = (playback_speed_factor
+            * (out_chunk.framecount() - out_write_offset) as f32)
+            .ceil() as usize;
         self.source_recording
             .borrow_mut()
             .decode_frames_till(self.source_read_cursor_pos + resampled_framecount_upperbound)
@@ -907,7 +912,7 @@ impl AudioSourceTrait for AudioSourceRecording {
     }
 
     fn framecount(&self) -> Option<usize> {
-        Some(self.source_recording.borrow().framechunk.len())
+        Some(self.source_recording.borrow().framechunk.framecount())
     }
 
     fn playcursor_pos(&self) -> Option<usize> {
@@ -1244,7 +1249,7 @@ impl AudioStream {
         // Fastpath - we are muted and already had time to wind-down
         if self.muted_volume == 0.0 && self.volume_adapter.volume_current == 0.0 {
             self.source.skip_frames(
-                self.chunk_internal.len() - silence_framecount,
+                self.chunk_internal.framecount() - silence_framecount,
                 final_playback_speed_factor,
             );
             self.has_finished = self.source.has_finished();
@@ -1600,7 +1605,7 @@ struct OutputResampler {
 impl OutputResampler {
     fn new_stereo() -> OutputResampler {
         let internal_chunk = AudioChunk::new_stereo();
-        let internal_chunk_readpos = internal_chunk.len();
+        let internal_chunk_readpos = internal_chunk.framecount();
         OutputResampler {
             frame_current: (0.0, 0.0),
             frame_next: (0.0, 0.0),
@@ -1612,7 +1617,7 @@ impl OutputResampler {
     }
 
     fn internal_buffer_depleted(&self) -> bool {
-        self.internal_chunk_readpos >= self.internal_chunk.len()
+        self.internal_chunk_readpos >= self.internal_chunk.framecount()
     }
 
     fn assign_input_chunk(&mut self, input: &AudioChunk) {
@@ -1639,7 +1644,7 @@ impl OutputResampler {
         playback_speed_factor: f32,
     ) -> usize {
         assert!(output.channels == self.internal_chunk.channels);
-        assert!(out_write_offset < output.len());
+        assert!(out_write_offset < output.framecount());
         assert!(playback_speed_factor > EPSILON);
         assert!(
             self.internal_chunk.volume == 1.0 || self.internal_chunk.volume == 0.0,
@@ -2043,7 +2048,7 @@ impl Audiostate {
                 self.resampler
                     .fill_chunk(out_chunk, resampler_write_offset, playback_speed_factor);
 
-            if resampler_write_offset >= out_chunk.len() {
+            if resampler_write_offset >= out_chunk.framecount() {
                 break;
             }
         }
@@ -2083,6 +2088,7 @@ impl Audiostate {
             self.next_frame_index_to_output,
             self.internal_sample_rate_hz,
         );
+
         if self.audio_time != new_audio_time {
             self.audio_time = new_audio_time;
             self.audio_time_smoothed = (self.audio_time_smoothed + new_audio_time) / 2.0;

@@ -5,14 +5,13 @@
 - rudimentary mute/unmute of audio streams
 - rudimentary audiogroups concept
 - rudimentary way to switch/disable audio when switching scenes
+- muting and unmuting of groups and streams independently
 
 # CURRENT
 
 
 # NEXT:
 
-- make audiogroup muting more persistent. currently we just mute all streams in a group once, if
-  later we would play more sounds in the same group we would hear them nontheless
 
 
 
