@@ -154,7 +154,7 @@ impl GuiState {
     }
 
     #[inline]
-    pub fn end_frame(&mut self, draw: &mut Drawstate) {
+    pub fn end_frame(&mut self, _draw: &mut Drawstate) {
         if let Some(finger_pos_canvas) = self.finger_pos_canvas {
             self.finger_pos_canvas_previous = finger_pos_canvas;
         }
@@ -175,9 +175,9 @@ impl GuiState {
         self.current_action = None;
     }
 
-    /// Returns true if the button was clicked
+    /// Returns (pressed, clicked)
     #[inline]
-    #[must_use = "Returns whether the button was clicked or not"]
+    #[must_use = "Returns whether the button was pressed or clicked or not"]
     pub fn button(
         &mut self,
         draw: &mut Drawstate,
@@ -188,7 +188,7 @@ impl GuiState {
         color_label: Color,
         color_background: Color,
         drawparams: Drawparams,
-    ) -> bool {
+    ) -> (bool, bool) {
         if self.mouse_canvas_pos.intersects_rect(button_rect) {
             self.mouse_highlighted_item = Some(id);
             if self.active_item.is_none() && self.mouse_is_down {
@@ -260,7 +260,7 @@ impl GuiState {
         if self.keyboard_highlighted_item == Some(id) {
             if let Some(key) = self.current_action {
                 match key {
-                    GuiAction::Accept => return true,
+                    GuiAction::Accept => return (true, true),
                     GuiAction::Previous => self.keyboard_highlighted_item = self.last_widget,
                     GuiAction::Next => self.keyboard_highlighted_item = None,
                     _ => {}
@@ -270,15 +270,22 @@ impl GuiState {
         }
         self.last_widget = Some(id);
 
+        let button_pressed_mouse = self.active_item == Some(id)
+            && self.mouse_highlighted_item == Some(id)
+            && self.mouse_is_down;
         let button_clicked_mouse = self.active_item == Some(id)
             && self.mouse_highlighted_item == Some(id)
-            && !self.mouse_is_down;
+            && self.mouse_recently_released;
 
+        let button_pressed_finger = self.active_item == Some(id) && finger_intersects_rect_current;
         let button_clicked_finger = self.active_item == Some(id)
-            && self.finger_pos_canvas.is_none()
+            && self.finger_recently_released
             && finger_intersects_rect_previous;
 
-        button_clicked_finger || button_clicked_mouse
+        (
+            button_pressed_finger || button_pressed_mouse,
+            button_clicked_finger || button_clicked_mouse,
+        )
     }
 
     #[inline]
@@ -646,7 +653,7 @@ pub fn gui_end_frame(draw: &mut Drawstate) {
 }
 
 #[inline]
-#[must_use = "It returns whether the button was clicked or not"]
+#[must_use = "It returns whether the button was pressed or clicked or not"]
 pub fn gui_button(
     draw: &mut Drawstate,
     id: GuiElemId,
@@ -656,7 +663,7 @@ pub fn gui_button(
     color_label: Color,
     color_background: Color,
     drawparams: Drawparams,
-) -> bool {
+) -> (bool, bool) {
     gui_get().button(
         draw,
         id,

@@ -110,7 +110,7 @@ impl FullscreenHandler {
                     *fullscreen_requested = false;
                 }
             }) as Box<dyn FnMut(_)>);
-            html_get_document()
+            html_get_canvas()
                 .add_event_listener_with_callback("keyup", keyup_callback.as_ref().unchecked_ref())
                 .expect("Cannot register 'keyup' callback for fullscreen mode");
             keyup_callback.forget();
@@ -125,7 +125,7 @@ impl FullscreenHandler {
                     *fullscreen_requested = false;
                 }
             }) as Box<dyn FnMut(_)>);
-            html_get_document()
+            html_get_canvas()
                 .add_event_listener_with_callback(
                     "mouseup",
                     mouseup_callback.as_ref().unchecked_ref(),
@@ -143,7 +143,7 @@ impl FullscreenHandler {
                     *fullscreen_requested = false;
                 }
             }) as Box<dyn FnMut(_)>);
-            html_get_document()
+            html_get_canvas()
                 .add_event_listener_with_callback(
                     "touchend",
                     touchup_callback.as_ref().unchecked_ref(),
