@@ -355,7 +355,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 }
                 draw.debug_log(format!("Deltatime: {:.6}", globals.deltatime));
 
-                gui_begin_frame(&globals.cursors, input);
+                gui_begin_frame(draw, &globals.cursors, input);
                 game.update(
                     draw,
                     audio,
@@ -364,7 +364,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                     globals,
                     out_systemcommands,
                 );
-                gui_end_frame();
+                gui_end_frame(draw);
 
                 let mouse_coords = globals.cursors.mouse;
                 game_handle_mouse_camera_zooming_panning(

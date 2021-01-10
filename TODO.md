@@ -2,12 +2,17 @@
 
 - add and fixup of old gui textscroller code
 - add pixelwidth-based textwrapping for fixed-width fonts
+- adds touch support for textscroller
 
 # CURRENT
 
 
+
 # NEXT:
 
+- our recent change where we prevent touchevents from emitting clicks broke wasm sound and 
+  fullscreen change
+- make debug_log variant that takes a float value and fills up a percentage rect 
 
 
 

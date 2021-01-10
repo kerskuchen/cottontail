@@ -53,6 +53,9 @@ pub struct GuiState {
     mouse_highlighted_item: Option<GuiElemId>,
 
     finger_pos_canvas: Option<Canvaspoint>,
+    finger_canvas_delta_average: Vec2,
+    finger_recently_pressed: bool,
+    finger_recently_released: bool,
     finger_pos_canvas_previous: Vec2,
 
     keyboard_highlighted_item: Option<GuiElemId>,
@@ -76,6 +79,9 @@ impl GuiState {
             mouse_highlighted_item: None,
 
             finger_pos_canvas: None,
+            finger_canvas_delta_average: Vec2::zero(),
+            finger_recently_pressed: false,
+            finger_recently_released: false,
             finger_pos_canvas_previous: -Vec2::ones(),
 
             keyboard_highlighted_item: None,
@@ -86,8 +92,28 @@ impl GuiState {
     }
 
     #[inline]
-    pub fn begin_frame(&mut self, cursors: &Cursors, input: &InputState) {
+    pub fn begin_frame(&mut self, draw: &mut Drawstate, cursors: &Cursors, input: &InputState) {
         self.finger_pos_canvas = cursors.finger_primary.map(|coords| coords.pos_canvas);
+
+        if let Some(finger_pos_canvas) = self.finger_pos_canvas {
+            let delta = finger_pos_canvas - self.finger_pos_canvas_previous;
+            self.finger_canvas_delta_average =
+                Vec2::lerp(self.finger_canvas_delta_average, delta, 0.8);
+        } else {
+            self.finger_canvas_delta_average =
+                Vec2::lerp(self.finger_canvas_delta_average, Vec2::zero(), 0.8);
+        }
+        if self.finger_canvas_delta_average.magnitude_squared() <= 1.0 {
+            self.finger_canvas_delta_average = Vec2::zero();
+        }
+        draw.debug_log(dformat!(self.finger_canvas_delta_average));
+
+        self.finger_recently_pressed = input.touch.recently_pressed(0);
+        if self.finger_recently_pressed {
+            self.finger_canvas_delta_average = Vec2::zero();
+        }
+        self.finger_recently_released = input.touch.recently_released(0);
+
         self.mouse_is_down = input.mouse.button_left.is_pressed;
         self.mouse_recently_pressed = input.mouse.button_left.recently_pressed();
         self.mouse_recently_released = input.mouse.button_left.recently_released();
@@ -128,7 +154,7 @@ impl GuiState {
     }
 
     #[inline]
-    pub fn end_frame(&mut self) {
+    pub fn end_frame(&mut self, draw: &mut Drawstate) {
         if let Some(finger_pos_canvas) = self.finger_pos_canvas {
             self.finger_pos_canvas_previous = finger_pos_canvas;
         }
@@ -151,7 +177,7 @@ impl GuiState {
 
     /// Returns true if the button was clicked
     #[inline]
-    #[must_use = "It returns whether the button was clicked or not"]
+    #[must_use = "Returns whether the button was clicked or not"]
     pub fn button(
         &mut self,
         draw: &mut Drawstate,
@@ -256,7 +282,7 @@ impl GuiState {
     }
 
     #[inline]
-    #[must_use = "It returns a new percentage value if the slider was mutated"]
+    #[must_use = "Returns a new percentage value if the slider was mutated"]
     pub fn horizontal_slider(
         &mut self,
         draw: &mut Drawstate,
@@ -372,6 +398,18 @@ impl GuiState {
             }
         }
 
+        let finger_intersects_rect_current = self
+            .finger_pos_canvas
+            .map(|finger_pos_canvas| finger_pos_canvas.intersects_rect(rect))
+            .unwrap_or(false);
+        let finger_intersects_rect_previous = self.finger_pos_canvas_previous.intersects_rect(rect);
+
+        if finger_intersects_rect_current {
+            if self.active_item.is_none() {
+                self.active_item = Some(id);
+            }
+        }
+
         // If no widget has keyboard focus, take it
         if self.keyboard_highlighted_item.is_none() {
             self.keyboard_highlighted_item = Some(id);
@@ -380,7 +418,7 @@ impl GuiState {
         if self.keyboard_highlighted_item == Some(id) {
             draw.draw_rect(
                 rect.extended_uniformly_by(2.0),
-                true,
+                false,
                 Drawparams::without_additivity(depth, Color::cyan(), Drawspace::Canvas),
             );
         }
@@ -422,6 +460,30 @@ impl GuiState {
                     &mut new_vel,
                     &mut new_acc,
                 );
+            }
+        }
+
+        // Finger scroll
+        if self.active_item == Some(id) {
+            if self.finger_recently_pressed {
+                // We want to stop previous scrolling movement
+                new_vel = 0.0;
+                new_acc = 0.0;
+            } else if self.finger_recently_released {
+                // We want to start autoscrolling after releasing
+                let cursor_vel = self.finger_canvas_delta_average.y / dt;
+                let mut _distance_dont_care = 0.0;
+
+                new_vel = cursor_vel;
+                linear_motion_get_start_acc_and_final_resting_distance(
+                    cursor_vel,
+                    1.5,
+                    &mut _distance_dont_care,
+                    &mut new_acc,
+                );
+            } else {
+                // We are just holding down the mouse - drag content
+                new_pos += self.finger_canvas_delta_average.y;
             }
         }
 
@@ -493,37 +555,40 @@ impl GuiState {
         *inout_acc = new_acc;
 
         // DEBUG
-        {
-            if self.keyboard_highlighted_item == Some(id) {
-                {
-                    // TODO: Keyboard focus here
-                    draw.draw_rect(
-                        rect.extended_uniformly_by(1.0),
-                        true,
-                        Drawparams::without_additivity(
-                            depth,
-                            Color::green().with_multiplied_color(0.5),
-                            Drawspace::Canvas,
-                        ),
-                    );
-                }
 
-                // Draw background
-                if self.active_item == Some(id) || self.mouse_highlighted_item == Some(id) {
-                    draw.draw_rect(
-                        rect,
-                        true,
-                        Drawparams::without_additivity(depth, Color::red(), Drawspace::Canvas),
-                    );
-                } else {
-                    draw.draw_rect(
-                        rect,
-                        true,
-                        Drawparams::without_additivity(depth, Color::black(), Drawspace::Canvas),
-                    );
-                }
-            }
-        }
+        /*
+               {
+                   if self.keyboard_highlighted_item == Some(id) {
+                       {
+                           // TODO: Keyboard focus here
+                           draw.draw_rect(
+                               rect.extended_uniformly_by(1.0),
+                               true,
+                               Drawparams::without_additivity(
+                                   depth,
+                                   Color::green().with_multiplied_color(0.5),
+                                   Drawspace::Canvas,
+                               ),
+                           );
+                       }
+
+                       // Draw background
+                       if self.active_item == Some(id) || self.mouse_highlighted_item == Some(id) {
+                           draw.draw_rect(
+                               rect,
+                               true,
+                               Drawparams::without_additivity(depth, Color::red(), Drawspace::Canvas),
+                           );
+                       } else {
+                           draw.draw_rect(
+                               rect,
+                               true,
+                               Drawparams::without_additivity(depth, Color::black(), Drawspace::Canvas),
+                           );
+                       }
+                   }
+               }
+        */
 
         // Draw text
         draw.draw_text_clipped(
@@ -539,10 +604,15 @@ impl GuiState {
 
         self.last_widget = Some(id);
 
-        let has_clicked = self.mouse_highlighted_item == Some(id)
-            && self.active_item == Some(id)
+        let button_clicked_mouse = self.active_item == Some(id)
+            && self.mouse_highlighted_item == Some(id)
             && self.mouse_recently_released;
-        if has_clicked {
+
+        let button_clicked_finger = self.active_item == Some(id)
+            && self.finger_pos_canvas.is_none()
+            && finger_intersects_rect_previous;
+
+        if button_clicked_finger || button_clicked_mouse {
             self.keyboard_highlighted_item = Some(id);
         }
     }
@@ -566,13 +636,13 @@ fn gui_get() -> &'static mut GuiState {
 }
 
 #[inline]
-pub fn gui_begin_frame(cursors: &Cursors, input: &InputState) {
-    gui_get().begin_frame(cursors, input)
+pub fn gui_begin_frame(draw: &mut Drawstate, cursors: &Cursors, input: &InputState) {
+    gui_get().begin_frame(draw, cursors, input)
 }
 
 #[inline]
-pub fn gui_end_frame() {
-    gui_get().end_frame()
+pub fn gui_end_frame(draw: &mut Drawstate) {
+    gui_get().end_frame(draw)
 }
 
 #[inline]
