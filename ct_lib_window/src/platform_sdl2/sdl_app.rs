@@ -19,7 +19,7 @@ use std::{collections::VecDeque, time::Duration};
 
 const ENABLE_PANIC_MESSAGES: bool = false;
 const ENABLE_FRAMETIME_LOGGING: bool = false;
-const ENABLE_TOUCH_EMULATION: bool = true;
+const ENABLE_TOUCH_EMULATION: bool = false;
 
 #[derive(Serialize, Deserialize)]
 struct LauncherConfig {
