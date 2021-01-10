@@ -1541,8 +1541,8 @@ impl Drawstate {
     pub fn debug_draw_checkerboard(
         &mut self,
         origin: Vec2,
-        cells_per_side: i32,
-        cell_size: i32,
+        cells_per_side: usize,
+        cell_size: f32,
         drawparams: Drawparams,
     ) {
         let origin = origin.pixel_snapped();

@@ -1,12 +1,7 @@
 # DONE:
 
-- add and fixup of old gui code
-- change semantics of `recently_pressed` and `recently_pressed_or_repeated` to
-  `recently_pressed_ignore_repeat` and `recently_pressed` to
-- adds color mutation methods
-- adds touch input emulation mode in sdl2 layer
-- prevent touchevents from emitting clicks and fix focus handling for wasm
-- adds convenience touch query methods for touchstate
+- add and fixup of old gui textscroller code
+- add pixelwidth-based textwrapping for fixed-width fonts
 
 # CURRENT
 
@@ -301,3 +296,11 @@
 - rudimentary audiogroups concept
 - rudimentary way to switch/disable audio when switching scenes
 - muting and unmuting of groups and streams independently
+
+- add and fixup of old gui code
+- change semantics of `recently_pressed` and `recently_pressed_or_repeated` to
+  `recently_pressed_ignore_repeat` and `recently_pressed` to
+- adds color mutation methods
+- adds touch input emulation mode in sdl2 layer
+- prevent touchevents from emitting clicks and fix focus handling for wasm
+- adds convenience touch query methods for touchstate

@@ -72,17 +72,32 @@ pub trait Font<GlyphType: Glyph> {
     fn baseline(&self) -> i32;
     fn vertical_advance(&self) -> i32;
     fn horizontal_advance_max(&self) -> i32;
+    fn is_fixed_width_font(&self) -> bool;
     fn font_height_in_pixels(&self) -> i32;
     fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> &GlyphType;
     fn get_glyph_for_codepoint_copy(&self, codepoint: Codepoint) -> GlyphType;
 
+    #[inline]
     fn get_glyph_name(fontname: &str, codepoint: Codepoint) -> String {
         format!("{}_codepoint_{}", fontname, codepoint)
+    }
+
+    #[inline]
+    fn wrap_text_for_pixelwidth(&self, text: &str, width: u32) -> String {
+        if self.is_fixed_width_font() {
+            textwrap::fill(
+                &text,
+                (width as i32 / self.horizontal_advance_max()) as usize,
+            )
+        } else {
+            unimplemented!("Text wrapping is currently not supported for variable width fonts")
+        }
     }
 
     /// Returns the bounding rect for a given utf8 text for a given scale.
     /// For `ignore_whitespace = true` it ignores whitespace and tries to wrap the bounding rect to
     /// the non-whitespace-glyphs as tight as possible.
+    #[inline]
     fn get_text_bounding_rect(
         &self,
         text: &str,
@@ -177,6 +192,7 @@ pub trait Font<GlyphType: Glyph> {
 
     /// Iterates a given utf8 text and runs a given operation on each glyph.
     /// Returns the starting_offset for the next `iter_text_glyphs` call
+    #[inline]
     fn iter_text_glyphs<Operation: core::ops::FnMut(&GlyphType, Vec2i, char) -> ()>(
         &self,
         text: &str,
@@ -214,6 +230,7 @@ pub trait Font<GlyphType: Glyph> {
 
     /// Iterates a given utf8 text and runs a given operation on each glyph if it would be visible
     /// in the given clipping rect
+    #[inline]
     fn iter_text_glyphs_clipped<Operation: core::ops::FnMut(&GlyphType, Vec2i, char) -> ()>(
         &self,
         text: &str,
@@ -287,6 +304,7 @@ pub trait Font<GlyphType: Glyph> {
         }
     }
 
+    #[inline]
     fn iter_text_glyphs_aligned_in_point<
         Operation: core::ops::FnMut(&GlyphType, Vec2i, char) -> (),
     >(
@@ -337,23 +355,33 @@ pub struct BitmapFont {
     pub font_height_in_pixels: i32,
     pub vertical_advance: i32,
     pub horizontal_advance_max: i32,
+    pub is_fixed_width_font: bool,
     pub baseline: i32,
     pub glyphs: IndexMap<Codepoint, BitmapGlyph>,
 }
 
 impl Font<BitmapGlyph> for BitmapFont {
+    #[inline]
     fn baseline(&self) -> i32 {
         self.baseline
     }
+    #[inline]
     fn vertical_advance(&self) -> i32 {
         self.vertical_advance
     }
+    #[inline]
     fn horizontal_advance_max(&self) -> i32 {
         self.horizontal_advance_max
     }
+    #[inline]
+    fn is_fixed_width_font(&self) -> bool {
+        self.is_fixed_width_font
+    }
+    #[inline]
     fn font_height_in_pixels(&self) -> i32 {
         self.font_height_in_pixels
     }
+    #[inline]
     fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> &BitmapGlyph {
         self.glyphs
             .get(&codepoint)
@@ -361,12 +389,14 @@ impl Font<BitmapGlyph> for BitmapFont {
             .or_else(|| self.glyphs.get(&('?' as Codepoint)))
             .unwrap()
     }
+    #[inline]
     fn get_glyph_for_codepoint_copy(&self, codepoint: Codepoint) -> BitmapGlyph {
         self.get_glyph_for_codepoint(codepoint).clone()
     }
 }
 
 impl BitmapFont {
+    #[inline]
     pub fn new(
         font_name: &str,
         font_ttf_bytes: &[u8],
@@ -480,17 +510,28 @@ impl BitmapFont {
             .map(|glyph| glyph.horizontal_advance)
             .max()
             .unwrap_or_else(|| panic!("Pixelfont '{}' does not contain any glyphs", font_name));
+        let horizontal_advance_min = glyphs
+            .values()
+            .map(|glyph| glyph.horizontal_advance)
+            .min()
+            .unwrap_or_else(|| panic!("Pixelfont '{}' does not contain any glyphs", font_name));
+
+        let is_fixed_width_font = horizontal_advance_max == horizontal_advance_min;
 
         BitmapFont {
             font_name: font_name.to_owned(),
             font_height_in_pixels: font_height + 2 * border_thickness as i32,
             vertical_advance: vertical_advance + 2 * border_thickness as i32,
-            horizontal_advance_max: horizontal_advance_max + 2 * border_thickness as i32,
+            // NOTE: We don't add the border thickness here because it makes the text look
+            //       too spaced apart
+            horizontal_advance_max,
+            is_fixed_width_font,
             baseline,
             glyphs,
         }
     }
 
+    #[inline]
     pub fn to_bitmap_atlas(&self, fontname: &str) -> (Bitmap, IndexMap<String, Vec2i>) {
         let mut atlas = BitmapAtlas::new(64, None);
         for glyph in self.glyphs.values() {
@@ -576,6 +617,7 @@ impl Glyph for BitmapGlyph {
 }
 
 impl BitmapGlyph {
+    #[inline]
     pub fn new(
         font: &rusttype::Font,
         font_name: &str,
@@ -644,6 +686,7 @@ impl BitmapGlyph {
     }
 }
 
+#[inline]
 fn create_glyph_image(
     glyph: &rusttype::PositionedGlyph,
     border_thickness: u32,
@@ -683,6 +726,7 @@ fn create_glyph_image(
     })
 }
 
+#[inline]
 fn draw_glyph_border(image: &mut Bitmap, color_glyph: PixelRGBA, color_border: PixelRGBA) {
     // Create a border around every glyph in the image
     for y in 0..image.height {

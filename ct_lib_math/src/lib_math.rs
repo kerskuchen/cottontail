@@ -870,7 +870,7 @@ fn vel_quantized(vel: f32, ticks_per_second: f32) -> f32 {
 /// add_or_zero_when_changing_sign(0, 2) = 0
 /// add_or_zero_when_changing_sign(0, -3) = 0
 #[inline]
-fn add_or_zero_when_changing_sign(x: f32, to_add: f32) -> f32 {
+pub fn add_or_zero_when_changing_sign(x: f32, to_add: f32) -> f32 {
     let sum = x + to_add;
     let have_same_sign = sum * x > 0.0;
 

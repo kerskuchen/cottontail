@@ -336,6 +336,7 @@ impl Color {
     }
 
     #[inline]
+    #[must_use = "This does not change the original color"]
     pub fn with_multiplied_color(self, factor: f32) -> Color {
         Color {
             r: self.r * factor,
@@ -346,6 +347,7 @@ impl Color {
     }
 
     #[inline]
+    #[must_use = "This does not change the original color"]
     pub fn with_translucency(self, alpha: f32) -> Color {
         Color {
             r: self.r,
@@ -353,6 +355,12 @@ impl Color {
             b: self.b,
             a: self.a * alpha,
         }
+    }
+
+    #[inline]
+    #[must_use = "This does not change the original color"]
+    pub fn made_opaque(self) -> Color {
+        Color { a: 1.0, ..self }
     }
 
     /// Based on https://en.wikipedia.org/wiki/SRGB#The_reverse_transformation

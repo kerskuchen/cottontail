@@ -26,9 +26,11 @@ pub struct AAQuad {
 }
 
 impl AAQuad {
+    #[inline]
     pub fn to_rect(self) -> Rect {
         Rect::from_bounds_left_top_right_bottom(self.left, self.top, self.right, self.bottom)
     }
+    #[inline]
     pub fn from_rect(rect: Rect) -> Self {
         AAQuad {
             left: rect.left(),
@@ -101,7 +103,8 @@ pub struct Sprite3D {
     pub layers: Vec<Sprite>,
 }
 impl Sprite3D {
-    pub fn draw_height(&self) -> f32 {
+    #[inline]
+    pub fn get_draw_height(&self) -> f32 {
         (self.layers.len() - 1) as f32
     }
 }
@@ -121,10 +124,12 @@ pub struct SpriteGlyph {
 }
 
 impl Glyph for SpriteGlyph {
+    #[inline]
     fn get_bitmap_rect(&self) -> Recti {
         Recti::from_pos_dim(self.sprite_draw_offset, self.sprite_dimensions)
     }
 
+    #[inline]
     fn horizontal_advance(&self) -> i32 {
         self.horizontal_advance
     }
@@ -137,6 +142,7 @@ pub struct SpriteFont {
     pub baseline: i32,
     pub vertical_advance: i32,
     pub horizontal_advance_max: i32,
+    pub is_fixed_width_font: bool,
     pub font_height_in_pixels: i32,
 
     /// Fastpath glyphs for quick access (mainly latin glyphs)
@@ -146,18 +152,27 @@ pub struct SpriteFont {
 }
 
 impl Font<SpriteGlyph> for SpriteFont {
+    #[inline]
     fn baseline(&self) -> i32 {
         self.baseline
     }
+    #[inline]
     fn vertical_advance(&self) -> i32 {
         self.vertical_advance
     }
+    #[inline]
     fn horizontal_advance_max(&self) -> i32 {
         self.horizontal_advance_max
     }
+    #[inline]
+    fn is_fixed_width_font(&self) -> bool {
+        self.is_fixed_width_font
+    }
+    #[inline]
     fn font_height_in_pixels(&self) -> i32 {
         self.font_height_in_pixels
     }
+    #[inline]
     fn get_glyph_for_codepoint_copy(&self, codepoint: Codepoint) -> SpriteGlyph {
         if codepoint < FONT_MAX_NUM_FASTPATH_CODEPOINTS as i32 {
             self.ascii_glyphs[codepoint as usize].clone()
@@ -173,6 +188,7 @@ impl Font<SpriteGlyph> for SpriteFont {
             }
         }
     }
+    #[inline]
     fn get_glyph_for_codepoint(&self, codepoint: Codepoint) -> &SpriteGlyph {
         if codepoint < FONT_MAX_NUM_FASTPATH_CODEPOINTS as i32 {
             &self.ascii_glyphs[codepoint as usize]
