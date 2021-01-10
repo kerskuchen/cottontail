@@ -192,7 +192,7 @@ impl FullscreenHandler {
                 // NOTE: This promise produces an exception on devices that don't support screen
                 //       orientation change. This is a little annoying but doesn't break anything
                 //       so we leave it be due to code complexity reasons
-                let _promis = html_get_screen()
+                let _promise = html_get_screen()
                     .orientation()
                     .unlock()
                     .expect("Failed to unlock screen orientation");
@@ -277,10 +277,11 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // INPUT CALLBACKS
 
-    let dpr = html_get_window().device_pixel_ratio();
+    let device_pixel_ratio = html_get_window().device_pixel_ratio();
     let input = Rc::new(RefCell::new(InputState::new()));
     let mut mouse_pos_previous_x = 0;
     let mut mouse_pos_previous_y = 0;
+    let prevent_mouse_input_for_n_frames = Rc::new(RefCell::new(0));
 
     // Key down
     {
@@ -320,7 +321,13 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     // Mouse down
     {
         let input = input.clone();
+        let prevent_mouse_input_for_n_frames = prevent_mouse_input_for_n_frames.clone();
         let mousedown_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
+            if *prevent_mouse_input_for_n_frames.borrow() != 0 {
+                // We are currently using touch input exclusively
+                return;
+            }
+
             if event.button() >= 3 {
                 // We only support three buttons
                 return;
@@ -328,8 +335,8 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
 
             let mut input = input.borrow_mut();
             input.mouse.has_press_event = true;
-            input.mouse.pos_x = (event.offset_x() as f64 * dpr).floor() as i32;
-            input.mouse.pos_y = (event.offset_y() as f64 * dpr).floor() as i32;
+            input.mouse.pos_x = (event.offset_x() as f64 * device_pixel_ratio).floor() as i32;
+            input.mouse.pos_y = (event.offset_y() as f64 * device_pixel_ratio).floor() as i32;
             match event.button() {
                 0 => input.mouse.button_left.process_press_event(),
                 1 => input.mouse.button_middle.process_press_event(),
@@ -346,7 +353,13 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     // Mouse up
     {
         let input = input.clone();
+        let prevent_mouse_input_for_n_frames = prevent_mouse_input_for_n_frames.clone();
         let mouseup_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
+            if *prevent_mouse_input_for_n_frames.borrow() != 0 {
+                // We are currently using touch input exclusively
+                return;
+            }
+
             if event.button() >= 3 {
                 // We only support three buttons
                 return;
@@ -354,8 +367,8 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
 
             let mut input = input.borrow_mut();
             input.mouse.has_release_event = true;
-            input.mouse.pos_x = (event.offset_x() as f64 * dpr).floor() as i32;
-            input.mouse.pos_y = (event.offset_y() as f64 * dpr).floor() as i32;
+            input.mouse.pos_x = (event.offset_x() as f64 * device_pixel_ratio).floor() as i32;
+            input.mouse.pos_y = (event.offset_y() as f64 * device_pixel_ratio).floor() as i32;
             match event.button() {
                 0 => input.mouse.button_left.process_release_event(),
                 1 => input.mouse.button_middle.process_release_event(),
@@ -372,12 +385,17 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     // Mouse move
     {
         let input = input.clone();
+        let prevent_mouse_input_for_n_frames = prevent_mouse_input_for_n_frames.clone();
         let mousemove_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
-            let mut input = input.borrow_mut();
+            if *prevent_mouse_input_for_n_frames.borrow() != 0 {
+                // We are currently using touch input exclusively
+                return;
+            }
 
+            let mut input = input.borrow_mut();
             input.mouse.has_moved = true;
-            input.mouse.pos_x = (event.offset_x() as f64 * dpr).floor() as i32;
-            input.mouse.pos_y = (event.offset_y() as f64 * dpr).floor() as i32;
+            input.mouse.pos_x = (event.offset_x() as f64 * device_pixel_ratio).floor() as i32;
+            input.mouse.pos_y = (event.offset_y() as f64 * device_pixel_ratio).floor() as i32;
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
             "mousemove",
@@ -401,21 +419,21 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     // Touch start
     {
         let input = input.clone();
+        let prevent_mouse_input_for_n_frames = prevent_mouse_input_for_n_frames.clone();
         let touchstart_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
-            event.prevent_default();
+            // Make touch input exclusive for a while
+            *prevent_mouse_input_for_n_frames.borrow_mut() = 120;
+
             let html_canvas = html_get_canvas();
-            // NOTE: Because we do `prevent_default` on the event (because we don't want mouseclicks
-            //       to be simulated), we need to manually focus our canvas
-            html_canvas
-                .focus()
-                .unwrap_or_else(|error| panic!("Cannot focus on canvas: {:?}", error));
             let offset_x = html_canvas.get_bounding_client_rect().left();
             let offset_y = html_canvas.get_bounding_client_rect().top();
             let mut input = input.borrow_mut();
             for index in 0..event.changed_touches().length() {
                 if let Some(touch) = event.changed_touches().item(index) {
-                    let pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
-                    let pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
+                    let pos_x =
+                        ((touch.client_x() as f64 - offset_x) * device_pixel_ratio).floor() as i32;
+                    let pos_y =
+                        ((touch.client_y() as f64 - offset_y) * device_pixel_ratio).floor() as i32;
                     input.touch.process_finger_down(
                         touch.identifier() as FingerPlatformId,
                         pos_x,
@@ -433,15 +451,21 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     // Touch up
     {
         let input = input.clone();
+        let prevent_mouse_input_for_n_frames = prevent_mouse_input_for_n_frames.clone();
         let touchend_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
+            // Make touch input exclusive for a while
+            *prevent_mouse_input_for_n_frames.borrow_mut() = 120;
+
             let html_canvas = html_get_canvas();
             let offset_x = html_canvas.get_bounding_client_rect().left();
             let offset_y = html_canvas.get_bounding_client_rect().top();
             let mut input = input.borrow_mut();
             for index in 0..event.changed_touches().length() {
                 if let Some(touch) = event.changed_touches().item(index) {
-                    let pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
-                    let pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
+                    let pos_x =
+                        ((touch.client_x() as f64 - offset_x) * device_pixel_ratio).floor() as i32;
+                    let pos_y =
+                        ((touch.client_y() as f64 - offset_y) * device_pixel_ratio).floor() as i32;
                     input.touch.process_finger_up(
                         touch.identifier() as FingerPlatformId,
                         pos_x,
@@ -449,7 +473,6 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                     )
                 }
             }
-            event.prevent_default();
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
             "touchend",
@@ -460,15 +483,21 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     // Touch move
     {
         let input = input.clone();
+        let prevent_mouse_input_for_n_frames = prevent_mouse_input_for_n_frames.clone();
         let touchmove_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
+            // Make touch input exclusive for a while
+            *prevent_mouse_input_for_n_frames.borrow_mut() = 120;
+
             let html_canvas = html_get_canvas();
             let offset_x = html_canvas.get_bounding_client_rect().left();
             let offset_y = html_canvas.get_bounding_client_rect().top();
             let mut input = input.borrow_mut();
             for index in 0..event.changed_touches().length() {
                 if let Some(touch) = event.changed_touches().item(index) {
-                    let pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
-                    let pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
+                    let pos_x =
+                        ((touch.client_x() as f64 - offset_x) * device_pixel_ratio).floor() as i32;
+                    let pos_y =
+                        ((touch.client_y() as f64 - offset_y) * device_pixel_ratio).floor() as i32;
                     input.touch.process_finger_move(
                         touch.identifier() as FingerPlatformId,
                         pos_x,
@@ -476,7 +505,6 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                     )
                 }
             }
-            event.prevent_default();
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
             "touchmove",
@@ -494,8 +522,10 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
             let mut input = input.borrow_mut();
             for index in 0..event.changed_touches().length() {
                 if let Some(touch) = event.changed_touches().item(index) {
-                    let pos_x = ((touch.client_x() as f64 - offset_x) * dpr).floor() as i32;
-                    let pos_y = ((touch.client_y() as f64 - offset_y) * dpr).floor() as i32;
+                    let pos_x =
+                        ((touch.client_x() as f64 - offset_x) * device_pixel_ratio).floor() as i32;
+                    let pos_y =
+                        ((touch.client_y() as f64 - offset_y) * device_pixel_ratio).floor() as i32;
                     input.touch.process_finger_up(
                         touch.identifier() as FingerPlatformId,
                         pos_x,
@@ -561,6 +591,14 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
         let pre_input_time = timer_current_time_seconds();
 
+        {
+            let mut prevent_mouse_input_for_n_frames =
+                prevent_mouse_input_for_n_frames.borrow_mut();
+            if *prevent_mouse_input_for_n_frames > 0 {
+                *prevent_mouse_input_for_n_frames -= 1;
+            }
+        }
+
         //--------------------------------------------------------------------------------------
         // Event loop
 
@@ -571,8 +609,8 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                 || FullscreenHandler::is_window_covering_fullscreen();
 
             let html_canvas = html_get_canvas();
-            let window_width = (html_canvas.client_width() as f64 * dpr).round();
-            let window_height = (html_canvas.client_height() as f64 * dpr).round();
+            let window_width = (html_canvas.client_width() as f64 * device_pixel_ratio).round();
+            let window_height = (html_canvas.client_height() as f64 * device_pixel_ratio).round();
             let canvas_width = html_canvas.width();
             let canvas_height = html_canvas.height();
             if canvas_width as i32 != window_width as i32
