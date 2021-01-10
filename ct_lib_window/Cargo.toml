@@ -13,7 +13,6 @@ ct_lib_math = { path = "../ct_lib_math"}
 
 serde = "1.0.118"
 ringbuf = "0.2.2"
-regex = "1.4.2"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 glow = { version="0.7.0", default-features=false }

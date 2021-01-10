@@ -5,11 +5,13 @@
 - adds touch support for textscroller
 - fixes wasm sound
 - prevent mouse events for a while when touch input was detected on wasm
+- find out why our fullscreen change is so erratic on mobile (it was a codeflow logic bug in the 
+  gui button)
+- shaved off nearly 400kb wasm size by dropping regex crate
 
 # CURRENT
 
 
-- find out why our fullscreen change is so erratic on mobile
 
 # NEXT:
 
@@ -18,7 +20,6 @@
 
 
 ## improve examples
-- restore gui/credits displaying as an example scene
 - convert debug scene to example in a dedicated examples folder with its own assets and build scripts
 
 ## writing games easier

@@ -313,18 +313,25 @@ impl Shader {
     ) -> Result<Vec<ShaderAttribute>, String> {
         let mut attributes = Vec::new();
         let mut byte_offset_in_vertex = 0;
-        let attribute_regex = regex::Regex::new(r"attribute\s(\w+)\s(\w+);").unwrap();
-        for capture in attribute_regex.captures_iter(shader_source) {
-            let name = &capture[2];
-            let type_name = &capture[1];
-            let primitive_type = ShaderPrimitiveType::from_string(type_name).map_err(|error| {
-                format!("Error parsing shader primitive '{}': {}", type_name, error)
-            })?;
-            let location = unsafe { gl.get_attrib_location(*program_id, name) }
-                .ok_or_else(|| format!("Program {:?} has no attribute '{}'", program_id, name))?;
+        let attribute_names_and_types = Shader::get_attribute_names_and_types(shader_source)?;
+        for (attrib_name, attrib_type) in attribute_names_and_types.into_iter() {
+            let primitive_type =
+                ShaderPrimitiveType::from_string(&attrib_type).map_err(|error| {
+                    format!(
+                        "Error parsing shader primitive '{}': {}",
+                        attrib_type, error
+                    )
+                })?;
+            let location = unsafe { gl.get_attrib_location(*program_id, &attrib_name) }
+                .ok_or_else(|| {
+                    format!(
+                        "Program {:?} has no attribute '{}'",
+                        program_id, attrib_name
+                    )
+                })?;
 
             attributes.push(ShaderAttribute {
-                name: name.to_owned(),
+                name: attrib_name,
                 location,
                 byte_offset_in_vertex,
                 primitive_type,
@@ -340,23 +347,86 @@ impl Shader {
         shader_source: &str,
     ) -> Result<Vec<ShaderUniform>, String> {
         let mut uniforms = Vec::new();
-        let attribute_regex = regex::Regex::new(r"uniform\s(\w+)\s(\w+);").unwrap();
-        for capture in attribute_regex.captures_iter(shader_source) {
-            let name = &capture[2];
-            let type_name = &capture[1];
-            let primitive_type = ShaderPrimitiveType::from_string(type_name).map_err(|error| {
-                format!("Error parsing shader primitive '{}': {}", type_name, error)
-            })?;
-            let location = unsafe { gl.get_uniform_location(*program_id, name) }
-                .ok_or_else(|| format!("Program {:?} has no uniform '{}'", program_id, name))?;
+        let uniform_names_and_types = Shader::get_uniform_names_and_types(shader_source)?;
+        for (uniform_name, uniform_type) in uniform_names_and_types.into_iter() {
+            let primitive_type =
+                ShaderPrimitiveType::from_string(&uniform_type).map_err(|error| {
+                    format!(
+                        "Error parsing shader primitive '{}': {}",
+                        &uniform_type, error
+                    )
+                })?;
+            let location = unsafe { gl.get_uniform_location(*program_id, &uniform_name) }
+                .ok_or_else(|| {
+                    format!(
+                        "Program {:?} has no uniform '{}'",
+                        program_id, &uniform_name
+                    )
+                })?;
 
             uniforms.push(ShaderUniform {
-                name: name.to_owned(),
+                name: uniform_name,
                 primitive_type,
                 location,
             });
         }
         Ok(uniforms)
+    }
+
+    /// Returns [(attrib_name, attrib_type), ...] for all found attributes in shader
+    fn get_attribute_names_and_types(shader_source: &str) -> Result<Vec<(String, String)>, String> {
+        let mut result = Vec::new();
+        let mut shader_source_substring = shader_source;
+        // NOTE: In a nutshell this does the regex match "attribute\s(\w+)\s(\w+);"
+        while let Some(position) = shader_source_substring.find("attribute ") {
+            shader_source_substring = &shader_source_substring[(position + "attribute ".len())..];
+            {
+                let mut split = shader_source_substring.split_ascii_whitespace();
+                let attrib_type = split
+                    .next()
+                    .ok_or_else(|| {
+                        format!("Shader attribute missing typename at position {}", position)
+                    })?
+                    .trim();
+                let attrib_name = split
+                    .next()
+                    .ok_or_else(|| {
+                        format!("Shader attribute missing name at position {}", position)
+                    })?
+                    .trim()
+                    .trim_end_matches(";");
+
+                result.push((attrib_name.to_owned(), attrib_type.to_owned()));
+            }
+        }
+        Ok(result)
+    }
+
+    /// Returns [(uniform_name, uniform_type), ...] for all found attributes in shader
+    fn get_uniform_names_and_types(shader_source: &str) -> Result<Vec<(String, String)>, String> {
+        let mut result = Vec::new();
+        let mut shader_source_substring = shader_source;
+        // NOTE: In a nutshell this does the regex match "uniforms\s(\w+)\s(\w+);"
+        while let Some(position) = shader_source_substring.find("uniform ") {
+            shader_source_substring = &shader_source_substring[(position + "uniform ".len())..];
+            {
+                let mut split = shader_source_substring.split_ascii_whitespace();
+                let uniform_type = split
+                    .next()
+                    .ok_or_else(|| {
+                        format!("Shader uniform missing typename at position {}", position)
+                    })?
+                    .trim();
+                let uniform_name = split
+                    .next()
+                    .ok_or_else(|| format!("Shader uniform missing name at position {}", position))?
+                    .trim()
+                    .trim_end_matches(";");
+
+                result.push((uniform_name.to_owned(), uniform_type.to_owned()));
+            }
+        }
+        Ok(result)
     }
 }
 
