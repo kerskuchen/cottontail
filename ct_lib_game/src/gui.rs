@@ -50,7 +50,6 @@ pub struct GuiState {
     mouse_recently_released: bool,
     mouse_canvas_delta: Vec2,
     mouse_wheel_delta: i32,
-    mouse_highlighted_item: Option<GuiElemId>,
 
     finger_pos_canvas: Option<Canvaspoint>,
     finger_canvas_delta_average: Vec2,
@@ -75,8 +74,6 @@ impl GuiState {
             mouse_recently_released: false,
             mouse_canvas_delta: Vec2::zero(),
             mouse_wheel_delta: 0,
-
-            mouse_highlighted_item: None,
 
             finger_pos_canvas: None,
             finger_canvas_delta_average: Vec2::zero(),
@@ -120,8 +117,6 @@ impl GuiState {
         self.mouse_canvas_delta = cursors.mouse.delta_canvas;
         self.mouse_canvas_pos = cursors.mouse.pos_canvas;
         self.mouse_wheel_delta = input.mouse.wheel_delta;
-
-        self.mouse_highlighted_item = None;
 
         self.current_action = if (input.keyboard.is_down(Scancode::ShiftLeft)
             || input.keyboard.is_down(Scancode::ShiftRight))
@@ -189,12 +184,14 @@ impl GuiState {
         color_background: Color,
         drawparams: Drawparams,
     ) -> (bool, bool) {
-        if self.mouse_canvas_pos.intersects_rect(button_rect) {
-            self.mouse_highlighted_item = Some(id);
+        let mouse_highlighted = if self.mouse_canvas_pos.intersects_rect(button_rect) {
             if self.active_item.is_none() && self.mouse_is_down {
                 self.active_item = Some(id);
             }
-        }
+            true
+        } else {
+            false
+        };
 
         let finger_intersects_rect_current = self
             .finger_pos_canvas
@@ -213,7 +210,7 @@ impl GuiState {
             self.keyboard_highlighted_item = Some(id);
         }
 
-        let color_highlight = if self.mouse_highlighted_item == Some(id)
+        let color_highlight = if mouse_highlighted
             || finger_intersects_rect_current
             || self.keyboard_highlighted_item == Some(id)
         {
@@ -270,12 +267,10 @@ impl GuiState {
         }
         self.last_widget = Some(id);
 
-        let button_pressed_mouse = self.active_item == Some(id)
-            && self.mouse_highlighted_item == Some(id)
-            && self.mouse_is_down;
-        let button_clicked_mouse = self.active_item == Some(id)
-            && self.mouse_highlighted_item == Some(id)
-            && self.mouse_recently_released;
+        let button_pressed_mouse =
+            self.active_item == Some(id) && mouse_highlighted && self.mouse_is_down;
+        let button_clicked_mouse =
+            self.active_item == Some(id) && mouse_highlighted && self.mouse_recently_released;
 
         let button_pressed_finger = self.active_item == Some(id) && finger_intersects_rect_current;
         let button_clicked_finger = self.active_item == Some(id)
@@ -307,12 +302,14 @@ impl GuiState {
             knob_size,
         );
 
-        if self.mouse_canvas_pos.intersects_rect(slider_rect) {
-            self.mouse_highlighted_item = Some(id);
+        let mouse_highlighted = if self.mouse_canvas_pos.intersects_rect(slider_rect) {
             if self.active_item.is_none() && self.mouse_is_down {
                 self.active_item = Some(id);
             }
-        }
+            true
+        } else {
+            false
+        };
 
         // If no widget has keyboard focus, take it
         if self.keyboard_highlighted_item.is_none() {
@@ -327,7 +324,7 @@ impl GuiState {
             );
         }
 
-        let color = if self.mouse_highlighted_item == Some(id) {
+        let color = if mouse_highlighted {
             if self.active_item == Some(id) {
                 Color::red()
             } else {
@@ -398,12 +395,14 @@ impl GuiState {
         inout_acc: &mut f32,
         depth: f32,
     ) {
-        if self.mouse_canvas_pos.intersects_rect(rect) {
-            self.mouse_highlighted_item = Some(id);
+        let mouse_highlighted = if self.mouse_canvas_pos.intersects_rect(rect) {
             if self.active_item.is_none() && self.mouse_is_down {
                 self.active_item = Some(id);
             }
-        }
+            true
+        } else {
+            false
+        };
 
         let finger_intersects_rect_current = self
             .finger_pos_canvas
@@ -611,9 +610,8 @@ impl GuiState {
 
         self.last_widget = Some(id);
 
-        let button_clicked_mouse = self.active_item == Some(id)
-            && self.mouse_highlighted_item == Some(id)
-            && self.mouse_recently_released;
+        let button_clicked_mouse =
+            self.active_item == Some(id) && mouse_highlighted && self.mouse_recently_released;
 
         let button_clicked_finger = self.active_item == Some(id)
             && self.finger_pos_canvas.is_none()
