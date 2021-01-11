@@ -20,5 +20,5 @@ opt-level = 3
 # NOTE: Enables link-time- and small-size-optimization on final release binary
 # [profile.release]
 # lto = true
-# opt-level = "z"
+# opt-level = "z" # NOTE: "z" and "s" are pretty slow in WASM 
 # codegen-units = 1
