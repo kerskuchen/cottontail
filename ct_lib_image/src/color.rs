@@ -337,7 +337,7 @@ impl Color {
 
     #[inline]
     #[must_use = "This does not change the original color"]
-    pub fn with_multiplied_color(self, factor: f32) -> Color {
+    pub fn with_color_multiplied_by(self, factor: f32) -> Color {
         Color {
             r: self.r * factor,
             g: self.g * factor,

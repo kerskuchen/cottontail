@@ -1,13 +1,6 @@
 # DONE:
 
-- add and fixup of old gui textscroller code
-- add pixelwidth-based textwrapping for fixed-width fonts
-- adds touch support for textscroller
-- fixes wasm sound
-- prevent mouse events for a while when touch input was detected on wasm
-- find out why our fullscreen change is so erratic on mobile (it was a codeflow logic bug in the 
-  gui button)
-- shaved off nearly 400kb wasm size by dropping regex crate
+- make debug_log variant that takes a float value and fills up a percentage rect 
 
 # CURRENT
 
@@ -15,7 +8,6 @@
 
 # NEXT:
 
-- make debug_log variant that takes a float value and fills up a percentage rect 
 
 
 
@@ -311,3 +303,12 @@
 - adds touch input emulation mode in sdl2 layer
 - prevent touchevents from emitting clicks and fix focus handling for wasm
 - adds convenience touch query methods for touchstate
+
+- add and fixup of old gui textscroller code
+- add pixelwidth-based textwrapping for fixed-width fonts
+- adds touch support for textscroller
+- fixes wasm sound
+- prevent mouse events for a while when touch input was detected on wasm
+- find out why our fullscreen change is so erratic on mobile (it was a codeflow logic bug in the 
+  gui button)
+- shaved off nearly 400kb wasm size by dropping regex crate
