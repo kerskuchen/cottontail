@@ -1,6 +1,8 @@
 # DONE:
 
-- make debug_log variant that takes a float value and fills up a percentage rect 
+- allow defining multiple font_drawstyles.json files in asset folder
+- WONTFIX: convert debug scene to example in a dedicated examples folder with its own assets and build scripts
+  - we will wait until cargo supports nested workspaces and
 
 # CURRENT
 
@@ -10,9 +12,9 @@
 
 
 
+- we can put example scenes into ct_lib_game?
 
-## improve examples
-- convert debug scene to example in a dedicated examples folder with its own assets and build scripts
+
 
 ## writing games easier
 - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
@@ -313,3 +315,5 @@
 - find out why our fullscreen change is so erratic on mobile (it was a codeflow logic bug in the 
   gui button)
 - shaved off nearly 400kb wasm size by dropping regex crate
+
+- make debug_log variant that takes a float value and fills up a percentage rect 

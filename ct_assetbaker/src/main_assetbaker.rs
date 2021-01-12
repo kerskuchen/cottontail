@@ -100,27 +100,8 @@ fn bake_graphics_resources() {
     let mut result_sheet: GraphicsSheet = GraphicsSheet::new_empty();
 
     // Load fonts and drawstyles
-    let fontstyles_filepath = "assets/fonts/font_drawstyles.json";
-    let font_drawstyles = collect_font_drawstyles(fontstyles_filepath);
+    let font_drawstyles = collect_font_drawstyles();
     let font_resources = collect_font_resources();
-
-    // Check that we have drawstyles defined for each added font
-    for (name, _resource) in &font_resources {
-        if name == FONT_DEFAULT_REGULAR_NAME
-            || name == FONT_DEFAULT_SMALL_NAME
-            || name == FONT_DEFAULT_SQUARE_NAME
-            || name == FONT_DEFAULT_TINY_NAME
-        {
-            // It is okay to not have a drawstyle for the default fonts defined
-            continue;
-        }
-        if !font_drawstyles.iter().any(|style| &style.fontname == name) {
-            panic!(
-                "Font '{}' is missing a drawing style - please add one to '{}'",
-                &name, fontstyles_filepath
-            );
-        }
-    }
 
     // Create fonts and its correspronding sprites
     let font_sheets: Vec<GraphicsSheet> = font_drawstyles
@@ -204,6 +185,112 @@ fn bake_graphics_resources() {
     prelude_sheet.extend_by(untextured_sheet);
     prelude_sheet.extend_by(splashscreen_sheet);
     prelude_sheet.pack_and_serialize("graphics_splash");
+}
+
+fn collect_font_drawstyles() -> Vec<BitmapFontDrawStyle> {
+    // Check that we have drawstyles defined for each font in our assets directory
+    collect_files_recursive("assets")
+        .into_iter()
+        .filter(|path| path.ends_with(".ttf"))
+        .for_each(|path| {
+            let fontname = path_to_filename(&path);
+            let drawstyle_filepath = path_with_extension(&path, ".font_drawstyle.json");
+
+            if !path_exists(&drawstyle_filepath) {
+                log::warn!(
+                    "Font '{}' was missing a drawing style - a default one was added one to '{}'",
+                    &fontname,
+                    drawstyle_filepath
+                );
+                let default_drawstyles = vec![
+                    BitmapFontDrawStyle {
+                        fontname: fontname.clone(),
+                        bordered: true,
+                        color_glyph: PixelRGBA::white(),
+                        color_border: PixelRGBA::black(),
+                    },
+                    BitmapFontDrawStyle {
+                        fontname: fontname.clone(),
+                        bordered: false,
+                        color_glyph: PixelRGBA::white(),
+                        color_border: PixelRGBA::black(),
+                    },
+                ];
+                serialize_to_json_file(&default_drawstyles, &drawstyle_filepath);
+            }
+        });
+
+    // Collect all font drawstyles
+    let font_drawstyles = {
+        let font_drawstyles: Vec<BitmapFontDrawStyle> = collect_files_recursive("assets")
+            .into_iter()
+            .filter(|path| path.ends_with(".font_drawstyles.json"))
+            .map(|path| deserialize_from_json_file::<Vec<BitmapFontDrawStyle>>(&path))
+            .flatten()
+            .collect();
+
+        // Check that all fonts referenced in our drawstyles actually exist
+        for style in &font_drawstyles {
+            if style.fontname == FONT_DEFAULT_REGULAR_NAME
+                || style.fontname == FONT_DEFAULT_SQUARE_NAME
+                || style.fontname == FONT_DEFAULT_SMALL_NAME
+                || style.fontname == FONT_DEFAULT_TINY_NAME
+            {
+                // Default fonts always exist
+                continue;
+            }
+
+            let found_fonts_count = collect_files_recursive("assets")
+                .into_iter()
+                .filter(|path| path.ends_with(&format!("{}.ttf", style.fontname)))
+                .count();
+            assert!(
+                found_fonts_count != 0,
+                "Assets folder is missing font '{}'.ttf referenced in drawstyle",
+                style.fontname
+            );
+            assert!(
+                found_fonts_count == 1,
+                "Font '{}'.ttf exists multiple times in assets folder in drawstyle",
+                style.fontname
+            );
+        }
+
+        if font_drawstyles.is_empty() {
+            let default_drawstyles_path = format!(
+                "assets/{}.font_drawstyles.json",
+                font::FONT_DEFAULT_TINY_NAME
+            );
+            log::warn!(
+                "No font drawstyles found in assets folder. Created default drawstyles at '{}'",
+                default_drawstyles_path
+            );
+
+            // Create drawstyles for the default font
+            let mut result = Vec::new();
+            let default_color_glyph = PixelRGBA::new(255, 255, 255, 255);
+            let default_color_border = PixelRGBA::new(0, 0, 0, 255);
+            result.push(BitmapFontDrawStyle {
+                fontname: font::FONT_DEFAULT_TINY_NAME.to_owned(),
+                bordered: false,
+                color_glyph: default_color_glyph,
+                color_border: default_color_border,
+            });
+            result.push(BitmapFontDrawStyle {
+                fontname: font::FONT_DEFAULT_TINY_NAME.to_owned(),
+                bordered: true,
+                color_glyph: default_color_glyph,
+                color_border: default_color_border,
+            });
+
+            serialize_to_json_file(&result, &default_drawstyles_path);
+            result
+        } else {
+            font_drawstyles
+        }
+    };
+
+    font_drawstyles
 }
 
 fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {
@@ -497,34 +584,6 @@ fn collect_font_resources() -> IndexMap<ResourceName, BitmapFontResource> {
             },
         },
     );
-
-    result
-}
-
-fn collect_font_drawstyles(font_drawstyles_filepath: &str) -> Vec<BitmapFontDrawStyle> {
-    // Load styles from styles file if it exists
-    if path_exists(font_drawstyles_filepath) {
-        return deserialize_from_json_file(font_drawstyles_filepath);
-    }
-
-    // Create default fonts styles file
-    let mut result = Vec::new();
-    let default_color_glyph = PixelRGBA::new(255, 255, 255, 255);
-    let default_color_border = PixelRGBA::new(0, 0, 0, 255);
-    result.push(BitmapFontDrawStyle {
-        fontname: font::FONT_DEFAULT_TINY_NAME.to_owned(),
-        bordered: false,
-        color_glyph: default_color_glyph,
-        color_border: default_color_border,
-    });
-    result.push(BitmapFontDrawStyle {
-        fontname: font::FONT_DEFAULT_TINY_NAME.to_owned(),
-        bordered: true,
-        color_glyph: default_color_glyph,
-        color_border: default_color_border,
-    });
-
-    serialize_to_json_file(&result, font_drawstyles_filepath);
 
     result
 }
