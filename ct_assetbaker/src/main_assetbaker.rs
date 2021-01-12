@@ -193,8 +193,8 @@ fn collect_font_drawstyles() -> Vec<BitmapFontDrawStyle> {
         .into_iter()
         .filter(|path| path.ends_with(".ttf"))
         .for_each(|path| {
-            let fontname = path_to_filename(&path);
-            let drawstyle_filepath = path_with_extension(&path, ".font_drawstyle.json");
+            let fontname = path_to_filename_without_extension(&path);
+            let drawstyle_filepath = path_with_extension(&path, ".font_drawstyles.json");
 
             if !path_exists(&drawstyle_filepath) {
                 log::warn!(
@@ -246,7 +246,7 @@ fn collect_font_drawstyles() -> Vec<BitmapFontDrawStyle> {
                 .count();
             assert!(
                 found_fonts_count != 0,
-                "Assets folder is missing font '{}'.ttf referenced in drawstyle",
+                "Assets folder is missing font '{}.ttf' referenced in drawstyle",
                 style.fontname
             );
             assert!(
