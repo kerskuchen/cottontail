@@ -290,6 +290,17 @@ fn collect_font_drawstyles() -> Vec<BitmapFontDrawStyle> {
         }
     };
 
+    // Check that our style definitions are unique
+    let mut duplicate_check = HashSet::new();
+    for style in font_drawstyles.iter() {
+        assert!(
+            !duplicate_check.contains(style),
+            "Found duplicate font style definition {:?}",
+            style
+        );
+        duplicate_check.insert(style.clone());
+    }
+
     font_drawstyles
 }
 
@@ -422,7 +433,7 @@ fn bake_audio_resources(resource_pack_name: &str, audio_sample_rate_hz: usize) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Font resources and styles
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct BitmapFontDrawStyle {
     pub fontname: String,
     pub bordered: bool,
