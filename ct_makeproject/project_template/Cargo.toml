@@ -1,7 +1,9 @@
 [workspace]
 members = [
-    "cottontail/*",
     "launcher",
+    "cottontail",
+    "cottontail/ct_assetbaker",
+    "cottontail/ct_makeproject",
 ]
 
 # NOTE: The following optimizes dependencies (but not workspace members) 

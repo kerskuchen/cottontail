@@ -8,7 +8,7 @@ pub const LAUNCHER_COMPANY_NAME: &str = "{{project_company_name}}";
 mod game;
 
 fn main() {
-    ct_lib_game::start_mainloop::<game::GameState>();
+    cottontail::game::start_mainloop::<game::GameState>();
 }
 
 #[cfg(target_arch = "wasm32")]
