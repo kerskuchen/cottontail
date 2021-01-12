@@ -88,6 +88,7 @@
 
 # user experience
 - find ways to make our wasm file smaller
+- look at how godot does load progress spinner in html export
 - make app pause on onfocus/lost events more robust
   - show focus lost overlay "press here to continue"
   - give appcode a hint and some time to wind down and save state etc. on focus lost
