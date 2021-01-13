@@ -41,7 +41,7 @@ pub enum AppCommand {
     Restart,
 }
 
-pub trait AppEventHandler: Clone {
+pub trait AppEventHandler {
     fn get_app_info(&self) -> AppInfo;
     fn reset(&mut self);
 

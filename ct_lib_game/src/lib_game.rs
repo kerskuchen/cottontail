@@ -72,7 +72,7 @@ pub struct GameInfo {
     pub game_company_name: String,
 }
 
-pub trait GameStateInterface: Clone {
+pub trait AppStateInterface: Clone {
     fn get_game_info() -> GameInfo;
     fn get_window_config() -> WindowConfig;
     fn new(
@@ -103,7 +103,6 @@ struct AppResources {
     pub globals: Option<Globals>,
     pub input: Option<InputState>,
     pub out_systemcommands: Option<&'static mut Vec<AppCommand>>,
-    // TODO input_recorder :Option<InputRecorder<AppTicker<>>
 }
 
 static mut APP_RESOURCES: AppResources = AppResources {
@@ -124,19 +123,18 @@ fn get_input() -> &'static mut InputState {
     unsafe { APP_RESOURCES.input.as_mut().unwrap() }
 }
 
-#[derive(Clone)]
-pub struct AppTicker<GameStateType: GameStateInterface> {
-    pub game: Option<GameStateType>,
-    pub loadingscreen: LoadingScreen,
+pub struct AppTicker<AppStateType: AppStateInterface> {
+    game: Option<AppStateType>,
+    loadingscreen: LoadingScreen,
     audio_chunk_timer: f32,
+    input_recorder: Option<InputRecorder<AppStateType>>,
 }
 
-impl<GameStateType: GameStateInterface> AppTicker<GameStateType> {
+impl<AppStateType: AppStateInterface> AppTicker<AppStateType> {
     fn new() -> Self {
-        let window_config = GameStateType::get_window_config();
+        let window_config = AppStateType::get_window_config();
         get_resources().assets = Some(GameAssets::new("resources"));
         get_resources().input = Some(InputState::new());
-        // TODO: let mut input_recorder = InputRecorder::new();
         AppTicker {
             loadingscreen: LoadingScreen::new(
                 SPLASHSCREEN_FADEIN_TIME,
@@ -145,11 +143,12 @@ impl<GameStateType: GameStateInterface> AppTicker<GameStateType> {
             ),
             game: None,
             audio_chunk_timer: 0.0,
+            input_recorder: Some(InputRecorder::new()),
         }
     }
 }
 
-impl<GameStateType: GameStateInterface> AppEventHandler for AppTicker<GameStateType> {
+impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateType> {
     fn get_app_info(&self) -> AppInfo {
         let config = GameStateType::get_game_info();
         AppInfo {
@@ -194,51 +193,64 @@ impl<GameStateType: GameStateInterface> AppEventHandler for AppTicker<GameStateT
         //--------------------------------------------------------------------------------------
         // Start/stop input-recording/-playback
 
-        // TODO
-        let mut input_recorder = InputRecorder::<Self>::new();
-        if input.keyboard.recently_released(Scancode::O) {
-            if !input_recorder.is_playing_back {
-                if input_recorder.is_recording {
-                    log::info!("Stopping input recording");
-                    input_recorder.stop_recording();
-                } else {
-                    log::info!("Starting input recording");
-                    // Clear keyboard input so that we won't get the the `O` Scancode at the
-                    // beginning of the recording
-                    input.keyboard.clear_transitions();
-                    input_recorder.start_recording(self);
-                }
-            }
-        } else if input.keyboard.recently_released(Scancode::P) {
-            if !input_recorder.is_recording {
-                if input_recorder.is_playing_back {
-                    log::info!("Stopping input playback");
-                    input_recorder.stop_playback();
-                    input.keyboard.clear_state_and_transitions();
-                } else {
-                    log::info!("Starting input playback");
-                    input_recorder.start_playback(self);
-                }
-            }
-        }
+        if let Some(game) = self.game.as_mut() {
+            let input_recorder = self.input_recorder.as_mut().unwrap();
+            let draw = resources.draw.as_mut().unwrap();
+            let audio = resources.audio.as_mut().unwrap();
+            let globals = resources.globals.as_mut().unwrap();
 
-        // Playback/record input events
-        //
-        // NOTE: We can move the playback part before polling events to be more interactive!
-        //       For this we need to handle the mouse and keyboard a little different. Maybe we
-        //       can have `input_last` and `input_current`?
-        if input_recorder.is_recording {
-            input_recorder.record_input(&input);
-        } else if input_recorder.is_playing_back {
-            // NOTE: We need to save the state of the playback-key or the keystate will get
-            //       confused. This can happen when we press down the playback-key and hold it for
-            //       several frames. While we do that the input playback overwrites the state of the
-            //       playback-key. If we release the playback-key the keystate will think it is
-            //       already released (due to the overwrite) but will get an additional release
-            //       event (which is not good)
-            let previous_playback_key_state = input.keyboard.keys[&Scancode::P].clone();
-            *input = input_recorder.playback_input(self);
-            *input.keyboard.keys.get_mut(&Scancode::P).unwrap() = previous_playback_key_state;
+            if input.keyboard.recently_released(Scancode::O) {
+                if !input_recorder.is_playing_back {
+                    if input_recorder.is_recording {
+                        log::info!("Stopping input recording");
+                        input_recorder.stop_recording();
+                    } else {
+                        log::info!("Starting input recording");
+                        // Clear keyboard input so that we won't get the the `O` Scancode at the
+                        // beginning of the recording
+                        input.keyboard.clear_transitions();
+                        input_recorder.start_recording(game, draw, audio, globals);
+                    }
+                }
+            } else if input.keyboard.recently_released(Scancode::P) {
+                if !input_recorder.is_recording {
+                    if input_recorder.is_playing_back {
+                        log::info!("Stopping input playback");
+                        input_recorder.stop_playback();
+                        input.keyboard.clear_state_and_transitions();
+                    } else {
+                        log::info!("Starting input playback");
+                        input_recorder.start_playback(game, draw, audio, globals);
+                    }
+                }
+            }
+
+            // Playback/record input events
+            //
+            // NOTE: We can move the playback part before polling events to be more interactive!
+            //       For this we need to handle the mouse and keyboard a little different. Maybe we
+            //       can have `input_last` and `input_current`?
+            if input_recorder.is_recording {
+                input_recorder.record_input(&input);
+            } else if input_recorder.is_playing_back {
+                // NOTE: We need to save the state of the playback-key or the keystate will get
+                //       confused. This can happen when we press down the playback-key and hold it for
+                //       several frames. While we do that the input playback overwrites the state of the
+                //       playback-key. If we release the playback-key the keystate will think it is
+                //       already released (due to the overwrite) but will get an additional release
+                //       event (which is not good)
+                if let Some(previous_playback_key_state) =
+                    input.keyboard.keys.get(&Scancode::P).cloned()
+                {
+                    *input = input_recorder.playback_input(game, draw, audio, globals);
+                    input
+                        .keyboard
+                        .keys
+                        .insert(Scancode::P, previous_playback_key_state);
+                } else {
+                    *input = input_recorder.playback_input(game, draw, audio, globals);
+                }
+            }
         }
 
         match assets.update() {
@@ -689,7 +701,7 @@ impl<GameStateType: GameStateInterface> AppEventHandler for AppTicker<GameStateT
     }
 }
 
-pub fn start_mainloop<GameStateType: 'static + GameStateInterface>() {
+pub fn start_mainloop<GameStateType: 'static + AppStateInterface>() {
     let app_context = AppTicker::<GameStateType>::new();
     run_main(app_context);
 }
@@ -799,9 +811,11 @@ pub fn game_handle_system_keys(keyboard: &KeyboardState, out_systemcommands: &mu
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Live looped input playback and recording
 
-#[derive(Default)]
-struct InputRecorder<AppEventHandlerType: AppEventHandler> {
-    app: Option<AppEventHandlerType>,
+struct InputRecorder<AppStateType: AppStateInterface> {
+    appstate: Option<AppStateType>,
+    draw: Option<Drawstate>,
+    audio: Option<Audiostate>,
+    globals: Option<Globals>,
 
     is_recording: bool,
     is_playing_back: bool,
@@ -809,10 +823,14 @@ struct InputRecorder<AppEventHandlerType: AppEventHandler> {
     queue_recording: VecDeque<InputState>,
 }
 
-impl<AppEventHandlerType: AppEventHandler> InputRecorder<AppEventHandlerType> {
-    fn new() -> InputRecorder<AppEventHandlerType> {
+impl<AppStateType: AppStateInterface> InputRecorder<AppStateType> {
+    fn new() -> InputRecorder<AppStateType> {
         InputRecorder {
-            app: None,
+            appstate: None,
+            draw: None,
+            audio: None,
+            globals: None,
+
             is_recording: false,
             is_playing_back: false,
             queue_playback: VecDeque::new(),
@@ -820,13 +838,22 @@ impl<AppEventHandlerType: AppEventHandler> InputRecorder<AppEventHandlerType> {
         }
     }
 
-    fn start_recording(&mut self, app_context: &AppEventHandlerType) {
+    fn start_recording(
+        &mut self,
+        appstate: &AppStateType,
+        draw: &Drawstate,
+        audio: &Audiostate,
+        globals: &Globals,
+    ) {
         assert!(!self.is_recording);
         assert!(!self.is_playing_back);
 
         self.is_recording = true;
         self.queue_recording.clear();
-        self.app = Some(app_context.clone());
+        self.appstate = Some(appstate.clone());
+        self.draw = Some(draw.clone());
+        self.audio = Some(audio.clone());
+        self.globals = Some(globals.clone());
     }
 
     fn stop_recording(&mut self) {
@@ -836,16 +863,37 @@ impl<AppEventHandlerType: AppEventHandler> InputRecorder<AppEventHandlerType> {
         self.is_recording = false;
     }
 
-    fn start_playback(&mut self, app_context: &mut AppEventHandlerType) {
+    fn start_playback(
+        &mut self,
+        appstate: &mut AppStateType,
+        draw: &mut Drawstate,
+        audio: &mut Audiostate,
+        globals: &mut Globals,
+    ) {
         assert!(!self.is_recording);
         assert!(!self.is_playing_back);
 
         self.is_playing_back = true;
         self.queue_playback = self.queue_recording.clone();
-        *app_context = self
-            .app
+        *appstate = self
+            .appstate
             .as_ref()
             .expect("Recording is missing app context")
+            .clone();
+        *draw = self
+            .draw
+            .as_ref()
+            .expect("Recording is missing draw context")
+            .clone();
+        *audio = self
+            .audio
+            .as_ref()
+            .expect("Recording is missing audio context")
+            .clone();
+        *globals = self
+            .globals
+            .as_ref()
+            .expect("Recording is missing globals context")
             .clone();
 
         assert!(!self.queue_playback.is_empty());
@@ -866,7 +914,13 @@ impl<AppEventHandlerType: AppEventHandler> InputRecorder<AppEventHandlerType> {
         self.queue_recording.push_back(input.clone());
     }
 
-    fn playback_input(&mut self, app_context: &mut AppEventHandlerType) -> InputState {
+    fn playback_input(
+        &mut self,
+        appstate: &mut AppStateType,
+        draw: &mut Drawstate,
+        audio: &mut Audiostate,
+        globals: &mut Globals,
+    ) -> InputState {
         assert!(!self.is_recording);
         assert!(self.is_playing_back);
 
@@ -875,7 +929,7 @@ impl<AppEventHandlerType: AppEventHandler> InputRecorder<AppEventHandlerType> {
         } else {
             // We hit the end of the stream -> go back to the beginning
             self.stop_playback();
-            self.start_playback(app_context);
+            self.start_playback(appstate, draw, audio, globals);
 
             // As we could not read the input before we try again
             self.queue_playback.pop_front().unwrap()

@@ -1,12 +1,13 @@
 # DONE:
 
 - move inputstate out of platform layer
+- make inputrecorder on non-wasm working again
+- working input recording on wasm target
 
 # CURRENT
 
 
 - make gamepad on sdl2 working again
-- make inputrecorder on non-wasm working again
 - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
 
 # NEXT:

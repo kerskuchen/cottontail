@@ -80,7 +80,8 @@ impl ButtonState {
             self.transition_count += 1;
             self.is_pressed = false;
         } else {
-            debug_assert!(false, "We got a second release event");
+            // NOTE: We ignore duplicate release events as the may happen during input
+            //       recording/playback
         }
     }
 
