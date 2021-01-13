@@ -2,22 +2,19 @@
 
 - allow defining multiple font_drawstyles.json files in asset folder
 - WONTFIX: convert debug scene to example in a dedicated examples folder with its own assets and build scripts
-  - we will wait until cargo supports nested workspaces and
+  - we will wait until cargo supports nested workspaces because right now it is to much work and 
+    infrastructure complexity to do that. (we would need to put our workspace into cottontail and 
+    change all out .vs tasks and batch files)
 
 # CURRENT
 
 
+- make draw/audio/other things global for easier use (we run everything on the same thread anyway)
 
 # NEXT:
 
 
-
-- we can put example scenes into ct_lib_game?
-
-
-
 ## writing games easier
-- make draw/audio/other things global for easier use (we run everything on the same thread anyway)
 - Easier text drawing api
   - one that is simple without much parameters
   - one that just centers text in rect
@@ -66,6 +63,7 @@
   wrong). (ie. we could use the values of the last ten frames as basis for snapping)
 
 ## better project structure and generator
+- we can put example scenes into ct_lib_game or its own crate?
 - look for ways to simplify project creation and building
 - assess which thirdpary tools we use for building/asset packing and document them and how to get them
   - aseprite
