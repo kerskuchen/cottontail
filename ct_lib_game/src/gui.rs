@@ -1,11 +1,7 @@
 /// Immediate mode gui that is heavily inspired by the tutorials of
 /// Jari Komppa of http://sol.gfxile.net/imgui/index.html
 ///
-use crate::draw::Canvaspoint;
-use crate::draw::{Drawspace, Drawstate};
-use crate::math;
-use crate::math::Rect;
-use crate::*;
+use super::*;
 
 const GUI_ELEM_ID_UNAVAILABLE: GuiElemId = GuiElemId {
     name: "__unavailable",
@@ -351,10 +347,10 @@ impl GuiState {
                     GuiAction::Previous => self.keyboard_highlighted_item = self.last_widget,
                     GuiAction::Next => self.keyboard_highlighted_item = None,
                     GuiAction::Decrease | GuiAction::Left => {
-                        return Some(math::clampf(cur_value - 0.1, 0.0, 1.0))
+                        return Some(clampf(cur_value - 0.1, 0.0, 1.0))
                     }
                     GuiAction::Increase | GuiAction::Right => {
-                        return Some(math::clampf(cur_value + 0.1, 0.0, 1.0))
+                        return Some(clampf(cur_value + 0.1, 0.0, 1.0))
                     }
                     _ => {}
                 }
@@ -364,7 +360,7 @@ impl GuiState {
         self.last_widget = Some(id);
 
         if self.active_item == Some(id) {
-            let mouse_x = math::clampf(
+            let mouse_x = clampf(
                 self.mouse_canvas_pos.x - (slider_rect.pos.x),
                 0.0,
                 slider_rect.dim.x,

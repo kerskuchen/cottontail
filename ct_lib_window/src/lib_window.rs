@@ -7,9 +7,10 @@ pub mod platform;
 pub mod platform;
 
 pub mod input;
+pub use input::*;
+
 pub mod renderer_opengl;
 
-use input::InputState;
 use platform::audio::AudioOutput;
 use renderer_opengl::Renderer;
 
@@ -39,31 +40,38 @@ pub enum AppCommand {
     Shutdown,
     Restart,
 }
-pub trait AppContextInterface: Clone {
-    fn get_app_info() -> AppInfo;
-    fn new(renderer: &mut Renderer, input: &InputState, audio: &mut AudioOutput) -> Self;
+
+pub trait AppEventHandler: Clone {
+    fn get_app_info(&self) -> AppInfo;
     fn reset(&mut self);
+
+    fn handle_window_resize(&mut self, new_width: u32, new_height: u32, is_fullscreen: bool);
+    fn handle_window_focus_gained(&mut self);
+    fn handle_window_focus_lost(&mut self);
+
+    fn handle_key_press(&mut self, scancode: Scancode, keycode: Keycode, is_repeat: bool);
+    fn handle_key_release(&mut self, scancode: Scancode, keycode: Keycode);
+
+    fn handle_mouse_press(&mut self, button: MouseButton, pos_x: i32, pos_y: i32);
+    fn handle_mouse_release(&mut self, button: MouseButton, pos_x: i32, pos_y: i32);
+    fn handle_mouse_move(&mut self, pos_x: i32, pos_y: i32);
+    fn handle_mouse_wheel_scroll(&mut self, scroll_delta: i32);
+
+    fn handle_touch_press(&mut self, finger_id: FingerPlatformId, pos_x: i32, pos_y: i32);
+    fn handle_touch_release(&mut self, finger_id: FingerPlatformId, pos_x: i32, pos_y: i32);
+    fn handle_touch_move(&mut self, finger_id: FingerPlatformId, pos_x: i32, pos_y: i32);
+    fn handle_touch_cancelled(&mut self, finger_id: FingerPlatformId, pos_x: i32, pos_y: i32);
+
     fn run_tick(
         &mut self,
+        frametime: f32,
+        real_world_uptime: f64,
         renderer: &mut Renderer,
-        input: &InputState,
         audio: &mut AudioOutput,
         out_systemcommands: &mut Vec<AppCommand>,
     );
 }
 
-pub fn run_main<AppContextType: 'static + AppContextInterface>() {
-    platform::run_main::<AppContextType>().ok();
-}
-
-fn snap_deltatime_to_nearest_common_refresh_rate(deltatime: f32) -> f32 {
-    let common_refresh_rates = [30, 60, 72, 75, 85, 90, 120, 144, 240, 360];
-    let index_with_smallest_distance = common_refresh_rates
-        .iter()
-        .map(|refresh_rate| (deltatime - 1.0 / *refresh_rate as f32).abs())
-        .enumerate()
-        .min_by(|(_index_a, a), (_index_b, b)| a.partial_cmp(b).unwrap())
-        .unwrap()
-        .0;
-    1.0 / common_refresh_rates[index_with_smallest_distance] as f32
+pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(app_context: AppEventHandlerType) {
+    platform::run_main(app_context).ok();
 }

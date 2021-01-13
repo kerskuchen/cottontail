@@ -3,10 +3,7 @@ mod wasm_input;
 
 pub use wasm_audio as audio;
 
-use crate::{
-    input::{FingerPlatformId, InputState},
-    AppCommand, AppContextInterface,
-};
+use crate::{input::FingerPlatformId, AppCommand, AppEventHandler, MouseButton};
 
 use super::renderer_opengl::Renderer;
 
@@ -17,8 +14,6 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
 use std::{cell::RefCell, rc::Rc};
-
-const ENABLE_FRAMETIME_LOGGING: bool = false;
 
 fn html_get_window() -> &'static web_sys::Window {
     static mut WINDOW: Option<web_sys::Window> = None;
@@ -231,22 +226,15 @@ impl FullscreenHandler {
     }
 }
 
-fn log_frametimes(_duration_frame: f64, _duration_input: f64, _duration_update: f64) {
-    if ENABLE_FRAMETIME_LOGGING {
-        log::trace!(
-            "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms",
-            _duration_frame * 1000.0,
-            _duration_input * 1000.0,
-            _duration_update * 1000.0,
-        );
-    }
-}
-
-pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), JsValue> {
+pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
+    appcontext: AppEventHandlerType,
+) -> Result<(), JsValue> {
     init_logging("", log::Level::Trace).unwrap();
     log::info!("Starting up...");
 
     timer_initialize();
+
+    let app = Rc::new(RefCell::new(appcontext));
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // AUDIO
@@ -264,38 +252,24 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     let mut renderer = Renderer::new(glow_context);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    // MAINLOOP
-
-    // ---------------------------------------------------------------------------------------------
-    // Mainloop setup
-
-    let mut appcommands: Vec<AppCommand> = Vec::new();
-    let app_start_time = timer_current_time_seconds();
-    let mut frame_start_time = app_start_time;
-    log::debug!("Startup took {:.3}ms", app_start_time * 1000.0,);
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////
     // INPUT CALLBACKS
 
     let device_pixel_ratio = html_get_window().device_pixel_ratio();
-    let input = Rc::new(RefCell::new(InputState::new()));
-    let mut mouse_pos_previous_x = 0;
-    let mut mouse_pos_previous_y = 0;
     let prevent_mouse_input_for_n_frames = Rc::new(RefCell::new(0));
+
+    let mut fullscreen_handler =
+        FullscreenHandler::new(Some(web_sys::OrientationLockType::Landscape));
 
     // Key down
     {
-        let input = input.clone();
+        let appcontext = app.clone();
         let keydown_callback = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
-            let mut input = input.borrow_mut();
-
-            input.keyboard.has_press_event = true;
-            if event.repeat() {
-                input.keyboard.has_system_repeat_event = true;
-            }
             let scancode = wasm_input::scancode_to_our_scancode(&event.code());
             let keycode = wasm_input::keycode_to_our_keycode(&event.key(), scancode);
-            input.keyboard.process_key_press_event(scancode, keycode);
+            let is_repeat = event.repeat();
+            appcontext
+                .borrow_mut()
+                .handle_key_press(scancode, keycode, is_repeat);
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
             "keydown",
@@ -305,14 +279,13 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     }
     // Key up
     {
-        let input = input.clone();
+        let appcontext = app.clone();
         let keyup_callback = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
-            let mut input = input.borrow_mut();
-
-            input.keyboard.has_release_event = true;
             let scancode = wasm_input::scancode_to_our_scancode(&event.code());
             let keycode = wasm_input::keycode_to_our_keycode(&event.key(), scancode);
-            input.keyboard.process_key_release_event(scancode, keycode);
+            appcontext
+                .borrow_mut()
+                .handle_key_release(scancode, keycode)
         }) as Box<dyn FnMut(_)>);
         html_get_canvas()
             .add_event_listener_with_callback("keyup", keyup_callback.as_ref().unchecked_ref())?;
@@ -320,7 +293,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     }
     // Mouse down
     {
-        let input = input.clone();
+        let appcontext = app.clone();
         let prevent_mouse_input_for_n_frames = prevent_mouse_input_for_n_frames.clone();
         let mousedown_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
             if *prevent_mouse_input_for_n_frames.borrow() != 0 {
@@ -328,21 +301,22 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                 return;
             }
 
-            if event.button() >= 3 {
-                // We only support three buttons
+            if event.button() >= 5 {
+                // We only support five buttons
                 return;
             }
 
-            let mut input = input.borrow_mut();
-            input.mouse.has_press_event = true;
-            input.mouse.pos_x = (event.offset_x() as f64 * device_pixel_ratio).floor() as i32;
-            input.mouse.pos_y = (event.offset_y() as f64 * device_pixel_ratio).floor() as i32;
-            match event.button() {
-                0 => input.mouse.button_left.process_press_event(),
-                1 => input.mouse.button_middle.process_press_event(),
-                2 => input.mouse.button_right.process_press_event(),
-                _ => {}
-            }
+            let x = (event.offset_x() as f64 * device_pixel_ratio).floor() as i32;
+            let y = (event.offset_y() as f64 * device_pixel_ratio).floor() as i32;
+            let button = match event.button() {
+                0 => MouseButton::Left,
+                1 => MouseButton::Middle,
+                2 => MouseButton::Right,
+                3 => MouseButton::X1,
+                4 => MouseButton::X2,
+                _ => unreachable!(),
+            };
+            appcontext.borrow_mut().handle_mouse_press(button, x, y);
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
             "mousedown",
@@ -352,7 +326,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     }
     // Mouse up
     {
-        let input = input.clone();
+        let appcontext = app.clone();
         let prevent_mouse_input_for_n_frames = prevent_mouse_input_for_n_frames.clone();
         let mouseup_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
             if *prevent_mouse_input_for_n_frames.borrow() != 0 {
@@ -360,21 +334,22 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                 return;
             }
 
-            if event.button() >= 3 {
-                // We only support three buttons
+            if event.button() >= 5 {
+                // We only support five buttons
                 return;
             }
 
-            let mut input = input.borrow_mut();
-            input.mouse.has_release_event = true;
-            input.mouse.pos_x = (event.offset_x() as f64 * device_pixel_ratio).floor() as i32;
-            input.mouse.pos_y = (event.offset_y() as f64 * device_pixel_ratio).floor() as i32;
-            match event.button() {
-                0 => input.mouse.button_left.process_release_event(),
-                1 => input.mouse.button_middle.process_release_event(),
-                2 => input.mouse.button_right.process_release_event(),
-                _ => {}
-            }
+            let x = (event.offset_x() as f64 * device_pixel_ratio).floor() as i32;
+            let y = (event.offset_y() as f64 * device_pixel_ratio).floor() as i32;
+            let button = match event.button() {
+                0 => MouseButton::Left,
+                1 => MouseButton::Middle,
+                2 => MouseButton::Right,
+                3 => MouseButton::X1,
+                4 => MouseButton::X2,
+                _ => unreachable!(),
+            };
+            appcontext.borrow_mut().handle_mouse_release(button, x, y);
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
             "mouseup",
@@ -384,7 +359,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     }
     // Mouse move
     {
-        let input = input.clone();
+        let appcontext = app.clone();
         let prevent_mouse_input_for_n_frames = prevent_mouse_input_for_n_frames.clone();
         let mousemove_callback = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
             if *prevent_mouse_input_for_n_frames.borrow() != 0 {
@@ -392,10 +367,9 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                 return;
             }
 
-            let mut input = input.borrow_mut();
-            input.mouse.has_moved = true;
-            input.mouse.pos_x = (event.offset_x() as f64 * device_pixel_ratio).floor() as i32;
-            input.mouse.pos_y = (event.offset_y() as f64 * device_pixel_ratio).floor() as i32;
+            let x = (event.offset_x() as f64 * device_pixel_ratio).floor() as i32;
+            let y = (event.offset_y() as f64 * device_pixel_ratio).floor() as i32;
+            appcontext.borrow_mut().handle_mouse_move(x, y);
         }) as Box<dyn FnMut(_)>);
         html_get_canvas().add_event_listener_with_callback(
             "mousemove",
@@ -405,12 +379,12 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     }
     // Mouse wheel
     {
-        let input = input.clone();
+        let appcontext = app.clone();
         let wheel_callback = Closure::wrap(Box::new(move |event: web_sys::WheelEvent| {
-            let mut input = input.borrow_mut();
-
-            input.mouse.has_wheel_event = true;
-            input.mouse.wheel_delta = event.delta_y() as i32;
+            let scroll_delta = event.delta_y() as i32;
+            appcontext
+                .borrow_mut()
+                .handle_mouse_wheel_scroll(scroll_delta);
         }) as Box<dyn FnMut(_)>);
         html_get_canvas()
             .add_event_listener_with_callback("mouseup", wheel_callback.as_ref().unchecked_ref())?;
@@ -418,7 +392,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     }
     // Touch start
     {
-        let input = input.clone();
+        let appcontext = app.clone();
         let prevent_mouse_input_for_n_frames = prevent_mouse_input_for_n_frames.clone();
         let touchstart_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
             // Make touch input exclusive for a while
@@ -427,18 +401,15 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
             let html_canvas = html_get_canvas();
             let offset_x = html_canvas.get_bounding_client_rect().left();
             let offset_y = html_canvas.get_bounding_client_rect().top();
-            let mut input = input.borrow_mut();
+            let mut appcontext = appcontext.borrow_mut();
             for index in 0..event.changed_touches().length() {
                 if let Some(touch) = event.changed_touches().item(index) {
-                    let pos_x =
+                    let finger_id = touch.identifier() as FingerPlatformId;
+                    let x =
                         ((touch.client_x() as f64 - offset_x) * device_pixel_ratio).floor() as i32;
-                    let pos_y =
+                    let y =
                         ((touch.client_y() as f64 - offset_y) * device_pixel_ratio).floor() as i32;
-                    input.touch.process_finger_down(
-                        touch.identifier() as FingerPlatformId,
-                        pos_x,
-                        pos_y,
-                    )
+                    appcontext.handle_touch_press(finger_id, x, y)
                 }
             }
         }) as Box<dyn FnMut(_)>);
@@ -450,7 +421,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     }
     // Touch up
     {
-        let input = input.clone();
+        let appcontext = app.clone();
         let prevent_mouse_input_for_n_frames = prevent_mouse_input_for_n_frames.clone();
         let touchend_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
             // Make touch input exclusive for a while
@@ -459,18 +430,15 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
             let html_canvas = html_get_canvas();
             let offset_x = html_canvas.get_bounding_client_rect().left();
             let offset_y = html_canvas.get_bounding_client_rect().top();
-            let mut input = input.borrow_mut();
+            let mut appcontext = appcontext.borrow_mut();
             for index in 0..event.changed_touches().length() {
                 if let Some(touch) = event.changed_touches().item(index) {
-                    let pos_x =
+                    let finger_id = touch.identifier() as FingerPlatformId;
+                    let x =
                         ((touch.client_x() as f64 - offset_x) * device_pixel_ratio).floor() as i32;
-                    let pos_y =
+                    let y =
                         ((touch.client_y() as f64 - offset_y) * device_pixel_ratio).floor() as i32;
-                    input.touch.process_finger_up(
-                        touch.identifier() as FingerPlatformId,
-                        pos_x,
-                        pos_y,
-                    )
+                    appcontext.handle_touch_release(finger_id, x, y)
                 }
             }
         }) as Box<dyn FnMut(_)>);
@@ -482,7 +450,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     }
     // Touch move
     {
-        let input = input.clone();
+        let appcontext = app.clone();
         let prevent_mouse_input_for_n_frames = prevent_mouse_input_for_n_frames.clone();
         let touchmove_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
             // Make touch input exclusive for a while
@@ -491,18 +459,15 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
             let html_canvas = html_get_canvas();
             let offset_x = html_canvas.get_bounding_client_rect().left();
             let offset_y = html_canvas.get_bounding_client_rect().top();
-            let mut input = input.borrow_mut();
+            let mut appcontext = appcontext.borrow_mut();
             for index in 0..event.changed_touches().length() {
                 if let Some(touch) = event.changed_touches().item(index) {
-                    let pos_x =
+                    let finger_id = touch.identifier() as FingerPlatformId;
+                    let x =
                         ((touch.client_x() as f64 - offset_x) * device_pixel_ratio).floor() as i32;
-                    let pos_y =
+                    let y =
                         ((touch.client_y() as f64 - offset_y) * device_pixel_ratio).floor() as i32;
-                    input.touch.process_finger_move(
-                        touch.identifier() as FingerPlatformId,
-                        pos_x,
-                        pos_y,
-                    )
+                    appcontext.handle_touch_move(finger_id, x, y)
                 }
             }
         }) as Box<dyn FnMut(_)>);
@@ -514,23 +479,20 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     }
     // Touch cancel
     {
-        let input = input.clone();
+        let appcontext = app.clone();
         let touchcancel_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
             let html_canvas = html_get_canvas();
             let offset_x = html_canvas.get_bounding_client_rect().left();
             let offset_y = html_canvas.get_bounding_client_rect().top();
-            let mut input = input.borrow_mut();
+            let mut appcontext = appcontext.borrow_mut();
             for index in 0..event.changed_touches().length() {
                 if let Some(touch) = event.changed_touches().item(index) {
-                    let pos_x =
+                    let finger_id = touch.identifier() as FingerPlatformId;
+                    let x =
                         ((touch.client_x() as f64 - offset_x) * device_pixel_ratio).floor() as i32;
-                    let pos_y =
+                    let y =
                         ((touch.client_y() as f64 - offset_y) * device_pixel_ratio).floor() as i32;
-                    input.touch.process_finger_up(
-                        touch.identifier() as FingerPlatformId,
-                        pos_x,
-                        pos_y,
-                    )
+                    appcontext.handle_touch_release(finger_id, x, y)
                 }
             }
         }) as Box<dyn FnMut(_)>);
@@ -542,12 +504,9 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     }
     // Focus
     {
-        let input = input.clone();
+        let appcontext = app.clone();
         let focus_callback = Closure::wrap(Box::new(move |_event: web_sys::FocusEvent| {
-            let mut input = input.borrow_mut();
-            input.has_focus = true;
-            input.has_focus_event = true;
-            log::debug!("Gained input focus");
+            appcontext.borrow_mut().handle_window_focus_gained();
         }) as Box<dyn FnMut(_)>);
         html_get_canvas()
             .add_event_listener_with_callback("focus", focus_callback.as_ref().unchecked_ref())?;
@@ -555,22 +514,22 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     }
     // Unfocus
     {
-        let input = input.clone();
+        let appcontext = app.clone();
         let blur_callback = Closure::wrap(Box::new(move |_event: web_sys::FocusEvent| {
-            let mut input = input.borrow_mut();
-            input.has_focus = false;
-            input.has_focus_event = true;
-            log::debug!("Lost input focus");
+            appcontext.borrow_mut().handle_window_focus_lost();
         }) as Box<dyn FnMut(_)>);
         html_get_canvas()
             .add_event_listener_with_callback("blur", blur_callback.as_ref().unchecked_ref())?;
         blur_callback.forget();
     }
 
-    let mut fullscreen_handler =
-        FullscreenHandler::new(Some(web_sys::OrientationLockType::Landscape));
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // MAINLOOP
 
-    let mut app_context = AppContextType::new(&mut renderer, &input.borrow(), &mut audio);
+    let mut appcommands: Vec<AppCommand> = Vec::new();
+    let app_start_time = timer_current_time_seconds();
+    let mut frame_start_time = app_start_time;
+    log::debug!("Startup took {:.3}ms", app_start_time * 1000.0,);
 
     // Here we want to call `requestAnimationFrame` in a loop, but only a fixed
     // number of times. After it's done we want all our resources cleaned up. To
@@ -589,8 +548,7 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
     let g = f.clone();
 
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-        let pre_input_time = timer_current_time_seconds();
-
+        // Touch exclusive mode
         {
             let mut prevent_mouse_input_for_n_frames =
                 prevent_mouse_input_for_n_frames.borrow_mut();
@@ -599,15 +557,8 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
             }
         }
 
-        //--------------------------------------------------------------------------------------
-        // Event loop
-
         // resize canvas if necessary
         {
-            let mut input = input.borrow_mut();
-            input.screen_is_fullscreen = FullscreenHandler::is_fullscreen_mode_active()
-                || FullscreenHandler::is_window_covering_fullscreen();
-
             let html_canvas = html_get_canvas();
             let window_width = (html_canvas.client_width() as f64 * device_pixel_ratio).round();
             let window_height = (html_canvas.client_height() as f64 * device_pixel_ratio).round();
@@ -621,67 +572,31 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
                 html_canvas.set_width(window_width as u32);
                 html_canvas.set_height(window_height as u32);
 
-                input.screen_framebuffer_width = window_width as u32;
-                input.screen_framebuffer_height = window_height as u32;
-                input.screen_framebuffer_dimensions_changed = true;
-            }
-            renderer.update_screen_dimensions(
-                input.screen_framebuffer_width,
-                input.screen_framebuffer_height,
-            );
-        }
-        // Mouse x in [0, screen_framebuffer_width - 1]  (left to right)
-        // Mouse y in [0, screen_framebuffer_height - 1] (top to bottom)
-        //
-        // NOTE: We get the mouse position and delta from querying SDL instead of accumulating
-        //       events, as it is faster, more accurate and less error-prone
-        {
-            let mut input = input.borrow_mut();
-            input.touch.calculate_move_deltas();
-            input.mouse.delta_x = input.mouse.pos_x - mouse_pos_previous_x;
-            input.mouse.delta_y = input.mouse.pos_y - mouse_pos_previous_y;
-        }
+                let is_fullscreen = FullscreenHandler::is_fullscreen_mode_active()
+                    || FullscreenHandler::is_window_covering_fullscreen();
 
-        let post_input_time = timer_current_time_seconds();
+                app.borrow_mut().handle_window_resize(
+                    window_width as u32,
+                    window_height as u32,
+                    is_fullscreen,
+                );
+            }
+            renderer.update_screen_dimensions(window_width as u32, window_height as u32);
+        }
 
         //--------------------------------------------------------------------------------------
-        // Timings, update and drawing
+        // Tick
 
-        let pre_update_time = post_input_time;
-
-        let duration_frame = pre_update_time - frame_start_time;
-        frame_start_time = pre_update_time;
-
-        {
-            let mut input = input.borrow_mut();
-            input.deltatime =
-                super::snap_deltatime_to_nearest_common_refresh_rate(duration_frame as f32);
-            input.real_world_uptime = frame_start_time;
-            input.audio_playback_rate_hz = audio.audio_playback_rate_hz;
-        }
-        app_context.run_tick(&mut renderer, &input.borrow(), &mut audio, &mut appcommands);
-        {
-            let mut input = input.borrow_mut();
-            // Clear input state
-            input.screen_framebuffer_dimensions_changed = false;
-            input.has_foreground_event = false;
-            input.has_focus_event = false;
-
-            input.keyboard.clear_transitions();
-            input.mouse.clear_transitions();
-            input.touch.clear_transitions();
-
-            mouse_pos_previous_x = input.mouse.pos_x;
-            mouse_pos_previous_y = input.mouse.pos_y;
-
-            if input.textinput.is_textinput_enabled {
-                // Reset textinput
-                input.textinput.has_new_textinput_event = false;
-                input.textinput.has_new_composition_event = false;
-                input.textinput.inputtext.clear();
-                input.textinput.composition_text.clear();
-            }
-        }
+        let current_time = timer_current_time_seconds();
+        let duration_frame = current_time - frame_start_time;
+        frame_start_time = current_time;
+        app.borrow_mut().run_tick(
+            duration_frame as f32,
+            current_time,
+            &mut renderer,
+            &mut audio,
+            &mut appcommands,
+        );
 
         //--------------------------------------------------------------------------------------
         // System commands
@@ -729,15 +644,6 @@ pub fn run_main<AppContextType: 'static + AppContextInterface>() -> Result<(), J
         }
         appcommands.clear();
 
-        let post_update_time = timer_current_time_seconds();
-
-        //--------------------------------------------------------------------------------------
-        // Debug timing output
-
-        let duration_input = post_input_time - pre_input_time;
-        let duration_update = post_update_time - pre_update_time;
-
-        log_frametimes(duration_frame, duration_input, duration_update);
         // Schedule ourself for another requestAnimationFrame callback.
         html_request_animation_frame(f.borrow().as_ref().unwrap());
     }) as Box<dyn FnMut()>));

@@ -1,7 +1,7 @@
+use crate::{Keycode, Scancode};
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Platform specific input
-
-use crate::input::{Keycode, Scancode};
 
 /// Given a deadzone_threshold in [0.0, 1.0[
 /// Outputs [-1.0, 1.0] if axisValue in [-1.0, -deadzone_threshold] u [deadzone_threshold, 1.0]

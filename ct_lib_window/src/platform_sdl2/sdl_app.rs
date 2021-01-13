@@ -4,21 +4,19 @@ mod sdl_window;
 
 pub use sdl_audio as audio;
 
-use crate::{AppCommand, AppContextInterface};
+use crate::{AppCommand, AppEventHandler, FingerPlatformId, MouseButton};
 
-use super::input::{InputState, Scancode};
 use ct_lib_core::log;
 use ct_lib_core::serde_derive::{Deserialize, Serialize};
 use ct_lib_core::*;
 use ct_lib_core::{deserialize_from_json_file, serialize_to_json_file};
 
-use std::{collections::VecDeque, time::Duration};
+use std::time::Duration;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Configuration
 
 const ENABLE_PANIC_MESSAGES: bool = false;
-const ENABLE_FRAMETIME_LOGGING: bool = false;
 const ENABLE_TOUCH_EMULATION: bool = false;
 
 #[derive(Serialize, Deserialize)]
@@ -29,115 +27,13 @@ struct LauncherConfig {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Live looped input playback and recording
-
-#[derive(Default)]
-struct InputRecorder<AppContextType: AppContextInterface> {
-    app_context: Option<AppContextType>,
-
-    is_recording: bool,
-    is_playing_back: bool,
-    queue_playback: VecDeque<InputState>,
-    queue_recording: VecDeque<InputState>,
-}
-
-impl<AppContextType: AppContextInterface> InputRecorder<AppContextType> {
-    fn new() -> InputRecorder<AppContextType> {
-        InputRecorder {
-            app_context: None,
-            is_recording: false,
-            is_playing_back: false,
-            queue_playback: VecDeque::new(),
-            queue_recording: VecDeque::new(),
-        }
-    }
-
-    fn start_recording(&mut self, app_context: &AppContextType) {
-        assert!(!self.is_recording);
-        assert!(!self.is_playing_back);
-
-        self.is_recording = true;
-        self.queue_recording.clear();
-        self.app_context = Some(app_context.clone());
-    }
-
-    fn stop_recording(&mut self) {
-        assert!(self.is_recording);
-        assert!(!self.is_playing_back);
-
-        self.is_recording = false;
-    }
-
-    fn start_playback(&mut self, app_context: &mut AppContextType) {
-        assert!(!self.is_recording);
-        assert!(!self.is_playing_back);
-
-        self.is_playing_back = true;
-        self.queue_playback = self.queue_recording.clone();
-        *app_context = self
-            .app_context
-            .as_ref()
-            .expect("Recording is missing app context")
-            .clone();
-
-        assert!(!self.queue_playback.is_empty());
-    }
-
-    fn stop_playback(&mut self) {
-        assert!(!self.is_recording);
-        assert!(self.is_playing_back);
-
-        self.is_playing_back = false;
-        self.queue_playback.clear();
-    }
-
-    fn record_input(&mut self, input: &InputState) {
-        assert!(self.is_recording);
-        assert!(!self.is_playing_back);
-
-        self.queue_recording.push_back(input.clone());
-    }
-
-    fn playback_input(&mut self, app_context: &mut AppContextType) -> InputState {
-        assert!(!self.is_recording);
-        assert!(self.is_playing_back);
-
-        if let Some(input) = self.queue_playback.pop_front() {
-            input
-        } else {
-            // We hit the end of the stream -> go back to the beginning
-            self.stop_playback();
-            self.start_playback(app_context);
-
-            // As we could not read the input before we try again
-            self.queue_playback.pop_front().unwrap()
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main event loop
 
-fn log_frametimes(
-    _duration_frame: f64,
-    _duration_input: f64,
-    _duration_update: f64,
-    _duration_swap: f64,
-) {
-    if ENABLE_FRAMETIME_LOGGING {
-        log::trace!(
-            "frame: {:.3}ms  input: {:.3}ms  update: {:.3}ms  swap: {:.3}ms",
-            _duration_frame * 1000.0,
-            _duration_input * 1000.0,
-            _duration_update * 1000.0,
-            _duration_swap * 1000.0,
-        );
-    }
-}
-
-pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
+pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
+    mut app: AppEventHandlerType,
+) -> Result<(), String> {
     timer_initialize();
-    let app_config = AppContextType::get_app_info();
+    let app_config = app.get_app_info();
     let savedata_dir =
         get_user_savedata_dir(&app_config.company_name, &app_config.save_folder_name)
             .unwrap_or_else(|error| {
@@ -210,6 +106,9 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
     );
     let mut renderer = window.create_renderer();
 
+    let (mut screen_width, mut screen_height) = window.dimensions();
+    app.handle_window_resize(screen_width, screen_height, false);
+
     // ---------------------------------------------------------------------------------------------
     // Sound
 
@@ -218,7 +117,7 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
     // ---------------------------------------------------------------------------------------------
     // Input
 
-    let mut gamepad_subsystem = {
+    let gamepad_subsystem = {
         const GAME_CONTROLLER_DB: &[u8] = include_bytes!("../../resources/gamecontrollerdb.txt");
 
         let savedata_mappings_path = path_join(&savedata_dir, "gamecontrollerdb.txt");
@@ -271,19 +170,12 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
     // ---------------------------------------------------------------------------------------------
     // Input
 
-    let mut input = InputState::new();
-    let (screen_width, screen_height) = window.dimensions();
-    input.screen_framebuffer_width = screen_width;
-    input.screen_framebuffer_height = screen_height;
-    input.screen_framebuffer_dimensions_changed = true;
-
     let text_input = sdl_video.text_input();
     text_input.stop();
+    let mut touch_emulation_left_button_pressed = false;
 
     // ---------------------------------------------------------------------------------------------
     // Mainloop setup
-
-    let mut input_recorder = InputRecorder::new();
 
     let mut appcommands: Vec<AppCommand> = Vec::new();
     let mut event_pump = sdl_context.event_pump().unwrap();
@@ -292,19 +184,12 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
     let mut frame_start_time = app_start_time;
     log::debug!("Startup took {:.3}ms", app_start_time * 1000.0,);
 
-    let mut mouse_pos_previous_x = input.mouse.pos_x;
-    let mut mouse_pos_previous_y = input.mouse.pos_y;
-
     let mut is_running = true;
-
-    let mut app_context = AppContextType::new(&mut renderer, &input, &mut audio);
 
     // ---------------------------------------------------------------------------------------------
     // Begin Mainloop
 
     while is_running {
-        let pre_input_time = timer_current_time_seconds();
-
         //--------------------------------------------------------------------------------------
         // Event loop
 
@@ -316,25 +201,23 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
                     log::info!("Quit signal received");
                     is_running = false;
                 }
-                Event::AppWillEnterForeground { .. } | Event::AppDidEnterForeground { .. } => {
-                    // NOTE: This is Android only
-                    input.has_foreground_event = true;
-                }
                 //----------------------------------------------------------------------------------
                 // Window
                 Event::Window { win_event, .. } => match win_event {
                     WindowEvent::SizeChanged(width, height) => {
-                        input.screen_framebuffer_dimensions_changed = true;
-                        input.screen_framebuffer_width = width as u32;
-                        input.screen_framebuffer_height = height as u32;
+                        app.handle_window_resize(
+                            width as u32,
+                            height as u32,
+                            window.fullscreen_active,
+                        );
+                        screen_width = width as u32;
+                        screen_height = height as u32;
                     }
                     WindowEvent::FocusGained => {
-                        input.has_focus_event = true;
-                        input.has_focus = true;
+                        app.handle_window_focus_gained();
                     }
                     WindowEvent::FocusLost => {
-                        input.has_focus_event = true;
-                        input.has_focus = false;
+                        app.handle_window_focus_lost();
                     }
                     _ => {}
                 },
@@ -347,27 +230,24 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
                     repeat,
                     ..
                 } => {
-                    input.keyboard.has_press_event = true;
-                    if repeat {
-                        input.keyboard.has_system_repeat_event = true;
-                    }
                     let keycode = sdl_input::keycode_to_our_keycode(sdl2_keycode);
                     let scancode = sdl_input::scancode_to_our_scancode(sdl2_scancode);
-                    input.keyboard.process_key_press_event(scancode, keycode);
+                    app.handle_key_press(scancode, keycode, repeat);
                 }
                 Event::KeyUp {
                     scancode: Some(sdl2_scancode),
                     keycode: Some(sdl2_keycode),
                     ..
                 } => {
-                    input.keyboard.has_release_event = true;
                     let keycode = sdl_input::keycode_to_our_keycode(sdl2_keycode);
                     let scancode = sdl_input::scancode_to_our_scancode(sdl2_scancode);
-                    input.keyboard.process_key_release_event(scancode, keycode);
+                    app.handle_key_release(scancode, keycode);
                 }
                 //----------------------------------------------------------------------------------
                 // Textinput
                 //
+                // TODO
+                /*
                 Event::TextInput { text, .. } => {
                     if input.textinput.is_textinput_enabled {
                         input.textinput.has_new_textinput_event = true;
@@ -387,30 +267,30 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
                         input.textinput.composition_selection_length = length;
                     }
                 }
-
+                */
                 //----------------------------------------------------------------------------------
                 // Touch
                 //
                 Event::FingerDown {
                     finger_id, x, y, ..
                 } => {
-                    let pos_x = f32::round(x * screen_width as f32) as i32;
-                    let pos_y = f32::round(y * screen_height as f32) as i32;
-                    input.touch.process_finger_down(finger_id, pos_x, pos_y);
+                    let pos_x = f32::floor(x * screen_width as f32) as i32;
+                    let pos_y = f32::floor(y * screen_height as f32) as i32;
+                    app.handle_touch_press(finger_id as FingerPlatformId, pos_x, pos_y);
                 }
                 Event::FingerUp {
                     finger_id, x, y, ..
                 } => {
-                    let pos_x = f32::round(x * screen_width as f32) as i32;
-                    let pos_y = f32::round(y * screen_height as f32) as i32;
-                    input.touch.process_finger_up(finger_id, pos_x, pos_y);
+                    let pos_x = f32::floor(x * screen_width as f32) as i32;
+                    let pos_y = f32::floor(y * screen_height as f32) as i32;
+                    app.handle_touch_release(finger_id as FingerPlatformId, pos_x, pos_y);
                 }
                 Event::FingerMotion {
                     finger_id, x, y, ..
                 } => {
-                    let pos_x = f32::round(x * screen_width as f32) as i32;
-                    let pos_y = f32::round(y * screen_height as f32) as i32;
-                    input.touch.process_finger_move(finger_id, pos_x, pos_y);
+                    let pos_x = f32::floor(x * screen_width as f32) as i32;
+                    let pos_y = f32::floor(y * screen_height as f32) as i32;
+                    app.handle_touch_move(finger_id as FingerPlatformId, pos_x, pos_y);
                 }
                 //----------------------------------------------------------------------------------
                 // Mouse
@@ -424,31 +304,27 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
                     if ENABLE_TOUCH_EMULATION {
                         match mouse_btn {
                             sdl2::mouse::MouseButton::Left => {
-                                input.touch.process_finger_down(0, x, y);
+                                touch_emulation_left_button_pressed = true;
+                                app.handle_touch_press(0, x, y);
                             }
                             _ => {}
                         }
                     } else {
                         match mouse_btn {
                             sdl2::mouse::MouseButton::Left => {
-                                input.mouse.has_press_event = true;
-                                input.mouse.button_left.process_press_event()
+                                app.handle_mouse_press(MouseButton::Left, x, y);
                             }
                             sdl2::mouse::MouseButton::Middle => {
-                                input.mouse.has_press_event = true;
-                                input.mouse.button_middle.process_press_event()
+                                app.handle_mouse_press(MouseButton::Middle, x, y);
                             }
                             sdl2::mouse::MouseButton::Right => {
-                                input.mouse.has_press_event = true;
-                                input.mouse.button_right.process_press_event()
+                                app.handle_mouse_press(MouseButton::Right, x, y);
                             }
                             sdl2::mouse::MouseButton::X1 => {
-                                input.mouse.has_press_event = true;
-                                input.mouse.button_x1.process_press_event()
+                                app.handle_mouse_press(MouseButton::X1, x, y);
                             }
                             sdl2::mouse::MouseButton::X2 => {
-                                input.mouse.has_press_event = true;
-                                input.mouse.button_x2.process_press_event()
+                                app.handle_mouse_press(MouseButton::X2, x, y);
                             }
                             _ => {}
                         }
@@ -460,31 +336,27 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
                     if ENABLE_TOUCH_EMULATION {
                         match mouse_btn {
                             sdl2::mouse::MouseButton::Left => {
-                                input.touch.process_finger_up(0, x, y);
+                                touch_emulation_left_button_pressed = false;
+                                app.handle_touch_release(0, x, y);
                             }
                             _ => {}
                         }
                     } else {
                         match mouse_btn {
                             sdl2::mouse::MouseButton::Left => {
-                                input.mouse.has_release_event = true;
-                                input.mouse.button_left.process_release_event()
+                                app.handle_mouse_release(MouseButton::Left, x, y);
                             }
                             sdl2::mouse::MouseButton::Middle => {
-                                input.mouse.has_release_event = true;
-                                input.mouse.button_middle.process_release_event()
+                                app.handle_mouse_release(MouseButton::Middle, x, y);
                             }
                             sdl2::mouse::MouseButton::Right => {
-                                input.mouse.has_release_event = true;
-                                input.mouse.button_right.process_release_event()
+                                app.handle_mouse_release(MouseButton::Right, x, y);
                             }
                             sdl2::mouse::MouseButton::X1 => {
-                                input.mouse.has_release_event = true;
-                                input.mouse.button_x1.process_release_event()
+                                app.handle_mouse_release(MouseButton::X1, x, y);
                             }
                             sdl2::mouse::MouseButton::X2 => {
-                                input.mouse.has_release_event = true;
-                                input.mouse.button_x2.process_release_event()
+                                app.handle_mouse_release(MouseButton::X2, x, y);
                             }
                             _ => {}
                         }
@@ -492,22 +364,24 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
                 }
                 Event::MouseMotion { x, y, .. } => {
                     if ENABLE_TOUCH_EMULATION {
-                        if input.touch.is_pressed(0) {
-                            input.touch.process_finger_move(0, x, y);
+                        if touch_emulation_left_button_pressed {
+                            app.handle_touch_move(0, x, y);
                         }
                     } else {
-                        input.mouse.has_moved = true;
+                        app.handle_mouse_move(x, y);
                     }
                 }
                 Event::MouseWheel { y, .. } => {
                     if !ENABLE_TOUCH_EMULATION {
-                        input.mouse.has_wheel_event = true;
-                        input.mouse.wheel_delta = y;
+                        app.handle_mouse_wheel_scroll(y);
                     }
                 }
                 _ => {}
             }
         }
+
+        // TODO
+        /*
 
         // Gamepad events
         // NOTE: Currently we collect events from all available gamepads
@@ -583,110 +457,23 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
                 }
             }
         }
+        */
 
-        // Mouse x in [0, screen_framebuffer_width - 1]  (left to right)
-        // Mouse y in [0, screen_framebuffer_height - 1] (top to bottom)
-        //
-        // NOTE: We get the mouse position and delta from querying SDL instead of accumulating
-        //       events, as it is faster, more accurate and less error-prone
-        if !ENABLE_TOUCH_EMULATION {
-            input.mouse.pos_x = event_pump.mouse_state().x();
-            input.mouse.pos_y = event_pump.mouse_state().y();
-            input.mouse.delta_x = input.mouse.pos_x - mouse_pos_previous_x;
-            input.mouse.delta_y = input.mouse.pos_y - mouse_pos_previous_y;
-        }
-        input.touch.calculate_move_deltas();
-        input.screen_is_fullscreen = window.fullscreen_active;
+        renderer.update_screen_dimensions(screen_width, screen_height);
 
-        renderer.update_screen_dimensions(
-            input.screen_framebuffer_width,
-            input.screen_framebuffer_height,
+        //--------------------------------------------------------------------------------------
+        // Tick
+
+        let current_time = timer_current_time_seconds();
+        let duration_frame = current_time - frame_start_time;
+        frame_start_time = current_time;
+        app.run_tick(
+            duration_frame as f32,
+            current_time,
+            &mut renderer,
+            &mut audio,
+            &mut appcommands,
         );
-
-        //--------------------------------------------------------------------------------------
-        // Start/stop input-recording/-playback
-
-        if input.keyboard.recently_released(Scancode::O) {
-            if !input_recorder.is_playing_back {
-                if input_recorder.is_recording {
-                    log::info!("Stopping input recording");
-                    input_recorder.stop_recording();
-                } else {
-                    log::info!("Starting input recording");
-                    // Clear keyboard input so that we won't get the the `O` Scancode at the
-                    // beginning of the recording
-                    input.keyboard.clear_transitions();
-                    input_recorder.start_recording(&app_context);
-                }
-            }
-        } else if input.keyboard.recently_released(Scancode::P) {
-            if !input_recorder.is_recording {
-                if input_recorder.is_playing_back {
-                    log::info!("Stopping input playback");
-                    input_recorder.stop_playback();
-                    input.keyboard.clear_state_and_transitions();
-                } else {
-                    log::info!("Starting input playback");
-                    input_recorder.start_playback(&mut app_context);
-                }
-            }
-        }
-
-        // Playback/record input events
-        //
-        // NOTE: We can move the playback part before polling events to be more interactive!
-        //       For this we need to handle the mouse and keyboard a little different. Maybe we
-        //       can have `input_last` and `input_current`?
-        if input_recorder.is_recording {
-            input_recorder.record_input(&input);
-        } else if input_recorder.is_playing_back {
-            // NOTE: We need to save the state of the playback-key or the keystate will get
-            //       confused. This can happen when we press down the playback-key and hold it for
-            //       several frames. While we do that the input playback overwrites the state of the
-            //       playback-key. If we release the playback-key the keystate will think it is
-            //       already released (due to the overwrite) but will get an additional release
-            //       event (which is not good)
-            let previous_playback_key_state = input.keyboard.keys[&Scancode::P].clone();
-            input = input_recorder.playback_input(&mut app_context);
-            *input.keyboard.keys.get_mut(&Scancode::P).unwrap() = previous_playback_key_state;
-        }
-
-        let post_input_time = timer_current_time_seconds();
-
-        //--------------------------------------------------------------------------------------
-        // Timings, update and drawing
-
-        let pre_update_time = post_input_time;
-
-        let duration_frame = pre_update_time - frame_start_time;
-        frame_start_time = pre_update_time;
-
-        input.deltatime =
-            super::snap_deltatime_to_nearest_common_refresh_rate(duration_frame as f32);
-        input.real_world_uptime = frame_start_time;
-        input.audio_playback_rate_hz = audio.audio_playback_rate_hz;
-
-        app_context.run_tick(&mut renderer, &input, &mut audio, &mut appcommands);
-
-        // Clear input state
-        input.screen_framebuffer_dimensions_changed = false;
-        input.has_foreground_event = false;
-        input.has_focus_event = false;
-
-        input.keyboard.clear_transitions();
-        input.mouse.clear_transitions();
-        input.touch.clear_transitions();
-
-        mouse_pos_previous_x = input.mouse.pos_x;
-        mouse_pos_previous_y = input.mouse.pos_y;
-
-        if input.textinput.is_textinput_enabled {
-            // Reset textinput
-            input.textinput.has_new_textinput_event = false;
-            input.textinput.has_new_composition_event = false;
-            input.textinput.inputtext.clear();
-            input.textinput.composition_text.clear();
-        }
 
         //--------------------------------------------------------------------------------------
         // System commands
@@ -695,11 +482,15 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
             match command {
                 AppCommand::FullscreenToggle => window.toggle_fullscreen(),
                 AppCommand::TextinputStart {
+                    /*
                     inputrect_x,
                     inputrect_y,
                     inputrect_width,
                     inputrect_height,
+                     */
+                    ..
                 } => {
+                    /* TODO
                     log::trace!("Textinput mode enabled");
                     input.textinput.is_textinput_enabled = true;
                     text_input.start();
@@ -711,11 +502,14 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
                         *inputrect_height,
                     );
                     text_input.set_rect(text_input_rect);
+                     */
                 }
                 AppCommand::TextinputStop => {
+                    /* TODO
                     log::trace!("Textinput mode disabled");
                     input.textinput.is_textinput_enabled = false;
                     text_input.stop();
+                     */
                 }
                 AppCommand::WindowedModeAllowResizing(allowed) => {
                     window.windowed_mode_set_resizable(*allowed);
@@ -740,7 +534,7 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
                 }
                 AppCommand::Restart => {
                     log::info!("Received restart signal");
-                    app_context.reset();
+                    app.reset();
                     renderer.reset();
                     audio.reset();
                 }
@@ -748,30 +542,7 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
         }
         appcommands.clear();
 
-        let post_update_time = timer_current_time_seconds();
-
-        //--------------------------------------------------------------------------------------
-        // Swap framebuffers
-
-        let pre_swap_time = post_update_time;
-
         window.sdl_window.gl_swap_window();
-
-        let post_swap_time = timer_current_time_seconds();
-
-        //--------------------------------------------------------------------------------------
-        // Debug timing output
-
-        let duration_input = post_input_time - pre_input_time;
-        let duration_update = post_update_time - pre_update_time;
-        let duration_swap = post_swap_time - pre_swap_time;
-
-        log_frametimes(
-            duration_frame,
-            duration_input,
-            duration_update,
-            duration_swap,
-        );
     }
 
     //--------------------------------------------------------------------------------------
@@ -783,7 +554,7 @@ pub fn run_main<AppContextType: AppContextInterface>() -> Result<(), String> {
     // Make sure our sound output has time to wind down so it does not crack
     let audio_winddown_time_sec = (2.0 * audio.get_audiobuffer_size_in_frames() as f32
         + audio.get_num_frames_in_queue() as f32)
-        / input.audio_playback_rate_hz as f32;
+        / audio.get_audio_playback_rate_hz() as f32;
     std::thread::sleep(Duration::from_secs_f32(audio_winddown_time_sec));
 
     Ok(())

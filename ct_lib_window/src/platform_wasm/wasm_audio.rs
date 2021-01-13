@@ -39,7 +39,7 @@ impl WASMAudioCallback {
 }
 
 pub struct AudioOutput {
-    pub audio_playback_rate_hz: usize,
+    audio_playback_rate_hz: usize,
     frames_queue: ringbuf::Producer<(f32, f32)>,
     _audio_context: Rc<RefCell<web_sys::AudioContext>>,
     _audio_processor: web_sys::ScriptProcessorNode,
@@ -202,6 +202,10 @@ impl AudioOutput {
             _audio_context: audio_context,
             _audio_processor: audio_processor,
         }
+    }
+
+    pub fn get_audio_playback_rate_hz(&self) -> usize {
+        self.audio_playback_rate_hz
     }
 
     pub fn get_num_frames_in_queue(&self) -> usize {

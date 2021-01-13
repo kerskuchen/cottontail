@@ -1,35 +1,53 @@
+pub mod animations_fx;
 pub mod assets;
+pub mod camera;
+pub mod choreographer;
+pub mod debug;
 pub mod gui;
+pub mod input;
 
+pub use animations_fx::*;
 pub use assets::*;
+pub use camera::*;
+pub use choreographer::*;
+pub use debug::*;
 pub use gui::*;
+pub use input::*;
 
-use ct_lib_audio as audio;
-use ct_lib_core as core;
-use ct_lib_draw as draw;
-use ct_lib_image as image;
-use ct_lib_math as math;
-use ct_lib_window as window;
+use camera::{CursorCoords, Cursors, GameCamera};
+use choreographer::LoadingScreen;
+use debug::{debug_draw_crosshair, debug_draw_grid};
 
-use audio::*;
-use draw::*;
-use image::*;
-use math::*;
-use window::{
-    input::*, platform::audio::AudioOutput, renderer_opengl::Renderer, AppCommand,
-    AppContextInterface, AppInfo,
+use ct_lib_audio::*;
+use ct_lib_draw::*;
+use ct_lib_image::*;
+use ct_lib_math::*;
+use ct_lib_window::{
+    platform::audio::AudioOutput, renderer_opengl::Renderer, run_main, AppCommand, AppEventHandler,
+    AppInfo, FingerPlatformId, MouseButton,
 };
 
-use crate::core::serde_derive::{Deserialize, Serialize};
-use crate::core::*;
+use ct_lib_core::serde_derive::{Deserialize, Serialize};
+use ct_lib_core::*;
 
-use std::collections::HashMap;
+use std::collections::VecDeque;
 
 pub const DEPTH_DEBUG: Depth = 90.0;
 pub const DEPTH_DEVELOP_OVERLAY: Depth = 80.0;
 pub const DEPTH_SPLASH: Depth = 70.0;
 pub const DEPTH_SCREEN_FADER: Depth = 60.0;
 
+fn snap_deltatime_to_nearest_common_refresh_rate(deltatime: f32) -> f32 {
+    let common_refresh_rates = [30, 60, 72, 75, 85, 90, 120, 144, 240, 360];
+    let index_with_smallest_distance = common_refresh_rates
+        .iter()
+        .map(|refresh_rate| (deltatime - 1.0 / *refresh_rate as f32).abs())
+        .enumerate()
+        .min_by(|(_index_a, a), (_index_b, b)| a.partial_cmp(b).unwrap())
+        .unwrap()
+        .0;
+    1.0 / common_refresh_rates[index_with_smallest_distance] as f32
+}
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Gamestate
 
@@ -78,42 +96,66 @@ pub trait GameStateInterface: Clone {
 const SPLASHSCREEN_FADEIN_TIME: f32 = 0.3;
 const SPLASHSCREEN_FADEOUT_TIME: f32 = 0.5;
 
-#[derive(Clone)]
-pub struct AppContext<GameStateType: GameStateInterface> {
-    pub assets: GameAssets,
-    pub loadingscreen: LoadingScreen,
-    pub game: Option<GameStateType>,
+struct AppResources {
+    pub assets: Option<GameAssets>,
     pub draw: Option<Drawstate>,
     pub audio: Option<Audiostate>,
     pub globals: Option<Globals>,
+    pub input: Option<InputState>,
+    pub out_systemcommands: Option<&'static mut Vec<AppCommand>>,
+    // TODO input_recorder :Option<InputRecorder<AppTicker<>>
+}
 
+static mut APP_RESOURCES: AppResources = AppResources {
+    assets: None,
+    draw: None,
+    audio: None,
+    globals: None,
+    input: None,
+    out_systemcommands: None,
+};
+
+#[inline(always)]
+fn get_resources() -> &'static mut AppResources {
+    unsafe { &mut APP_RESOURCES }
+}
+#[inline(always)]
+fn get_input() -> &'static mut InputState {
+    unsafe { APP_RESOURCES.input.as_mut().unwrap() }
+}
+
+#[derive(Clone)]
+pub struct AppTicker<GameStateType: GameStateInterface> {
+    pub game: Option<GameStateType>,
+    pub loadingscreen: LoadingScreen,
     audio_chunk_timer: f32,
 }
 
-impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppContext<GameStateType> {
-    fn get_app_info() -> window::AppInfo {
-        let config = GameStateType::get_game_info();
-        AppInfo {
-            window_title: config.game_window_title,
-            save_folder_name: config.game_save_folder_name,
-            company_name: config.game_company_name,
-        }
-    }
-
-    fn new(_renderer: &mut Renderer, _input: &InputState, _audio: &mut AudioOutput) -> Self {
+impl<GameStateType: GameStateInterface> AppTicker<GameStateType> {
+    fn new() -> Self {
         let window_config = GameStateType::get_window_config();
-        AppContext {
-            assets: GameAssets::new("resources"),
+        get_resources().assets = Some(GameAssets::new("resources"));
+        get_resources().input = Some(InputState::new());
+        // TODO: let mut input_recorder = InputRecorder::new();
+        AppTicker {
             loadingscreen: LoadingScreen::new(
                 SPLASHSCREEN_FADEIN_TIME,
                 SPLASHSCREEN_FADEOUT_TIME,
                 window_config.color_splash_progressbar,
             ),
             game: None,
-            draw: None,
-            audio: None,
-            globals: None,
             audio_chunk_timer: 0.0,
+        }
+    }
+}
+
+impl<GameStateType: GameStateInterface> AppEventHandler for AppTicker<GameStateType> {
+    fn get_app_info(&self) -> AppInfo {
+        let config = GameStateType::get_game_info();
+        AppInfo {
+            window_title: config.game_window_title,
+            save_folder_name: config.game_save_folder_name,
+            company_name: config.game_company_name,
         }
     }
 
@@ -123,21 +165,90 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
 
     fn run_tick(
         &mut self,
+        frametime: f32,
+        real_world_uptime: f64,
         renderer: &mut Renderer,
-        input: &InputState,
         audio_output: &mut AudioOutput,
         out_systemcommands: &mut Vec<AppCommand>,
     ) {
-        match self.assets.update() {
+        let resources = get_resources();
+        let assets = resources.assets.as_mut().unwrap();
+        let input = resources.input.as_mut().unwrap();
+
+        {
+            // TODO: Put this into a member function
+
+            // Mouse x in [0, screen_framebuffer_width - 1]  (left to right)
+            // Mouse y in [0, screen_framebuffer_height - 1] (top to bottom)
+            //
+            // NOTE: We get the mouse delta from querying instead of accumulating
+            //       events, as it is faster, more accurate and less error-prone
+            input.touch.calculate_move_deltas();
+            input.mouse.delta_x = input.mouse.pos_x - input.mouse.pos_previous_x;
+            input.mouse.delta_y = input.mouse.pos_y - input.mouse.pos_previous_y;
+
+            input.deltatime = snap_deltatime_to_nearest_common_refresh_rate(frametime);
+            input.real_world_uptime = real_world_uptime;
+        }
+
+        //--------------------------------------------------------------------------------------
+        // Start/stop input-recording/-playback
+
+        // TODO
+        let mut input_recorder = InputRecorder::<Self>::new();
+        if input.keyboard.recently_released(Scancode::O) {
+            if !input_recorder.is_playing_back {
+                if input_recorder.is_recording {
+                    log::info!("Stopping input recording");
+                    input_recorder.stop_recording();
+                } else {
+                    log::info!("Starting input recording");
+                    // Clear keyboard input so that we won't get the the `O` Scancode at the
+                    // beginning of the recording
+                    input.keyboard.clear_transitions();
+                    input_recorder.start_recording(self);
+                }
+            }
+        } else if input.keyboard.recently_released(Scancode::P) {
+            if !input_recorder.is_recording {
+                if input_recorder.is_playing_back {
+                    log::info!("Stopping input playback");
+                    input_recorder.stop_playback();
+                    input.keyboard.clear_state_and_transitions();
+                } else {
+                    log::info!("Starting input playback");
+                    input_recorder.start_playback(self);
+                }
+            }
+        }
+
+        // Playback/record input events
+        //
+        // NOTE: We can move the playback part before polling events to be more interactive!
+        //       For this we need to handle the mouse and keyboard a little different. Maybe we
+        //       can have `input_last` and `input_current`?
+        if input_recorder.is_recording {
+            input_recorder.record_input(&input);
+        } else if input_recorder.is_playing_back {
+            // NOTE: We need to save the state of the playback-key or the keystate will get
+            //       confused. This can happen when we press down the playback-key and hold it for
+            //       several frames. While we do that the input playback overwrites the state of the
+            //       playback-key. If we release the playback-key the keystate will think it is
+            //       already released (due to the overwrite) but will get an additional release
+            //       event (which is not good)
+            let previous_playback_key_state = input.keyboard.keys[&Scancode::P].clone();
+            *input = input_recorder.playback_input(self);
+            *input.keyboard.keys.get_mut(&Scancode::P).unwrap() = previous_playback_key_state;
+        }
+
+        match assets.update() {
             AssetLoadingStage::SplashStart => return,
             AssetLoadingStage::SplashProgress => return,
             AssetLoadingStage::SplashFinish => {
-                assert!(self.draw.is_none());
-
-                let textures_splash = self.assets.get_atlas_textures().clone();
-                let untextured_sprite = self.assets.get_sprite("untextured").clone();
+                let textures_splash = assets.get_atlas_textures().clone();
+                let untextured_sprite = assets.get_sprite("untextured").clone();
                 let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-                let debug_log_font = self.assets.get_font(&debug_log_font_name).clone();
+                let debug_log_font = assets.get_font(&debug_log_font_name).clone();
 
                 let window_config = GameStateType::get_window_config();
                 let mut draw = Drawstate::new(textures_splash, untextured_sprite, debug_log_font);
@@ -169,13 +280,15 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                         DEFAULT_WORLD_ZFAR,
                     ),
                 );
-                self.draw = Some(draw);
+
+                assert!(resources.draw.is_none());
+                resources.draw = Some(draw);
 
                 self.loadingscreen.start_fading_in();
             }
             AssetLoadingStage::WaitingToStartFilesLoading => {
                 if self.loadingscreen.is_faded_in() {
-                    self.assets.start_loading_files();
+                    assets.start_loading_files();
                 }
             }
             AssetLoadingStage::FilesStart => {}
@@ -184,32 +297,32 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
             AssetLoadingStage::DecodingStart => {}
             AssetLoadingStage::DecodingProgress => {}
             AssetLoadingStage::DecodingFinish => {
-                assert!(self.draw.is_some());
+                assert!(resources.draw.is_some());
 
-                let textures = self.assets.get_atlas_textures().clone();
-                let untextured_sprite = self.assets.get_sprite("untextured").clone();
+                let textures = assets.get_atlas_textures().clone();
+                let untextured_sprite = assets.get_sprite("untextured").clone();
                 let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-                let debug_log_font = self.assets.get_font(&debug_log_font_name).clone();
+                let debug_log_font = assets.get_font(&debug_log_font_name).clone();
 
-                let draw = self.draw.as_mut().unwrap();
+                let draw = resources.draw.as_mut().unwrap();
                 draw.assign_textures(textures, untextured_sprite, debug_log_font);
 
-                assert!(self.audio.is_none());
+                assert!(resources.audio.is_none());
 
-                if self.audio.is_none() {
+                if resources.audio.is_none() {
                     let window_config = GameStateType::get_window_config();
-                    self.audio = Some(Audiostate::new(
-                        self.assets.audio.resource_sample_rate_hz,
+                    resources.audio = Some(Audiostate::new(
+                        assets.audio.resource_sample_rate_hz,
                         window_config.canvas_width as f32 / 2.0,
                         10_000.0,
                     ));
                 }
-                let audio = self.audio.as_mut().unwrap();
-                let audio_recordings = self.assets.get_audiorecordings().clone();
+                let audio = resources.audio.as_mut().unwrap();
+                let audio_recordings = assets.get_audiorecordings().clone();
                 audio.assign_audio_recordings(audio_recordings);
 
                 assert!(self.game.is_none());
-                assert!(self.globals.is_none());
+                assert!(resources.globals.is_none());
 
                 let window_config = GameStateType::get_window_config();
                 let random = Random::new_from_seed((input.deltatime * 1000000.0) as u64);
@@ -246,11 +359,11 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 self.game = Some(GameStateType::new(
                     draw,
                     audio,
-                    &self.assets,
+                    &assets,
                     &input,
                     &mut globals,
                 ));
-                self.globals = Some(globals);
+                resources.globals = Some(globals);
 
                 self.loadingscreen.start_fading_out();
             }
@@ -258,22 +371,22 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
         }
 
         // Asset hotreloading
-        if self.assets.hotreload_assets() {
-            let audio = self.audio.as_mut().unwrap();
-            let draw = self.draw.as_mut().unwrap();
+        if assets.hotreload_assets() {
+            let audio = resources.audio.as_mut().unwrap();
+            let draw = resources.draw.as_mut().unwrap();
 
-            let textures = self.assets.get_atlas_textures().clone();
-            let untextured_sprite = self.assets.get_sprite("untextured").clone();
+            let textures = assets.get_atlas_textures().clone();
+            let untextured_sprite = assets.get_sprite("untextured").clone();
             let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-            let debug_log_font = self.assets.get_font(&debug_log_font_name).clone();
+            let debug_log_font = assets.get_font(&debug_log_font_name).clone();
             draw.assign_textures(textures, untextured_sprite, debug_log_font);
 
-            let audio_recordings = self.assets.get_audiorecordings().clone();
+            let audio_recordings = assets.get_audiorecordings().clone();
             audio.assign_audio_recordings(audio_recordings);
             log::info!("Hotreloaded assets");
         }
 
-        let draw = self.draw.as_mut().unwrap();
+        let draw = resources.draw.as_mut().unwrap();
 
         if input.has_focus || !self.loadingscreen.is_faded_out() {
             draw.begin_frame();
@@ -284,20 +397,20 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                     input.screen_framebuffer_width,
                     input.screen_framebuffer_height,
                 ));
-                let splash_sprite = self.assets.get_sprite("splashscreen");
+                let splash_sprite = assets.get_sprite("splashscreen");
                 self.loadingscreen.update_and_draw(
                     draw,
                     input.deltatime,
                     canvas_width,
                     canvas_height,
                     splash_sprite,
-                    self.assets.get_loading_percentage(),
+                    assets.get_loading_percentage(),
                 );
             }
 
             if let Some(game) = self.game.as_mut() {
                 let window_config = GameStateType::get_window_config();
-                let globals = self.globals.as_mut().unwrap();
+                let globals = resources.globals.as_mut().unwrap();
                 globals.cursors = Cursors::new(
                     &globals.camera.cam,
                     &input.mouse,
@@ -338,7 +451,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 };
                 globals.deltatime = deltatime;
 
-                let audio = self.audio.as_mut().unwrap();
+                let audio = resources.audio.as_mut().unwrap();
                 audio.set_global_playback_speed_factor(deltatime_speed_factor);
                 audio.update_deltatime(deltatime);
 
@@ -356,14 +469,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 draw.debug_log(format!("Deltatime: {:.6}", globals.deltatime));
 
                 gui_begin_frame(draw, &globals.cursors, input);
-                game.update(
-                    draw,
-                    audio,
-                    &self.assets,
-                    input,
-                    globals,
-                    out_systemcommands,
-                );
+                game.update(draw, audio, &assets, input, globals, out_systemcommands);
                 gui_end_frame(draw);
 
                 let mouse_coords = globals.cursors.mouse;
@@ -415,15 +521,16 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 );
             }
 
-            if let Some(audio) = self.audio.as_mut() {
-                let globals = self.globals.as_mut().unwrap();
+            if let Some(audio) = resources.audio.as_mut() {
+                let globals = resources.globals.as_mut().unwrap();
+                let output_sample_rate_hz = audio_output.get_audio_playback_rate_hz();
                 audio.set_global_listener_pos(globals.camera.center());
 
                 self.audio_chunk_timer += input.deltatime;
 
                 let mut audiochunk = AudioChunk::new_stereo();
                 let audiochunk_length_in_seconds =
-                    audiochunk.length_in_seconds(input.audio_playback_rate_hz) as f32;
+                    audiochunk.length_in_seconds(output_sample_rate_hz) as f32;
                 let audio_buffersize_in_frames = audio_output.get_audiobuffer_size_in_frames();
 
                 // Render some chunks per frame to keep the load per frame somewhat stable
@@ -435,7 +542,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                         // out of sync with our realtime
                         continue;
                     }
-                    audio.render_audio_chunk(&mut audiochunk, input.audio_playback_rate_hz);
+                    audio.render_audio_chunk(&mut audiochunk, output_sample_rate_hz);
                     let (samples_left, samples_right) = audiochunk.get_stereo_samples();
                     audio_output.submit_frames(samples_left, samples_right);
                     audiochunk.reset();
@@ -444,7 +551,7 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
                 // We need to always have a full audiobuffer worth of frames queued up.
                 // If our steady submitting of chunks above was not enough we fill up the queue
                 while audio_output.get_num_frames_in_queue() < audio_buffersize_in_frames {
-                    audio.render_audio_chunk(&mut audiochunk, input.audio_playback_rate_hz);
+                    audio.render_audio_chunk(&mut audiochunk, output_sample_rate_hz);
                     let (samples_left, samples_right) = audiochunk.get_stereo_samples();
                     audio_output.submit_frames(samples_left, samples_right);
                     audiochunk.reset();
@@ -455,533 +562,136 @@ impl<GameStateType: GameStateInterface + Clone> AppContextInterface for AppConte
         }
 
         draw.render_frame(renderer);
+
+        {
+            // TODO: Put this into a member function
+
+            // Clear input state
+            input.screen_framebuffer_dimensions_changed = false;
+            input.has_foreground_event = false;
+            input.has_focus_event = false;
+
+            input.keyboard.clear_transitions();
+            input.mouse.clear_transitions();
+            input.touch.clear_transitions();
+
+            if input.textinput.is_textinput_enabled {
+                // Reset textinput
+                input.textinput.has_new_textinput_event = false;
+                input.textinput.has_new_composition_event = false;
+                input.textinput.inputtext.clear();
+                input.textinput.composition_text.clear();
+            }
+        }
+    }
+
+    fn handle_window_resize(&mut self, new_width: u32, new_height: u32, is_fullscreen: bool) {
+        let input = get_input();
+        log::debug!(
+            "Window resized {}x{} -> {}x{}",
+            input.screen_framebuffer_width,
+            input.screen_framebuffer_height,
+            new_width,
+            new_height
+        );
+        input.screen_framebuffer_width = new_width;
+        input.screen_framebuffer_height = new_height;
+        input.screen_framebuffer_dimensions_changed = true;
+        input.screen_is_fullscreen = is_fullscreen;
+    }
+
+    fn handle_window_focus_gained(&mut self) {
+        let input = get_input();
+        input.has_focus = true;
+        input.has_focus_event = true;
+        log::debug!("Gained window focus");
+    }
+
+    fn handle_window_focus_lost(&mut self) {
+        let input = get_input();
+        input.has_focus = false;
+        input.has_focus_event = true;
+        log::debug!("Lost window focus");
+    }
+
+    fn handle_key_press(&mut self, scancode: Scancode, keycode: Keycode, is_repeat: bool) {
+        let input = get_input();
+        input.keyboard.has_press_event = true;
+        input.keyboard.has_system_repeat_event |= is_repeat;
+        input.keyboard.process_key_press_event(scancode, keycode);
+    }
+
+    fn handle_key_release(&mut self, scancode: Scancode, keycode: Keycode) {
+        let input = get_input();
+        input.keyboard.has_release_event = true;
+        input.keyboard.process_key_release_event(scancode, keycode);
+    }
+
+    fn handle_mouse_press(&mut self, button: MouseButton, pos_x: i32, pos_y: i32) {
+        let input = get_input();
+        input.mouse.has_press_event = true;
+        input.mouse.pos_x = pos_x;
+        input.mouse.pos_y = pos_y;
+        match button {
+            MouseButton::Left => input.mouse.button_left.process_press_event(),
+            MouseButton::Right => input.mouse.button_right.process_press_event(),
+            MouseButton::Middle => input.mouse.button_middle.process_press_event(),
+            MouseButton::X1 => input.mouse.button_x1.process_press_event(),
+            MouseButton::X2 => input.mouse.button_x2.process_press_event(),
+        }
+    }
+
+    fn handle_mouse_release(&mut self, button: MouseButton, pos_x: i32, pos_y: i32) {
+        let input = get_input();
+        input.mouse.has_release_event = true;
+        input.mouse.pos_x = pos_x;
+        input.mouse.pos_y = pos_y;
+        match button {
+            MouseButton::Left => input.mouse.button_left.process_release_event(),
+            MouseButton::Right => input.mouse.button_right.process_release_event(),
+            MouseButton::Middle => input.mouse.button_middle.process_release_event(),
+            MouseButton::X1 => input.mouse.button_x1.process_release_event(),
+            MouseButton::X2 => input.mouse.button_x2.process_release_event(),
+        }
+    }
+
+    fn handle_mouse_move(&mut self, pos_x: i32, pos_y: i32) {
+        let input = get_input();
+        input.mouse.has_moved = true;
+        input.mouse.pos_x = pos_x;
+        input.mouse.pos_y = pos_y;
+    }
+
+    fn handle_mouse_wheel_scroll(&mut self, scroll_delta: i32) {
+        let input = get_input();
+        input.mouse.has_wheel_event = true;
+        input.mouse.wheel_delta = scroll_delta;
+    }
+
+    fn handle_touch_press(&mut self, finger_id: FingerPlatformId, pos_x: i32, pos_y: i32) {
+        let input = get_input();
+        input.touch.process_finger_down(finger_id, pos_x, pos_y);
+    }
+
+    fn handle_touch_release(&mut self, finger_id: FingerPlatformId, pos_x: i32, pos_y: i32) {
+        let input = get_input();
+        input.touch.process_finger_up(finger_id, pos_x, pos_y);
+    }
+
+    fn handle_touch_move(&mut self, finger_id: FingerPlatformId, pos_x: i32, pos_y: i32) {
+        let input = get_input();
+        input.touch.process_finger_move(finger_id, pos_x, pos_y);
+    }
+
+    fn handle_touch_cancelled(&mut self, finger_id: FingerPlatformId, pos_x: i32, pos_y: i32) {
+        let input = get_input();
+        input.touch.process_finger_up(finger_id, pos_x, pos_y);
     }
 }
 
 pub fn start_mainloop<GameStateType: 'static + GameStateInterface>() {
-    window::run_main::<AppContext<GameStateType>>();
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Camera and coordinates
-
-/// NOTE: Camera pos equals is the top-left of the screen or the center depending on the
-/// `is_centered` flag. It has the following bounds in world coordinates:
-/// non-centered: [pos.x, pos.x + dim_frustum.w] x [pos.y, pos.y + dim_frustum.h]
-/// centered:     [pos.x - 0.5*dim_frustum.w, pos.x + 0.5*dim_frustum.w] x
-///               [pos.y - 0.5*dim_frustum.h, pos.y + 0.5*dim_frustum.h]
-///
-/// with:
-/// dim_frustum = dim_canvas / zoom
-/// zoom > 1.0 -> zooming in
-/// zoom < 1.0 -> zooming out
-#[derive(Clone, Default)]
-pub struct Camera {
-    pub pos: Vec2,
-    pub pos_pixelsnapped: Vec2,
-    pub dim_frustum: Vec2,
-    pub dim_canvas: Vec2,
-    pub zoom_level: f32,
-    pub z_near: f32,
-    pub z_far: f32,
-    pub is_centered: bool,
-}
-
-// Coordinates
-//
-impl Camera {
-    /// Converts a CanvasPoint to a Worldpoint
-    #[inline]
-    pub fn canvaspoint_to_worldpoint(&self, canvaspoint: Canvaspoint) -> Worldpoint {
-        if self.is_centered {
-            (canvaspoint - 0.5 * self.dim_canvas) / self.zoom_level + self.pos_pixelsnapped
-        } else {
-            (canvaspoint / self.zoom_level) + self.pos_pixelsnapped
-        }
-    }
-
-    /// Converts a Worldpoint to a CanvasPoint
-    #[inline]
-    pub fn worldpoint_to_canvaspoint(&self, worldpoint: Worldpoint) -> Canvaspoint {
-        if self.is_centered {
-            (worldpoint - self.pos_pixelsnapped) * self.zoom_level + 0.5 * self.dim_canvas
-        } else {
-            (worldpoint - self.pos_pixelsnapped) * self.zoom_level
-        }
-    }
-
-    /// Converts a Canvasvec to a Worldvec
-    #[inline]
-    pub fn canvas_vec_to_world_vec(&self, canvasvec: Canvasvec) -> Worldvec {
-        canvasvec / self.zoom_level
-    }
-
-    /// Converts a Worldvec to a Canvasvec
-    #[inline]
-    pub fn world_vec_to_canvas_vec(&self, worldvec: Worldvec) -> Canvasvec {
-        worldvec * self.zoom_level
-    }
-}
-
-// Creation and properties
-//
-impl Camera {
-    pub fn new(
-        pos: Worldpoint,
-        zoom_level: f32,
-        canvas_width: u32,
-        canvas_height: u32,
-        z_near: f32,
-        z_far: f32,
-        is_centered: bool,
-    ) -> Camera {
-        let dim_canvas = Vec2::new(canvas_width as f32, canvas_height as f32);
-
-        Camera {
-            pos,
-            pos_pixelsnapped: pos.pixel_snapped(),
-            zoom_level,
-            dim_canvas,
-            dim_frustum: dim_canvas / zoom_level,
-            z_near,
-            z_far,
-            is_centered,
-        }
-    }
-
-    #[inline]
-    pub fn center(&self) -> Worldpoint {
-        if self.is_centered {
-            self.pos
-        } else {
-            self.pos + 0.5 * self.dim_frustum
-        }
-    }
-
-    /// Returns a project-view-matrix that can transform vertices into camera-view-space
-    pub fn proj_view_matrix(&mut self) -> Mat4 {
-        let view = Mat4::scale(self.zoom_level, self.zoom_level, 1.0)
-            * Mat4::translation(-self.pos_pixelsnapped.x, -self.pos_pixelsnapped.y, 0.0);
-
-        let projection = if self.is_centered {
-            Mat4::ortho_origin_center_flipped_y(
-                self.dim_canvas.x,
-                self.dim_canvas.y,
-                self.z_near,
-                self.z_far,
-            )
-        } else {
-            Mat4::ortho_origin_left_top(
-                self.dim_canvas.x,
-                self.dim_canvas.y,
-                self.z_near,
-                self.z_far,
-            )
-        };
-        projection * view
-    }
-
-    #[inline]
-    pub fn bounds_pixelsnapped(&self) -> Rect {
-        if self.is_centered {
-            Rect::from_bounds_left_top_right_bottom(
-                self.pos_pixelsnapped.x - 0.5 * self.dim_frustum.x,
-                self.pos_pixelsnapped.y + 0.5 * self.dim_frustum.y,
-                self.pos_pixelsnapped.x + 0.5 * self.dim_frustum.x,
-                self.pos_pixelsnapped.y - 0.5 * self.dim_frustum.y,
-            )
-        } else {
-            Rect::from_bounds_left_top_right_bottom(
-                self.pos_pixelsnapped.x,
-                self.pos_pixelsnapped.y,
-                self.pos_pixelsnapped.x + self.dim_frustum.x,
-                self.pos_pixelsnapped.y + self.dim_frustum.y,
-            )
-        }
-    }
-
-    #[inline]
-    pub fn bounds(&self) -> Rect {
-        if self.is_centered {
-            Rect::from_bounds_left_top_right_bottom(
-                self.pos.x - 0.5 * self.dim_frustum.x,
-                self.pos.y + 0.5 * self.dim_frustum.y,
-                self.pos.x + 0.5 * self.dim_frustum.x,
-                self.pos.y - 0.5 * self.dim_frustum.y,
-            )
-        } else {
-            Rect::from_bounds_left_top_right_bottom(
-                self.pos.x,
-                self.pos.y,
-                self.pos.x + self.dim_frustum.x,
-                self.pos.y + self.dim_frustum.y,
-            )
-        }
-    }
-}
-
-// Manipulation
-//
-impl Camera {
-    /// Zooms the camera to or away from a given world point.
-    ///
-    /// new_zoom_level > old_zoom_level -> magnify
-    /// new_zoom_level < old_zoom_level -> minify
-    #[inline]
-    pub fn zoom_to_world_point(&mut self, worldpoint: Worldpoint, new_zoom_level: f32) {
-        let old_zoom_level = self.zoom_level;
-        self.zoom_level = new_zoom_level;
-        self.dim_frustum = self.dim_canvas / new_zoom_level;
-        self.pos = (self.pos - worldpoint) * (old_zoom_level / new_zoom_level) + worldpoint;
-        self.pos_pixelsnapped = self.pos.pixel_snapped();
-    }
-
-    /// Pans the camera using cursor movement distance on the canvas
-    #[inline]
-    pub fn pan(&mut self, canvas_move_distance: Canvasvec) {
-        self.pos -= canvas_move_distance / self.zoom_level;
-        self.pos_pixelsnapped = self.pos.pixel_snapped();
-    }
-
-    #[inline]
-    pub fn set_pos(&mut self, worldpoint: Worldpoint) {
-        self.pos = worldpoint;
-        self.pos_pixelsnapped = self.pos.pixel_snapped();
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Game Camera
-//
-
-#[derive(Clone)]
-pub struct GameCamera {
-    pub cam: Camera,
-
-    pub pos: Vec2,
-    pub pos_target: Vec2,
-    pub use_pixel_perfect_smoothing: bool,
-
-    pub drag_margin_left: f32,
-    pub drag_margin_top: f32,
-    pub drag_margin_right: f32,
-    pub drag_margin_bottom: f32,
-
-    pub screenshake_offset: Vec2,
-    pub screenshakers: Vec<ModulatorScreenShake>,
-}
-
-impl GameCamera {
-    pub fn new(pos: Vec2, canvas_width: u32, canvas_height: u32, is_centered: bool) -> GameCamera {
-        let cam = Camera::new(
-            pos,
-            1.0,
-            canvas_width,
-            canvas_height,
-            DEFAULT_WORLD_ZNEAR,
-            DEFAULT_WORLD_ZFAR,
-            is_centered,
-        );
-
-        GameCamera {
-            cam,
-            pos,
-            screenshake_offset: Vec2::zero(),
-            screenshakers: Vec::new(),
-            pos_target: pos,
-            use_pixel_perfect_smoothing: false,
-
-            drag_margin_left: 0.2,
-            drag_margin_top: 0.1,
-            drag_margin_right: 0.2,
-            drag_margin_bottom: 0.1,
-        }
-    }
-
-    pub fn add_shake(&mut self, shake: ModulatorScreenShake) {
-        self.screenshakers.push(shake);
-    }
-
-    pub fn update(&mut self, deltatime: f32) {
-        self.screenshake_offset = Vec2::zero();
-
-        for shaker in self.screenshakers.iter_mut() {
-            self.screenshake_offset += shaker.update_and_get_value(deltatime);
-        }
-
-        self.screenshakers
-            .retain(|shaker| shaker.timer.is_running());
-
-        self.pos = if self.use_pixel_perfect_smoothing {
-            let mut points_till_target = Vec::new();
-            iterate_line_bresenham(
-                self.pos.pixel_snapped().to_i32(),
-                self.pos_target.pixel_snapped().to_i32(),
-                false,
-                &mut |x, y| points_till_target.push(Vec2::new(x as f32, y as f32)),
-            );
-
-            let point_count = points_till_target.len();
-            let skip_count = if point_count <= 1 {
-                0
-            } else if point_count <= 10 {
-                1
-            } else if point_count <= 20 {
-                2
-            } else if point_count <= 40 {
-                3
-            } else if point_count <= 80 {
-                4
-            } else if point_count <= 160 {
-                5
-            } else if point_count <= 320 {
-                6
-            } else {
-                7
-            };
-
-            *points_till_target.iter().skip(skip_count).next().unwrap()
-        } else {
-            Vec2::lerp(self.pos, self.pos_target, 0.05)
-        };
-    }
-
-    pub fn set_pos(&mut self, pos: Vec2) {
-        self.pos = pos;
-        self.pos_target = pos;
-    }
-
-    pub fn set_target_pos(&mut self, target_pos: Vec2, use_pixel_perfect_smoothing: bool) {
-        self.use_pixel_perfect_smoothing = use_pixel_perfect_smoothing;
-        self.pos_target = target_pos;
-    }
-
-    /// Zooms the camera to or away from a given world point.
-    ///
-    /// new_zoom_level > old_zoom_level -> magnify
-    /// new_zoom_level < old_zoom_level -> minify
-    #[inline]
-    pub fn zoom_to_world_point(&mut self, worldpoint: Worldpoint, new_zoom_level: f32) {
-        let old_zoom_level = self.cam.zoom_level;
-        self.cam.zoom_level = new_zoom_level;
-        self.cam.dim_frustum = self.cam.dim_canvas / new_zoom_level;
-        self.pos = (self.pos - worldpoint) * (old_zoom_level / new_zoom_level) + worldpoint;
-        self.pos_target = self.pos;
-    }
-
-    /// Pans the camera using cursor movement distance on the canvas
-    #[inline]
-    pub fn pan(&mut self, canvas_move_distance: Canvasvec) {
-        self.pos -= canvas_move_distance / self.cam.zoom_level;
-        self.pos_target = self.pos;
-    }
-
-    #[inline]
-    pub fn center(&mut self) -> Worldpoint {
-        self.sync_pos_internal();
-        self.cam.center()
-    }
-
-    /// Returns a project-view-matrix that can transform vertices into camera-view-space
-    pub fn proj_view_matrix(&mut self) -> Mat4 {
-        self.sync_pos_internal();
-        self.cam.proj_view_matrix()
-    }
-
-    #[inline]
-    pub fn bounds_pixelsnapped(&mut self) -> Rect {
-        self.sync_pos_internal();
-        self.cam.bounds_pixelsnapped()
-    }
-
-    #[inline]
-    pub fn bounds(&mut self) -> Rect {
-        self.sync_pos_internal();
-        self.cam.bounds()
-    }
-
-    #[inline]
-    fn sync_pos_internal(&mut self) {
-        self.cam.set_pos(self.pos + self.screenshake_offset);
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Camera shake
-//
-// Based on https://jonny.morrill.me/en/blog/gamedev-how-to-implement-a-camera-shake-effect/
-//
-
-#[derive(Clone)]
-pub struct ModulatorScreenShake {
-    pub amplitude: f32,
-    pub frequency: f32,
-    pub samples: Vec<Vec2>,
-    pub timer: TimerSimple,
-}
-
-impl ModulatorScreenShake {
-    pub fn new(
-        random: &mut Random,
-        amplitude: f32,
-        duration: f32,
-        frequency: f32,
-    ) -> ModulatorScreenShake {
-        let samplecount = ceili(duration * frequency) as usize;
-        let samples: Vec<Vec2> = (0..samplecount)
-            .map(|_sample_index| amplitude * random.vec2_in_unit_rect())
-            .collect();
-
-        ModulatorScreenShake {
-            amplitude,
-            frequency,
-            samples,
-            timer: TimerSimple::new_started(duration),
-        }
-    }
-
-    pub fn update_and_get_value(&mut self, deltatime: f32) -> Vec2 {
-        self.timer.update(deltatime);
-        let percentage = self.timer.completion_ratio();
-
-        let last_sample_index = self.samples.len() - 1;
-        let sample_index = floori(last_sample_index as f32 * percentage) as usize;
-        let sample_index_next = std::cmp::min(last_sample_index, sample_index + 1);
-
-        let sample = self.samples[sample_index];
-        let sample_next = self.samples[sample_index_next];
-
-        let decay = 1.0 - percentage;
-
-        decay * Vec2::lerp(sample, sample_next, percentage)
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Cursors
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct CursorCoords {
-    pub pos_screen: Canvaspoint,
-    pub pos_canvas: Canvaspoint,
-    pub pos_world: Worldpoint,
-
-    pub delta_screen: Canvasvec,
-    pub delta_canvas: Canvasvec,
-    pub delta_world: Worldvec,
-}
-
-impl CursorCoords {
-    fn new(
-        camera: &Camera,
-        screen_width: u32,
-        screen_height: u32,
-        canvas_width: u32,
-        canvas_height: u32,
-        screen_cursor_pos_x: i32,
-        screen_cursor_pos_y: i32,
-        screen_cursor_delta_x: i32,
-        screen_cursor_delta_y: i32,
-    ) -> CursorCoords {
-        let screen_cursor_pos_previous_x = screen_cursor_pos_x - screen_cursor_delta_x;
-        let screen_cursor_pos_previous_y = screen_cursor_pos_y - screen_cursor_delta_y;
-
-        let canvas_pos = screen_point_to_canvas_point(
-            screen_cursor_pos_x,
-            screen_cursor_pos_y,
-            screen_width,
-            screen_height,
-            canvas_width,
-            canvas_height,
-        );
-        let canvas_pos_previous = screen_point_to_canvas_point(
-            screen_cursor_pos_previous_x,
-            screen_cursor_pos_previous_y,
-            screen_width,
-            screen_height,
-            canvas_width,
-            canvas_height,
-        );
-
-        // NOTE: We don't transform the screen cursor delta directly because that leads to rounding
-        //       errors that can accumulate. For example if we have a small canvas and big screen we can
-        //       move the cursor slowly such that the delta keeps being (0,0) but the canvas position
-        //       changes
-        let canvas_delta = canvas_pos - canvas_pos_previous;
-
-        CursorCoords {
-            pos_screen: Vec2::new(screen_cursor_pos_x as f32, screen_cursor_pos_y as f32),
-            pos_canvas: Vec2::from(canvas_pos),
-            pos_world: camera.canvaspoint_to_worldpoint(Vec2::from(canvas_pos)),
-
-            delta_screen: Vec2::new(screen_cursor_delta_x as f32, screen_cursor_delta_y as f32),
-            delta_canvas: Vec2::from(canvas_delta),
-            delta_world: camera.canvas_vec_to_world_vec(Vec2::from(canvas_delta)),
-        }
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct Cursors {
-    pub mouse: CursorCoords,
-    pub finger_primary: Option<CursorCoords>,
-    pub finger_secondary: Option<CursorCoords>,
-}
-
-impl Cursors {
-    pub fn new(
-        camera: &Camera,
-        mouse: &MouseState,
-        touch: &TouchState,
-        screen_width: u32,
-        screen_height: u32,
-        canvas_width: u32,
-        canvas_height: u32,
-    ) -> Cursors {
-        let mouse = CursorCoords::new(
-            camera,
-            screen_width,
-            screen_height,
-            canvas_width,
-            canvas_height,
-            mouse.pos_x,
-            mouse.pos_y,
-            mouse.delta_x,
-            mouse.delta_y,
-        );
-        let finger_primary = touch.fingers.get(&0).map(|finger| {
-            CursorCoords::new(
-                camera,
-                screen_width,
-                screen_height,
-                canvas_width,
-                canvas_height,
-                finger.pos_x,
-                finger.pos_y,
-                finger.delta_x,
-                finger.delta_y,
-            )
-        });
-        let finger_secondary = touch.fingers.get(&1).map(|finger| {
-            CursorCoords::new(
-                camera,
-                screen_width,
-                screen_height,
-                canvas_width,
-                canvas_height,
-                finger.pos_x,
-                finger.pos_y,
-                finger.delta_x,
-                finger.delta_y,
-            )
-        });
-
-        Cursors {
-            mouse,
-            finger_primary,
-            finger_secondary,
-        }
-    }
+    let app_context = AppTicker::<GameStateType>::new();
+    run_main(app_context);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1087,1367 +797,88 @@ pub fn game_handle_system_keys(keyboard: &KeyboardState, out_systemcommands: &mu
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Gate
+// Live looped input playback and recording
 
-pub struct Gate {
-    pub is_open: bool,
+#[derive(Default)]
+struct InputRecorder<AppEventHandlerType: AppEventHandler> {
+    app: Option<AppEventHandlerType>,
+
+    is_recording: bool,
+    is_playing_back: bool,
+    queue_playback: VecDeque<InputState>,
+    queue_recording: VecDeque<InputState>,
 }
 
-impl Gate {
-    pub fn new_opened() -> Gate {
-        Gate { is_open: true }
-    }
-
-    pub fn new_closed() -> Gate {
-        Gate { is_open: false }
-    }
-
-    pub fn open(&mut self) -> bool {
-        let was_opened = self.is_open;
-        self.is_open = true;
-        was_opened
-    }
-
-    pub fn close(&mut self) -> bool {
-        let was_opened = self.is_open;
-        self.is_open = false;
-        was_opened
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Simple timer
-
-#[derive(Debug, Clone, Copy)]
-pub struct TimerSimple {
-    pub time_cur: f32,
-    pub time_end: f32,
-}
-
-impl Default for TimerSimple {
-    fn default() -> Self {
-        TimerSimple::new_started(1.0)
-    }
-}
-
-impl TimerSimple {
-    pub fn new_started(end_time: f32) -> TimerSimple {
-        TimerSimple {
-            time_cur: 0.0,
-            time_end: end_time,
+impl<AppEventHandlerType: AppEventHandler> InputRecorder<AppEventHandlerType> {
+    fn new() -> InputRecorder<AppEventHandlerType> {
+        InputRecorder {
+            app: None,
+            is_recording: false,
+            is_playing_back: false,
+            queue_playback: VecDeque::new(),
+            queue_recording: VecDeque::new(),
         }
     }
 
-    pub fn new_stopped(end_time: f32) -> TimerSimple {
-        TimerSimple {
-            time_cur: end_time,
-            time_end: end_time,
-        }
+    fn start_recording(&mut self, app_context: &AppEventHandlerType) {
+        assert!(!self.is_recording);
+        assert!(!self.is_playing_back);
+
+        self.is_recording = true;
+        self.queue_recording.clear();
+        self.app = Some(app_context.clone());
     }
 
-    pub fn update(&mut self, deltatime: f32) {
-        self.time_cur = f32::min(self.time_cur + deltatime, self.time_end);
+    fn stop_recording(&mut self) {
+        assert!(self.is_recording);
+        assert!(!self.is_playing_back);
+
+        self.is_recording = false;
     }
 
-    pub fn update_and_check_if_triggered(&mut self, deltatime: f32) -> bool {
-        let time_previous = self.time_cur;
-        self.time_cur = f32::min(self.time_cur + deltatime, self.time_end);
+    fn start_playback(&mut self, app_context: &mut AppEventHandlerType) {
+        assert!(!self.is_recording);
+        assert!(!self.is_playing_back);
 
-        self.time_cur == self.time_end && time_previous != self.time_end
+        self.is_playing_back = true;
+        self.queue_playback = self.queue_recording.clone();
+        *app_context = self
+            .app
+            .as_ref()
+            .expect("Recording is missing app context")
+            .clone();
+
+        assert!(!self.queue_playback.is_empty());
     }
 
-    pub fn is_running(&self) -> bool {
-        self.time_cur < self.time_end
+    fn stop_playback(&mut self) {
+        assert!(!self.is_recording);
+        assert!(self.is_playing_back);
+
+        self.is_playing_back = false;
+        self.queue_playback.clear();
     }
 
-    pub fn is_finished(&self) -> bool {
-        !self.is_running()
+    fn record_input(&mut self, input: &InputState) {
+        assert!(self.is_recording);
+        assert!(!self.is_playing_back);
+
+        self.queue_recording.push_back(input.clone());
     }
 
-    pub fn completion_ratio(&self) -> f32 {
-        self.time_cur / self.time_end
-    }
-
-    pub fn stop(&mut self) {
-        self.time_cur = self.time_end;
-    }
-
-    pub fn restart(&mut self) {
-        self.time_cur = 0.0;
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Timer
-
-#[derive(Debug, Clone, Copy)]
-pub enum Timerstate {
-    Running {
-        completion_ratio: f32,
-    },
-    Triggered {
-        trigger_count: u64,
-        remaining_delta: f32,
-    },
-    Paused,
-    Done,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Timer {
-    time_cur: f32,
-    time_end: f32,
-    trigger_count: u64,
-    trigger_count_max: u64,
-    pub is_paused: bool,
-}
-
-impl Timer {
-    pub fn new_started(trigger_time: f32) -> Timer {
-        Timer {
-            time_cur: 0.0,
-            time_end: trigger_time,
-            trigger_count: 0,
-            trigger_count_max: 1,
-            is_paused: false,
-        }
-    }
-
-    pub fn new_stopped(trigger_time: f32) -> Timer {
-        Timer {
-            time_cur: trigger_time,
-            time_end: trigger_time,
-            trigger_count: 1,
-            trigger_count_max: 1,
-            is_paused: false,
-        }
-    }
-
-    pub fn new_repeating_started(trigger_time: f32) -> Timer {
-        Timer {
-            time_cur: 0.0,
-            time_end: trigger_time,
-            trigger_count: 0,
-            trigger_count_max: std::u64::MAX,
-            is_paused: false,
-        }
-    }
-
-    pub fn new_repeating_stopped(trigger_time: f32) -> Timer {
-        Timer {
-            time_cur: trigger_time,
-            time_end: trigger_time,
-            trigger_count: std::u64::MAX,
-            trigger_count_max: std::u64::MAX,
-            is_paused: false,
-        }
-    }
-
-    pub fn is_finished(&self) -> bool {
-        self.trigger_count == self.trigger_count_max
-    }
-
-    pub fn is_running(&self) -> bool {
-        !self.is_finished()
-    }
-
-    pub fn completion_ratio(&self) -> f32 {
-        (self.time_cur % self.time_end) / self.time_end
-    }
-
-    pub fn pause(&mut self) {
-        self.is_paused = true;
-    }
-
-    pub fn resume(&mut self) {
-        self.is_paused = true;
-    }
-
-    pub fn stop(&mut self) {
-        self.time_cur = self.time_end;
-        self.trigger_count = self.trigger_count_max;
-    }
-
-    pub fn restart(&mut self) {
-        self.time_cur = 0.0;
-        self.trigger_count = 0;
-    }
-
-    pub fn update(&mut self, deltatime: f32) -> Timerstate {
-        if self.trigger_count >= self.trigger_count_max {
-            return Timerstate::Done;
-        }
-        if self.is_paused {
-            return Timerstate::Paused;
-        }
-
-        self.time_cur += deltatime;
-
-        if self.time_cur > self.time_end {
-            self.time_cur -= self.time_end;
-            self.trigger_count += 1;
-
-            let remaining_delta = if self.trigger_count == self.trigger_count_max {
-                // NOTE: This was the last possible trigger event so we also return any
-                //       remaining time we accumulated and set the current time to its max so that
-                //       the completion ratio is still correct.
-                let remainder = self.time_cur;
-                self.time_cur = self.time_end;
-                remainder
-            } else {
-                0.0
-            };
-
-            return Timerstate::Triggered {
-                trigger_count: self.trigger_count,
-                remaining_delta,
-            };
-        }
-
-        Timerstate::Running {
-            completion_ratio: self.completion_ratio(),
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Special timers
-
-#[derive(Debug, Clone, Copy)]
-pub struct TriggerRepeating {
-    timer: Timer,
-    triggertime_initial: f32,
-    triggertime_repeating: f32,
-}
-
-impl TriggerRepeating {
-    #[inline]
-    pub fn new(trigger_time: f32) -> TriggerRepeating {
-        TriggerRepeating {
-            timer: Timer::new_repeating_started(trigger_time),
-            triggertime_initial: trigger_time,
-            triggertime_repeating: trigger_time,
-        }
-    }
-
-    #[inline]
-    pub fn new_with_distinct_triggertimes(
-        trigger_time_initial: f32,
-        trigger_time_repeat: f32,
-    ) -> TriggerRepeating {
-        TriggerRepeating {
-            timer: Timer::new_repeating_started(trigger_time_initial),
-            triggertime_initial: trigger_time_initial,
-            triggertime_repeating: trigger_time_repeat,
-        }
-    }
-
-    #[inline]
-    pub fn reset(&mut self) {
-        self.timer = Timer::new_repeating_started(self.triggertime_initial);
-    }
-
-    #[inline]
-    pub fn completion_ratio(&self) -> f32 {
-        self.timer.completion_ratio()
-    }
-
-    /// Returns true if actually triggered
-    #[inline]
-    pub fn update_and_check(&mut self, deltatime: f32) -> bool {
-        match self.timer.update(deltatime) {
-            Timerstate::Triggered { trigger_count, .. } => {
-                if trigger_count == 1 {
-                    self.timer.time_end = self.triggertime_repeating;
-                }
-                true
-            }
-            _ => false,
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct TimerStateSwitchBinary {
-    pub repeat_timer: TriggerRepeating,
-    pub active: bool,
-}
-
-impl TimerStateSwitchBinary {
-    pub fn new(start_active: bool, start_time: f32, phase_duration: f32) -> TimerStateSwitchBinary {
-        TimerStateSwitchBinary {
-            repeat_timer: TriggerRepeating::new_with_distinct_triggertimes(
-                start_time,
-                phase_duration,
-            ),
-            active: start_active,
-        }
-    }
-    pub fn update_and_check(&mut self, deltatime: f32) -> bool {
-        if self.repeat_timer.update_and_check(deltatime) {
-            self.active = !self.active;
-        }
-        self.active
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Choreographer
-
-#[derive(Debug, Clone)]
-pub struct Choreographer {
-    current_stage: usize,
-    stages: Vec<Timer>,
-    specials: HashMap<String, usize>,
-    pub time_accumulator: f32,
-}
-
-impl Choreographer {
-    pub fn new() -> Choreographer {
-        Choreographer {
-            current_stage: 0,
-            stages: Vec::new(),
-            specials: HashMap::new(),
-            time_accumulator: 0.0,
-        }
-    }
-
-    pub fn restart(&mut self) {
-        self.current_stage = 0;
-        self.stages.clear();
-        self.time_accumulator = 0.0;
-    }
-
-    pub fn update(&mut self, deltatime: f32) -> &mut Self {
-        self.current_stage = 0;
-        self.time_accumulator += deltatime;
-        self
-    }
-
-    pub fn get_previous_triggercount(&self) -> u64 {
-        assert!(self.current_stage > 0);
-        self.stages[self.current_stage - 1].trigger_count
-    }
-
-    /// NOTE: This only resets the last `current_time` and `trigger_time` but NOT
-    ///       the `trigger_count`
-    pub fn reset_previous(&mut self, new_delay: f32) {
-        assert!(self.current_stage > 0);
-        self.stages[self.current_stage - 1].time_cur = 0.0;
-        self.stages[self.current_stage - 1].time_end = new_delay;
-    }
-
-    pub fn wait(&mut self, delay: f32) -> bool {
-        let current_stage = self.current_stage;
-        self.current_stage += 1;
-
-        if self.stages.len() <= current_stage {
-            self.stages.push(Timer::new_started(delay));
-        }
-        let timer = &mut self.stages[current_stage];
-
-        match timer.update(self.time_accumulator) {
-            Timerstate::Triggered {
-                remaining_delta, ..
-            } => {
-                self.time_accumulator = remaining_delta;
-                true
-            }
-            Timerstate::Done => true,
-            Timerstate::Running { .. } => {
-                self.time_accumulator = 0.0;
-                false
-            }
-            Timerstate::Paused => unreachable!(),
-        }
-    }
-
-    pub fn tween(&mut self, tween_time: f32) -> (f32, bool) {
-        let current_stage = self.current_stage;
-        self.current_stage += 1;
-
-        if self.stages.len() <= current_stage {
-            self.stages.push(Timer::new_started(tween_time));
-        }
-        let timer = &mut self.stages[current_stage];
-
-        match timer.update(self.time_accumulator) {
-            Timerstate::Triggered {
-                remaining_delta, ..
-            } => {
-                self.time_accumulator = remaining_delta;
-                (1.0, true)
-            }
-            Timerstate::Done => (1.0, true),
-            Timerstate::Running { completion_ratio } => {
-                self.time_accumulator = 0.0;
-                (completion_ratio, false)
-            }
-            Timerstate::Paused => unreachable!(),
-        }
-    }
-
-    pub fn once(&mut self) -> bool {
-        let current_stage = self.current_stage;
-        self.current_stage += 1;
-
-        if self.stages.len() <= current_stage {
-            self.stages.push(Timer::new_stopped(1.0));
-            return true;
-        }
-
-        false
-    }
-
-    pub fn hitcount(&mut self) -> u64 {
-        let current_stage = self.current_stage;
-        self.current_stage += 1;
-
-        if self.stages.len() <= current_stage {
-            self.stages.push(Timer::new_repeating_started(0.0));
-        }
-
-        let timer = &mut self.stages[current_stage];
-        timer.trigger_count
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Fader
-
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum Fadestate {
-    FadedIn,
-    FadedOut,
-    FadingIn,
-    FadingOut,
-}
-
-#[derive(Clone)]
-pub struct Fader {
-    pub timer: TimerSimple,
-    pub state: Fadestate,
-}
-
-impl Fader {
-    pub fn new_faded_out() -> Fader {
-        Fader {
-            timer: TimerSimple::new_stopped(1.0),
-            state: Fadestate::FadedOut,
-        }
-    }
-    pub fn new_faded_in() -> Fader {
-        Fader {
-            timer: TimerSimple::new_stopped(1.0),
-            state: Fadestate::FadedIn,
-        }
-    }
-
-    pub fn start_fading_out(&mut self, fade_out_time: f32) {
-        self.state = Fadestate::FadingOut;
-        self.timer = TimerSimple::new_started(fade_out_time);
-    }
-
-    pub fn start_fading_in(&mut self, fade_in_time: f32) {
-        self.state = Fadestate::FadingIn;
-        self.timer = TimerSimple::new_started(fade_in_time);
-    }
-
-    pub fn opacity(&self) -> f32 {
-        match self.state {
-            Fadestate::FadedIn => 1.0,
-            Fadestate::FadedOut => 0.0,
-            Fadestate::FadingIn => self.timer.completion_ratio(),
-            Fadestate::FadingOut => 1.0 - self.timer.completion_ratio(),
-        }
-    }
-
-    pub fn update(&mut self, deltatime: f32) {
-        if self.state == Fadestate::FadedIn || self.state == Fadestate::FadedOut {
-            return;
-        }
-
-        self.timer.update(deltatime);
-
-        if self.timer.is_finished() {
-            if self.state == Fadestate::FadingIn {
-                self.state = Fadestate::FadedIn;
-            } else {
-                self.state = Fadestate::FadedOut;
-            }
-        }
-    }
-
-    pub fn is_fading(self) -> bool {
-        self.state == Fadestate::FadingIn || self.state == Fadestate::FadingOut
-    }
-
-    pub fn is_finished(self) -> bool {
-        self.state == Fadestate::FadedIn || self.state == Fadestate::FadedOut
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// ScreenFader
-
-#[derive(Clone)]
-pub struct CanvasFader {
-    pub color_start: Color,
-    pub color_end: Color,
-    pub timer: TimerSimple,
-}
-
-impl CanvasFader {
-    pub fn new(color_start: Color, color_end: Color, fade_time_seconds: f32) -> CanvasFader {
-        CanvasFader {
-            color_start,
-            color_end,
-            timer: TimerSimple::new_started(fade_time_seconds),
-        }
-    }
-
-    pub fn completion_ratio(&self) -> f32 {
-        self.timer.completion_ratio()
-    }
-
-    pub fn update_and_draw(
-        &mut self,
-        draw: &mut Drawstate,
-        deltatime: f32,
-        canvas_width: u32,
-        canvas_height: u32,
-    ) {
-        self.timer.update(deltatime);
-
-        let percent = self.timer.completion_ratio();
-        let color = Color::mix(self.color_start, self.color_end, percent);
-        if color.a > 0.0 {
-            draw.draw_rect(
-                Rect::from_width_height(canvas_width as f32, canvas_height as f32),
-                true,
-                Drawparams::new(
-                    DEPTH_SCREEN_FADER,
-                    color,
-                    ADDITIVITY_NONE,
-                    Drawspace::Canvas,
-                ),
-            );
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Splashscreen
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum LoadingScreenState {
-    Idle,
-    StartedFadingIn,
-    IsFadingIn,
-    FinishedFadingIn,
-    Sustain,
-    StartedFadingOut,
-    IsFadingOut,
-    FinishedFadingOut,
-    IsDone,
-}
-
-#[derive(Clone)]
-pub struct LoadingScreen {
-    time_fade_in: f32,
-    time_fade_out: f32,
-    color_progressbar: Color,
-
-    fader: CanvasFader,
-    state: LoadingScreenState,
-}
-
-impl LoadingScreen {
-    pub fn new(time_fade_in: f32, time_fade_out: f32, color_progressbar: Color) -> LoadingScreen {
-        LoadingScreen {
-            time_fade_in,
-            time_fade_out,
-            color_progressbar,
-            fader: CanvasFader::new(Color::black(), Color::white(), time_fade_in),
-            state: LoadingScreenState::StartedFadingIn,
-        }
-    }
-
-    pub fn start_fading_in(&mut self) {
-        self.state = LoadingScreenState::StartedFadingIn;
-        self.fader = CanvasFader::new(Color::black(), Color::white(), self.time_fade_in);
-    }
-
-    pub fn start_fading_out(&mut self) {
-        self.state = LoadingScreenState::StartedFadingOut;
-        self.fader = CanvasFader::new(Color::white(), Color::transparent(), self.time_fade_out);
-    }
-
-    pub fn is_faded_in(&self) -> bool {
-        self.state == LoadingScreenState::Sustain
-    }
-
-    pub fn is_faded_out(&self) -> bool {
-        self.state == LoadingScreenState::IsDone
-    }
-
-    pub fn update_and_draw(
-        &mut self,
-        draw: &mut Drawstate,
-        deltatime: f32,
-        canvas_width: u32,
-        canvas_height: u32,
-        sprite: &Sprite,
-        progress_percentage: Option<f32>,
-    ) {
-        if self.state == LoadingScreenState::IsDone || self.state == LoadingScreenState::Idle {
-            return;
-        }
-
-        self.fader
-            .update_and_draw(draw, deltatime, canvas_width, canvas_height);
-
-        let opacity = if self.state <= LoadingScreenState::Sustain {
-            self.fader.completion_ratio()
+    fn playback_input(&mut self, app_context: &mut AppEventHandlerType) -> InputState {
+        assert!(!self.is_recording);
+        assert!(self.is_playing_back);
+
+        if let Some(input) = self.queue_playback.pop_front() {
+            input
         } else {
-            1.0 - self.fader.completion_ratio()
-        };
+            // We hit the end of the stream -> go back to the beginning
+            self.stop_playback();
+            self.start_playback(app_context);
 
-        let (splash_rect, letterbox_rects) = letterbox_rects_create(
-            sprite.untrimmed_dimensions.x as i32,
-            sprite.untrimmed_dimensions.y as i32,
-            canvas_width as i32,
-            canvas_height as i32,
-        );
-        draw.draw_sprite(
-            &sprite,
-            Transform::from_pos(Vec2::new(
-                splash_rect.left() as f32,
-                splash_rect.top() as f32,
-            )),
-            false,
-            false,
-            Drawparams::new(
-                DEPTH_SPLASH,
-                opacity * Color::white(),
-                ADDITIVITY_NONE,
-                Drawspace::Canvas,
-            ),
-        );
-
-        for letterbox_rect in &letterbox_rects {
-            draw.draw_rect(
-                Rect::from(*letterbox_rect),
-                true,
-                Drawparams::new(
-                    DEPTH_SCREEN_FADER,
-                    opacity * Color::white(),
-                    ADDITIVITY_NONE,
-                    Drawspace::Canvas,
-                ),
-            );
-        }
-
-        // Draw progress bar
-        if let Some(progress_percentage) = progress_percentage {
-            let progress_bar_height = (canvas_height as f32 / 25.0).round();
-            draw.draw_rect(
-                Rect::from_bounds_left_top_right_bottom(
-                    0.0,
-                    canvas_height as f32 - progress_bar_height,
-                    canvas_width as f32 * progress_percentage,
-                    canvas_height as f32,
-                ),
-                true,
-                Drawparams::new(
-                    DEPTH_SCREEN_FADER,
-                    opacity * self.color_progressbar,
-                    ADDITIVITY_NONE,
-                    Drawspace::Canvas,
-                ),
-            );
-        }
-
-        match self.state {
-            LoadingScreenState::Idle => {}
-            LoadingScreenState::StartedFadingIn => {
-                self.state = LoadingScreenState::IsFadingIn;
-            }
-            LoadingScreenState::IsFadingIn => {
-                if self.fader.completion_ratio() == 1.0 {
-                    self.state = LoadingScreenState::FinishedFadingIn;
-                }
-            }
-            LoadingScreenState::FinishedFadingIn => {
-                self.state = LoadingScreenState::Sustain;
-            }
-            LoadingScreenState::Sustain => {}
-            LoadingScreenState::StartedFadingOut => {
-                self.state = LoadingScreenState::IsFadingOut;
-            }
-            LoadingScreenState::IsFadingOut => {
-                if self.fader.completion_ratio() == 1.0 {
-                    self.state = LoadingScreenState::FinishedFadingOut;
-                }
-            }
-            LoadingScreenState::FinishedFadingOut => {
-                self.state = LoadingScreenState::IsDone;
-            }
-            LoadingScreenState::IsDone => {}
+            // As we could not read the input before we try again
+            self.queue_playback.pop_front().unwrap()
         }
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Animations
-
-#[derive(Clone, Default, Serialize, Deserialize)]
-pub struct AnimationFrame<FrameType: Clone> {
-    pub duration_seconds: f32,
-    #[serde(bound(deserialize = "FrameType: serde::de::DeserializeOwned"))]
-    pub value: FrameType,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Animation<FrameType: Clone> {
-    pub name: String,
-    #[serde(bound(deserialize = "FrameType: serde::de::DeserializeOwned"))]
-    pub frames: Vec<AnimationFrame<FrameType>>,
-    pub length: f32,
-}
-
-impl<FrameType: Clone> Animation<FrameType> {
-    pub fn new_empty(name: String) -> Animation<FrameType> {
-        Animation {
-            name,
-            frames: Vec::with_capacity(32),
-            length: 0.0,
-        }
-    }
-
-    pub fn add_frame(&mut self, duration_seconds: f32, value: FrameType) {
-        assert!(duration_seconds > 0.0);
-
-        self.length += duration_seconds;
-        self.frames.push(AnimationFrame {
-            duration_seconds,
-            value,
-        });
-    }
-
-    fn frame_index_and_percent_at_time(&self, time: f32, wrap_around: bool) -> (usize, f32) {
-        assert!(!self.frames.is_empty());
-
-        let time = if wrap_around {
-            wrap_value_in_range(time, self.length)
-        } else {
-            clampf(time, 0.0, self.length)
-        };
-
-        let mut frame_start = 0.0;
-
-        for (index, frame) in self.frames.iter().enumerate() {
-            let frame_end = frame_start + frame.duration_seconds;
-
-            if time < frame_end {
-                let percent = (time - frame_start) / frame.duration_seconds;
-                return (index, percent);
-            }
-
-            frame_start = frame_end;
-        }
-
-        (self.frames.len() - 1, 1.0)
-    }
-
-    pub fn frame_at_time(&self, time: f32, wrap_around: bool) -> &FrameType {
-        let (index, _percent) = self.frame_index_and_percent_at_time(time, wrap_around);
-        &self.frames[index].value
-    }
-
-    pub fn frame_at_percentage(&self, percentage: f32) -> &FrameType {
-        debug_assert!(0.0 <= percentage && percentage <= 1.0);
-        let time = percentage * self.length;
-        self.frame_at_time(time, false)
-    }
-}
-
-impl Animation<f32> {
-    pub fn value_at_time_interpolated_linear(&self, time: f32, wrap_around: bool) -> f32 {
-        let (frame_index, frametime_percent) =
-            self.frame_index_and_percent_at_time(time, wrap_around);
-        let next_frame_index = if wrap_around {
-            (frame_index + 1) % self.frames.len()
-        } else {
-            usize::min(frame_index + 1, self.frames.len() - 1)
-        };
-
-        let value_start = self.frames[frame_index].value;
-        let value_end = self.frames[next_frame_index].value;
-
-        lerp(value_start, value_end, frametime_percent)
-    }
-}
-
-#[derive(Clone)]
-pub struct AnimationPlayer<FrameType: Clone> {
-    pub current_frametime: f32,
-    pub playback_speed: f32,
-    pub looping: bool,
-    pub animation: Animation<FrameType>,
-    pub has_finished: bool,
-}
-
-impl<FrameType: Clone> AnimationPlayer<FrameType> {
-    pub fn new_from_beginning(
-        animation: Animation<FrameType>,
-        playback_speed: f32,
-        looping: bool,
-    ) -> AnimationPlayer<FrameType> {
-        assert!(animation.length > 0.0);
-
-        AnimationPlayer {
-            current_frametime: 0.0,
-            playback_speed,
-            looping,
-            animation,
-            has_finished: false,
-        }
-    }
-
-    pub fn new_from_end(
-        animation: Animation<FrameType>,
-        playback_speed: f32,
-        looping: bool,
-    ) -> AnimationPlayer<FrameType> {
-        let mut result = AnimationPlayer::new_from_beginning(animation, playback_speed, looping);
-        result.restart_from_end();
-        result
-    }
-
-    pub fn restart_from_beginning(&mut self) {
-        self.current_frametime = 0.0;
-        self.has_finished = false;
-    }
-
-    pub fn restart_from_end(&mut self) {
-        self.current_frametime = self.animation.length;
-        self.has_finished = false;
-    }
-
-    pub fn update(&mut self, deltatime: f32) {
-        if self.playback_speed == 0.0 {
-            return;
-        }
-
-        let new_frametime = self.current_frametime + self.playback_speed * deltatime;
-        if self.looping {
-            self.current_frametime = wrap_value_in_range(new_frametime, self.animation.length);
-        } else {
-            self.current_frametime = clampf(new_frametime, 0.0, self.animation.length);
-            if self.current_frametime == self.animation.length && self.playback_speed > 0.0 {
-                self.has_finished = true;
-            }
-            if self.current_frametime == 0.0 && self.playback_speed < 0.0 {
-                self.has_finished = true;
-            }
-        }
-    }
-
-    pub fn frame_at_percentage(&self, percentage: f32) -> &FrameType {
-        self.animation.frame_at_percentage(percentage)
-    }
-
-    pub fn current_frame(&self) -> &FrameType {
-        self.animation
-            .frame_at_time(self.current_frametime, self.looping)
-    }
-}
-
-impl AnimationPlayer<f32> {
-    pub fn value_current_interpolated_linear(&self) -> f32 {
-        self.animation
-            .value_at_time_interpolated_linear(self.current_frametime, self.looping)
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Particles
-
-#[derive(Copy, Clone, Default)]
-pub struct ParticleSystemParams {
-    pub gravity: Vec2,
-    pub vel_start: Vec2,
-    pub vel_max: f32,
-    pub scale_start: f32,
-    pub scale_end: f32,
-    pub spawn_radius: f32,
-    pub lifetime: f32,
-    pub additivity_start: f32,
-    pub additivity_end: f32,
-    pub color_start: Color,
-    pub color_end: Color,
-}
-
-#[derive(Clone)]
-pub struct ParticleSystem {
-    count_max: usize,
-    root_pos: Vec2,
-
-    pos: Vec<Vec2>,
-    vel: Vec<Vec2>,
-    age: Vec<f32>,
-
-    pub params: ParticleSystemParams,
-
-    time_since_last_spawn: f32,
-}
-
-impl ParticleSystem {
-    pub fn new(params: ParticleSystemParams, count_max: usize, root_pos: Vec2) -> ParticleSystem {
-        ParticleSystem {
-            count_max,
-            root_pos,
-            pos: Vec::with_capacity(count_max),
-            vel: Vec::with_capacity(count_max),
-            age: Vec::with_capacity(count_max),
-            params,
-            time_since_last_spawn: 0.0,
-        }
-    }
-
-    pub fn set_count_max(&mut self, count_max: usize) {
-        self.count_max = count_max;
-    }
-
-    pub fn move_to(&mut self, pos: Vec2) {
-        self.root_pos = pos;
-    }
-
-    pub fn update_and_draw(
-        &mut self,
-        draw: &mut Drawstate,
-        random: &mut Random,
-        deltatime: f32,
-        depth: f32,
-        drawspace: Drawspace,
-    ) {
-        // Update
-        for index in 0..self.pos.len() {
-            linear_motion_integrate_v2(
-                &mut self.pos[index],
-                &mut self.vel[index],
-                self.params.gravity,
-                self.params.vel_max,
-                deltatime,
-            );
-        }
-
-        // Draw
-        for index in 0..self.pos.len() {
-            let age_percentage = self.age[index] / self.params.lifetime;
-            let scale = lerp(
-                self.params.scale_start,
-                self.params.scale_end,
-                age_percentage,
-            );
-            let additivity = lerp(
-                self.params.additivity_start,
-                self.params.additivity_end,
-                age_percentage,
-            );
-            let color = Color::mix(
-                self.params.color_start,
-                self.params.color_end,
-                age_percentage,
-            );
-            draw.draw_rect_transformed(
-                Vec2::ones(),
-                true,
-                true,
-                Vec2::zero(),
-                Transform::from_pos_scale_uniform(self.pos[index].pixel_snapped(), scale),
-                Drawparams::new(depth, color, additivity, drawspace),
-            );
-        }
-
-        // Remove old
-        for index in (0..self.pos.len()).rev() {
-            self.age[index] += deltatime;
-            if self.age[index] > self.params.lifetime {
-                self.pos.swap_remove(index);
-                self.vel.swap_remove(index);
-                self.age.swap_remove(index);
-            }
-        }
-
-        self.time_since_last_spawn += deltatime;
-
-        // Spawn new
-        if self.count_max > 0 {
-            let time_between_spawns = self.params.lifetime / self.count_max as f32;
-            if self.pos.len() < self.count_max && self.time_since_last_spawn >= time_between_spawns
-            {
-                self.time_since_last_spawn -= time_between_spawns;
-                let pos = self.root_pos + self.params.spawn_radius * random.vec2_in_unit_disk();
-                let vel = self.params.vel_start;
-
-                self.pos.push(pos);
-                self.vel.push(vel);
-                self.age.push(0.0);
-            }
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Afterimage
-
-#[derive(Clone)]
-pub struct Afterimage {
-    count_max: usize,
-
-    lifetime: f32,
-    additivity_modulate_start: f32,
-    additivity_modulate_end: f32,
-    color_modulate_start: Color,
-    color_modulate_end: Color,
-
-    sprite: Vec<Sprite>,
-    age: Vec<f32>,
-    xform: Vec<Transform>,
-    flip_horizontally: Vec<bool>,
-    flip_vertically: Vec<bool>,
-    color_modulate: Vec<Color>,
-    additivity: Vec<f32>,
-
-    time_since_last_spawn: f32,
-}
-
-impl Afterimage {
-    pub fn new(
-        lifetime: f32,
-        additivity_modulate_start: f32,
-        additivity_modulate_end: f32,
-        color_modulate_start: Color,
-        color_modulate_end: Color,
-        count_max: usize,
-    ) -> Afterimage {
-        Afterimage {
-            count_max,
-
-            lifetime,
-            additivity_modulate_start,
-            additivity_modulate_end,
-            color_modulate_start,
-            color_modulate_end,
-
-            sprite: Vec::with_capacity(count_max),
-            age: Vec::with_capacity(count_max),
-            xform: Vec::with_capacity(count_max),
-            flip_horizontally: Vec::with_capacity(count_max),
-            flip_vertically: Vec::with_capacity(count_max),
-            color_modulate: Vec::with_capacity(count_max),
-            additivity: Vec::with_capacity(count_max),
-
-            time_since_last_spawn: 0.0,
-        }
-    }
-
-    pub fn set_count_max(&mut self, count_max: usize) {
-        self.count_max = count_max;
-    }
-
-    pub fn add_afterimage_image_if_needed(
-        &mut self,
-        deltatime: f32,
-        newimage_sprite: Sprite,
-        newimage_xform: Transform,
-        newimage_flip_horizontally: bool,
-        newimage_flip_vertically: bool,
-        newimage_color_modulate: Color,
-        newimage_additivity: f32,
-    ) {
-        self.time_since_last_spawn += deltatime;
-
-        if self.count_max > 0 {
-            let time_between_spawns = self.lifetime / self.count_max as f32;
-            if self.xform.len() < self.count_max
-                && self.time_since_last_spawn >= time_between_spawns
-            {
-                self.time_since_last_spawn -= time_between_spawns;
-
-                self.sprite.push(newimage_sprite);
-                self.age.push(0.0);
-                self.xform.push(newimage_xform);
-                self.flip_horizontally.push(newimage_flip_horizontally);
-                self.flip_vertically.push(newimage_flip_vertically);
-                self.color_modulate.push(newimage_color_modulate);
-                self.additivity.push(newimage_additivity);
-            }
-        }
-    }
-
-    pub fn update_and_draw(
-        &mut self,
-        draw: &mut Drawstate,
-        deltatime: f32,
-        draw_depth: f32,
-        drawspace: Drawspace,
-    ) {
-        for index in 0..self.sprite.len() {
-            let age_percentage = self.age[index] / self.lifetime;
-            let additivity = lerp(
-                self.additivity_modulate_start,
-                self.additivity_modulate_end,
-                age_percentage,
-            );
-            let color = Color::mix(
-                self.color_modulate_start,
-                self.color_modulate_end,
-                age_percentage,
-            );
-
-            draw.draw_sprite(
-                &self.sprite[index],
-                self.xform[index],
-                self.flip_horizontally[index],
-                self.flip_vertically[index],
-                Drawparams::new(
-                    draw_depth,
-                    color * self.color_modulate[index],
-                    additivity * self.additivity[index],
-                    drawspace,
-                ),
-            );
-        }
-
-        for index in (0..self.xform.len()).rev() {
-            self.age[index] += deltatime;
-            if self.age[index] > self.lifetime {
-                self.sprite.swap_remove(index);
-                self.age.swap_remove(index);
-                self.xform.swap_remove(index);
-                self.flip_horizontally.swap_remove(index);
-                self.flip_vertically.swap_remove(index);
-                self.color_modulate.swap_remove(index);
-                self.additivity.swap_remove(index);
-            }
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Debug drawing
-
-pub fn debug_get_bitmap_for_sprite(assets: &GameAssets, sprite_name: &str) -> Bitmap {
-    let sprite = assets.get_sprite(sprite_name);
-    let textures = assets.get_atlas_textures();
-
-    let source_bitmap = &textures[sprite.atlas_texture_index as usize].borrow();
-
-    let dim = Vec2i::from_vec2_rounded(sprite.trimmed_rect.dim);
-    let texture_coordinates = AAQuad::from_rect(
-        sprite
-            .trimmed_uvs
-            .to_rect()
-            .scaled_from_origin(Vec2::filled(source_bitmap.width as f32)),
-    );
-
-    let source_rect = Recti::from_rect_rounded(texture_coordinates.to_rect());
-
-    let mut result_bitmap = Bitmap::new(dim.x as u32, dim.y as u32);
-    let result_rect = result_bitmap.rect();
-
-    Bitmap::copy_region(
-        source_bitmap,
-        source_rect,
-        &mut result_bitmap,
-        result_rect,
-        None,
-    );
-
-    result_bitmap
-}
-
-#[inline]
-#[cfg(not(target_arch = "wasm32"))]
-pub fn debug_save_sprite_as_png(assets: &GameAssets, sprite_name: &str, filepath: &str) {
-    let sprite_bitmap = debug_get_bitmap_for_sprite(assets, sprite_name);
-    Bitmap::write_to_png_file(&sprite_bitmap, filepath);
-}
-
-#[inline]
-pub fn debug_draw_grid(
-    draw: &mut Drawstate,
-    camera: &Camera,
-    world_grid_size: f32,
-    screen_width: f32,
-    screen_height: f32,
-    line_thickness: i32,
-    color: Color,
-    depth: f32,
-) {
-    assert!(line_thickness > 0);
-
-    let frustum = camera.bounds_pixelsnapped();
-    let top = f32::floor(frustum.top() / world_grid_size) * world_grid_size;
-    let bottom = f32::ceil(frustum.bottom() / world_grid_size) * world_grid_size;
-    let left = f32::floor(frustum.left() / world_grid_size) * world_grid_size;
-    let right = f32::ceil(frustum.right() / world_grid_size) * world_grid_size;
-
-    let mut x = left;
-    while x <= right {
-        let start = Vec2::new(x, top);
-        let end = Vec2::new(x, bottom);
-
-        let start = camera.worldpoint_to_canvaspoint(start);
-        let end = camera.worldpoint_to_canvaspoint(end);
-
-        let start = canvas_point_to_screen_point(
-            start.x,
-            start.y,
-            screen_width as u32,
-            screen_height as u32,
-            camera.dim_canvas.x as u32,
-            camera.dim_canvas.y as u32,
-        );
-        let end = canvas_point_to_screen_point(
-            end.x,
-            end.y,
-            screen_width as u32,
-            screen_height as u32,
-            camera.dim_canvas.x as u32,
-            camera.dim_canvas.y as u32,
-        );
-
-        let rect = Rect::from_bounds_left_top_right_bottom(
-            start.x,
-            start.y,
-            start.x + line_thickness as f32,
-            end.y,
-        );
-        draw.draw_rect(
-            rect,
-            true,
-            Drawparams::new(depth, color, ADDITIVITY_NONE, Drawspace::Screen),
-        );
-
-        x += world_grid_size;
-    }
-    let mut y = top;
-    while y <= bottom {
-        let start = Vec2::new(left, y);
-        let end = Vec2::new(right, y);
-
-        let start = camera.worldpoint_to_canvaspoint(start);
-        let end = camera.worldpoint_to_canvaspoint(end);
-
-        let start = canvas_point_to_screen_point(
-            start.x,
-            start.y,
-            screen_width as u32,
-            screen_height as u32,
-            camera.dim_canvas.x as u32,
-            camera.dim_canvas.y as u32,
-        );
-        let end = canvas_point_to_screen_point(
-            end.x,
-            end.y,
-            screen_width as u32,
-            screen_height as u32,
-            camera.dim_canvas.x as u32,
-            camera.dim_canvas.y as u32,
-        );
-
-        let rect = Rect::from_bounds_left_top_right_bottom(
-            start.x,
-            start.y,
-            end.x,
-            start.y + line_thickness as f32,
-        );
-        draw.draw_rect(
-            rect,
-            true,
-            Drawparams::new(depth, color, ADDITIVITY_NONE, Drawspace::Screen),
-        );
-
-        y += world_grid_size;
-    }
-}
-
-pub fn debug_draw_crosshair(
-    draw: &mut Drawstate,
-    camera: &Camera,
-    pos_world: Vec2,
-    screen_width: f32,
-    screen_height: f32,
-    line_thickness: f32,
-    color: Color,
-
-    depth: f32,
-) {
-    let frustum = camera.bounds_pixelsnapped();
-
-    let start = Vec2::new(frustum.left(), pos_world.y);
-    let end = Vec2::new(frustum.right(), pos_world.y);
-
-    let start = camera.worldpoint_to_canvaspoint(start);
-    let end = camera.worldpoint_to_canvaspoint(end);
-
-    let start = canvas_point_to_screen_point(
-        start.x,
-        start.y,
-        screen_width as u32,
-        screen_height as u32,
-        camera.dim_canvas.x as u32,
-        camera.dim_canvas.y as u32,
-    );
-    let end = canvas_point_to_screen_point(
-        end.x,
-        end.y,
-        screen_width as u32,
-        screen_height as u32,
-        camera.dim_canvas.x as u32,
-        camera.dim_canvas.y as u32,
-    );
-
-    draw.draw_line_with_thickness(
-        start,
-        end,
-        line_thickness,
-        true,
-        Drawparams::new(depth, color, ADDITIVITY_NONE, Drawspace::Screen),
-    );
-
-    let start = Vec2::new(pos_world.x, frustum.top());
-    let end = Vec2::new(pos_world.x, frustum.bottom());
-
-    let start = camera.worldpoint_to_canvaspoint(start);
-    let end = camera.worldpoint_to_canvaspoint(end);
-
-    let start = canvas_point_to_screen_point(
-        start.x,
-        start.y,
-        screen_width as u32,
-        screen_height as u32,
-        camera.dim_canvas.x as u32,
-        camera.dim_canvas.y as u32,
-    );
-    let end = canvas_point_to_screen_point(
-        end.x,
-        end.y,
-        screen_width as u32,
-        screen_height as u32,
-        camera.dim_canvas.x as u32,
-        camera.dim_canvas.y as u32,
-    );
-
-    draw.draw_line_with_thickness(
-        start,
-        end,
-        line_thickness,
-        true,
-        Drawparams::new(depth, color, ADDITIVITY_NONE, Drawspace::Screen),
-    );
 }

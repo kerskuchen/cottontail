@@ -128,6 +128,10 @@ impl AudioOutput {
         // Do nothing here
     }
 
+    pub fn get_audio_playback_rate_hz(&self) -> usize {
+        self.audio_playback_rate_hz
+    }
+
     pub fn get_num_frames_in_queue(&self) -> usize {
         self.frames_queue.len()
     }
