@@ -11,6 +11,7 @@ pub struct InputState {
     pub mouse: MouseState,
     pub touch: TouchState,
     pub keyboard: KeyboardState,
+    pub gamepad: GamepadState,
     pub textinput: Textinput,
 
     pub has_focus_event: bool,
@@ -21,8 +22,6 @@ pub struct InputState {
     pub screen_framebuffer_width: u32,
     pub screen_framebuffer_height: u32,
     pub screen_framebuffer_dimensions_changed: bool,
-
-    pub gamepad: GamepadState,
 
     pub deltatime: f32,
     pub time_since_startup: f64,

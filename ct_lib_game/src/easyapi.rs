@@ -46,6 +46,26 @@ pub fn time_deltatime() -> f32 {
 }
 
 #[inline]
+pub fn time_deltatime_without_speedup_factor() -> f32 {
+    get_globals().deltatime_without_speedup
+}
+
+#[inline]
+pub fn time_speed_factor_user() -> f32 {
+    get_globals().deltatime_speed_factor_user
+}
+
+#[inline]
+pub fn time_speed_factor_debug() -> f32 {
+    get_globals().deltatime_speed_factor_debug
+}
+
+#[inline]
+pub fn time_deltatime_speed_factor_total() -> f32 {
+    get_globals().deltatime_speed_factor_user * get_globals().deltatime_speed_factor_debug
+}
+
+#[inline]
 pub fn time_since_startup() -> f64 {
     get_globals().time_since_startup
 }

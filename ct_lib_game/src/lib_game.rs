@@ -47,9 +47,12 @@ pub struct Globals {
     pub camera: GameCamera,
     pub cursors: Cursors,
 
-    pub debug_deltatime_speed_factor: f32,
-    pub deltatime_speed_factor: f32,
     pub deltatime: f32,
+    pub deltatime_without_speedup: f32,
+
+    pub deltatime_speed_factor_user: f32,
+    pub deltatime_speed_factor_debug: f32,
+
     pub time_since_startup: f64,
     pub is_paused: bool,
 
@@ -101,6 +104,18 @@ fn get_globals() -> &'static mut Globals {
 fn get_input() -> &'static mut InputState {
     unsafe { APP_RESOURCES.input.as_mut().unwrap() }
 }
+#[inline(always)]
+fn get_draw() -> &'static mut Drawstate {
+    unsafe { APP_RESOURCES.draw.as_mut().unwrap() }
+}
+#[inline(always)]
+fn get_audio() -> &'static mut Audiostate {
+    unsafe { APP_RESOURCES.audio.as_mut().unwrap() }
+}
+#[inline(always)]
+fn get_assets() -> &'static mut GameAssets {
+    unsafe { APP_RESOURCES.assets.as_mut().unwrap() }
+}
 
 pub struct AppTicker<AppStateType: AppStateInterface> {
     game: Option<AppStateType>,
@@ -139,12 +154,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
     fn reset(&mut self) {
         if let Some(game) = self.game.as_mut() {
-            let audio = get_resources().audio.as_mut().unwrap();
-            let draw = get_resources().draw.as_mut().unwrap();
-            let assets = get_resources().assets.as_mut().unwrap();
-
-            audio.reset();
-            *game = GameStateType::new(draw, audio, assets);
+            get_audio().reset();
+            *game = GameStateType::new(get_draw(), get_audio(), get_assets());
         }
     }
 
@@ -164,17 +175,15 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
             self.input_recorder.as_mut().unwrap().tick(game);
         }
 
-        let resources = get_resources();
-        let assets = resources.assets.as_mut().unwrap();
-        match assets.update() {
+        match get_assets().update() {
             AssetLoadingStage::SplashStart => return,
             AssetLoadingStage::SplashProgress => return,
             AssetLoadingStage::SplashFinish => {
-                let textures_splash = assets.get_atlas_textures().clone();
-                let untextured_sprite = assets.get_sprite("untextured").clone();
+                assert!(get_resources().draw.is_none());
+                let textures_splash = get_assets().get_atlas_textures().clone();
+                let untextured_sprite = get_assets().get_sprite("untextured").clone();
                 let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-                let debug_log_font = assets.get_font(&debug_log_font_name).clone();
-
+                let debug_log_font = get_assets().get_font(&debug_log_font_name).clone();
                 let window_config = GameStateType::get_window_config();
                 let mut draw = Drawstate::new(textures_splash, untextured_sprite, debug_log_font);
                 game_setup_window(
@@ -204,15 +213,13 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                         DEFAULT_WORLD_ZFAR,
                     ),
                 );
-
-                assert!(resources.draw.is_none());
-                resources.draw = Some(draw);
+                get_resources().draw = Some(draw);
 
                 self.loadingscreen.start_fading_in();
             }
             AssetLoadingStage::WaitingToStartFilesLoading => {
                 if self.loadingscreen.is_faded_in() {
-                    assets.start_loading_files();
+                    get_assets().start_loading_files();
                 }
             }
             AssetLoadingStage::FilesStart => {}
@@ -221,71 +228,67 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
             AssetLoadingStage::DecodingStart => {}
             AssetLoadingStage::DecodingProgress => {}
             AssetLoadingStage::DecodingFinish => {
-                assert!(resources.draw.is_some());
+                {
+                    assert!(get_resources().draw.is_some());
+                    let textures = get_assets().get_atlas_textures().clone();
+                    let untextured_sprite = get_assets().get_sprite("untextured").clone();
+                    let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
+                    let debug_log_font = get_assets().get_font(&debug_log_font_name).clone();
+                    get_draw().assign_textures(textures, untextured_sprite, debug_log_font);
+                }
 
-                let textures = assets.get_atlas_textures().clone();
-                let untextured_sprite = assets.get_sprite("untextured").clone();
-                let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-                let debug_log_font = assets.get_font(&debug_log_font_name).clone();
-
-                let draw = resources.draw.as_mut().unwrap();
-                draw.assign_textures(textures, untextured_sprite, debug_log_font);
-
-                assert!(resources.audio.is_none());
-
-                if resources.audio.is_none() {
+                {
+                    assert!(get_resources().audio.is_none());
                     let window_config = GameStateType::get_window_config();
-                    resources.audio = Some(Audiostate::new(
-                        assets.audio.resource_sample_rate_hz,
+                    let mut audio = Audiostate::new(
+                        get_assets().audio.resource_sample_rate_hz,
                         window_config.canvas_width as f32 / 2.0,
                         10_000.0,
-                    ));
+                    );
+                    let audio_recordings = get_assets().get_audiorecordings().clone();
+                    audio.assign_audio_recordings(audio_recordings);
+                    get_resources().audio = Some(audio);
                 }
-                let audio = resources.audio.as_mut().unwrap();
-                let audio_recordings = assets.get_audiorecordings().clone();
-                audio.assign_audio_recordings(audio_recordings);
 
-                assert!(self.game.is_none());
-                assert!(resources.globals.is_none());
-
-                let window_config = GameStateType::get_window_config();
-                let random = Random::new_from_seed((time_since_startup * 1000000000.0) as u64);
-                let camera = GameCamera::new(
-                    Vec2::zero(),
-                    window_config.canvas_width,
-                    window_config.canvas_height,
-                    false,
-                );
-
-                let cursors = {
-                    let input = get_input();
-                    Cursors::new(
-                        &camera.cam,
-                        &input.mouse,
-                        &input.touch,
-                        input.screen_framebuffer_width,
-                        input.screen_framebuffer_height,
+                {
+                    assert!(get_resources().globals.is_none());
+                    let window_config = GameStateType::get_window_config();
+                    let random = Random::new_from_seed((time_since_startup * 1000000000.0) as u64);
+                    let camera = GameCamera::new(
+                        Vec2::zero(),
                         window_config.canvas_width,
                         window_config.canvas_height,
-                    )
-                };
+                        false,
+                    );
+                    let cursors = {
+                        let input = get_input();
+                        Cursors::new(
+                            &camera.cam,
+                            &input.mouse,
+                            &input.touch,
+                            input.screen_framebuffer_width,
+                            input.screen_framebuffer_height,
+                        )
+                    };
+                    get_resources().globals = Some(Globals {
+                        random,
+                        camera,
+                        cursors,
 
-                resources.globals = Some(Globals {
-                    random,
-                    camera,
-                    cursors,
+                        deltatime: get_input().deltatime,
+                        deltatime_without_speedup: get_input().deltatime,
+                        deltatime_speed_factor_user: 1.0,
+                        deltatime_speed_factor_debug: 1.0,
+                        time_since_startup,
 
-                    debug_deltatime_speed_factor: 1.0,
-                    deltatime_speed_factor: 1.0,
-                    deltatime: get_input().deltatime,
-                    time_since_startup,
-                    is_paused: false,
+                        is_paused: false,
+                        canvas_width: window_config.canvas_width as f32,
+                        canvas_height: window_config.canvas_height as f32,
+                    });
+                }
 
-                    canvas_width: window_config.canvas_width as f32,
-                    canvas_height: window_config.canvas_height as f32,
-                });
-
-                self.game = Some(GameStateType::new(draw, audio, &assets));
+                assert!(self.game.is_none());
+                self.game = Some(GameStateType::new(get_draw(), get_audio(), get_assets()));
 
                 self.loadingscreen.start_fading_out();
             }
@@ -293,139 +296,120 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
         }
 
         // Asset hotreloading
-        if assets.hotreload_assets() {
-            let audio = resources.audio.as_mut().unwrap();
-            let draw = resources.draw.as_mut().unwrap();
-
-            let textures = assets.get_atlas_textures().clone();
-            let untextured_sprite = assets.get_sprite("untextured").clone();
+        if get_assets().hotreload_assets() {
+            let draw = get_draw();
+            let textures = get_assets().get_atlas_textures().clone();
+            let untextured_sprite = get_assets().get_sprite("untextured").clone();
             let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-            let debug_log_font = assets.get_font(&debug_log_font_name).clone();
+            let debug_log_font = get_assets().get_font(&debug_log_font_name).clone();
             draw.assign_textures(textures, untextured_sprite, debug_log_font);
 
-            let audio_recordings = assets.get_audiorecordings().clone();
+            let audio = get_audio();
+            let audio_recordings = get_assets().get_audiorecordings().clone();
             audio.assign_audio_recordings(audio_recordings);
+
             log::info!("Hotreloaded assets");
         }
 
-        let draw = resources.draw.as_mut().unwrap();
-
         if window_has_focus() || !self.loadingscreen.is_faded_out() {
-            draw.begin_frame();
+            get_draw().begin_frame();
 
             // Draw loadscreen if necessary
             if !self.loadingscreen.is_faded_out() {
-                let (canvas_width, canvas_height) = draw
+                let (canvas_width, canvas_height) = get_draw()
                     .get_canvas_dimensions()
                     .unwrap_or((window_screen_width(), window_screen_height()));
-                let splash_sprite = assets.get_sprite("splashscreen");
+                let splash_sprite = get_assets().get_sprite("splashscreen");
                 self.loadingscreen.update_and_draw(
-                    draw,
+                    get_draw(),
                     get_input().deltatime,
                     canvas_width,
                     canvas_height,
                     splash_sprite,
-                    assets.get_loading_percentage(),
+                    get_assets().get_loading_percentage(),
                 );
             }
 
             if let Some(game) = self.game.as_mut() {
-                let window_config = GameStateType::get_window_config();
-                let globals = resources.globals.as_mut().unwrap();
-                globals.cursors = {
-                    let input = get_input();
+                get_globals().cursors = {
                     Cursors::new(
-                        &globals.camera.cam,
-                        &input.mouse,
-                        &input.touch,
-                        input.screen_framebuffer_width,
-                        input.screen_framebuffer_height,
-                        window_config.canvas_width,
-                        window_config.canvas_height,
+                        &get_camera().cam,
+                        &get_input().mouse,
+                        &get_input().touch,
+                        window_screen_width(),
+                        window_screen_height(),
                     )
                 };
 
                 // DEBUG GAMESPEED MANIPULATION
                 //
-                if key_recently_pressed(Scancode::NumpadAdd) {
-                    globals.debug_deltatime_speed_factor += 0.1;
-                }
-                if key_recently_pressed(Scancode::NumpadSubtract) {
-                    globals.debug_deltatime_speed_factor -= 0.1;
-                    if globals.debug_deltatime_speed_factor < 0.1 {
-                        globals.debug_deltatime_speed_factor = 0.1;
+                {
+                    let globals = get_globals();
+
+                    if key_recently_pressed(Scancode::NumpadAdd) {
+                        globals.deltatime_speed_factor_debug += 0.1;
                     }
-                }
-                if key_recently_pressed_ignore_repeat(Scancode::Space) {
-                    globals.is_paused = !globals.is_paused;
-                }
-                let deltatime_speed_factor =
-                    globals.deltatime_speed_factor * globals.debug_deltatime_speed_factor;
-                let final_deltatime = if globals.is_paused {
-                    if key_recently_pressed(Scancode::N) {
-                        get_input().deltatime * deltatime_speed_factor
+                    if key_recently_pressed(Scancode::NumpadSubtract) {
+                        globals.deltatime_speed_factor_debug -= 0.1;
+                        if globals.deltatime_speed_factor_debug < 0.1 {
+                            globals.deltatime_speed_factor_debug = 0.1;
+                        }
+                    }
+                    if key_recently_pressed_ignore_repeat(Scancode::Space) {
+                        globals.is_paused = !globals.is_paused;
+                    }
+                    let deltatime_speed_factor =
+                        globals.deltatime_speed_factor_user * globals.deltatime_speed_factor_debug;
+                    let final_deltatime = if globals.is_paused {
+                        if key_recently_pressed(Scancode::N) {
+                            get_input().deltatime * deltatime_speed_factor
+                        } else {
+                            0.0
+                        }
                     } else {
-                        0.0
+                        get_input().deltatime * deltatime_speed_factor
+                    };
+
+                    globals.deltatime = final_deltatime;
+                    globals.deltatime_without_speedup = get_input().deltatime;
+                    globals.time_since_startup = time_since_startup;
+
+                    if !is_effectively_zero(globals.deltatime_speed_factor_debug - 1.0) {
+                        get_draw().debug_log(format!(
+                            "Timefactor: {:.3}",
+                            globals.deltatime_speed_factor_user
+                        ));
+                        get_draw().debug_log(format!(
+                            "Debug Timefactor: {:.1}",
+                            globals.deltatime_speed_factor_debug
+                        ));
+                        get_draw().debug_log(format!(
+                            "Cumulative timefactor: {:.1}",
+                            deltatime_speed_factor
+                        ));
                     }
-                } else {
-                    get_input().deltatime * deltatime_speed_factor
-                };
-                globals.deltatime = final_deltatime;
-                globals.time_since_startup = time_since_startup;
-
-                let audio = resources.audio.as_mut().unwrap();
-                audio.set_global_playback_speed_factor(deltatime_speed_factor);
-                audio.update_deltatime(final_deltatime);
-
-                if !is_effectively_zero(globals.debug_deltatime_speed_factor - 1.0) {
-                    draw.debug_log(format!("Timefactor: {:.3}", globals.deltatime_speed_factor));
-                    draw.debug_log(format!(
-                        "Debug Timefactor: {:.1}",
-                        globals.debug_deltatime_speed_factor
-                    ));
-                    draw.debug_log(format!(
-                        "Cumulative timefactor: {:.1}",
-                        deltatime_speed_factor
-                    ));
+                    get_draw().debug_log(format!("Deltatime: {:.6}", globals.deltatime));
                 }
-                draw.debug_log(format!("Deltatime: {:.6}", globals.deltatime));
 
+                let audio = get_audio();
+                audio.set_global_playback_speed_factor(time_deltatime_speed_factor_total());
+                audio.update_deltatime(time_deltatime());
+
+                let draw = get_draw();
                 gui_begin_frame(draw);
-                game.update(draw, audio, &assets);
+                game.update(draw, audio, &get_assets());
                 gui_end_frame(draw);
 
+                game_handle_system_keys();
                 game_handle_mouse_camera_zooming_panning();
-                globals.camera.update(globals.deltatime);
-                debug_game_handle_system_keys();
-
-                debug_draw_crosshair(
-                    draw,
-                    &globals.camera.cam,
-                    mouse_pos_world(),
-                    window_screen_width() as f32,
-                    window_screen_height() as f32,
-                    2.0,
-                    Color::red(),
-                    DEPTH_MAX,
-                );
-
-                debug_draw_grid(
-                    draw,
-                    &globals.camera.cam,
-                    16.0,
-                    window_screen_width() as f32,
-                    window_screen_height() as f32,
-                    1,
-                    Color::greyscale(0.5),
-                    DEPTH_MAX,
-                );
+                get_camera().update(time_deltatime());
 
                 draw.set_shaderparams_simple(
                     Color::white(),
-                    globals.camera.proj_view_matrix(),
+                    get_camera().proj_view_matrix(),
                     Mat4::ortho_origin_left_top(
-                        window_config.canvas_width as f32,
-                        window_config.canvas_height as f32,
+                        canvas_width(),
+                        canvas_height(),
                         DEFAULT_WORLD_ZNEAR,
                         DEFAULT_WORLD_ZFAR,
                     ),
@@ -438,10 +422,9 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 );
             }
 
-            if let Some(audio) = resources.audio.as_mut() {
-                let globals = resources.globals.as_mut().unwrap();
+            if let Some(audio) = get_resources().audio.as_mut() {
                 let output_sample_rate_hz = audio_output.get_audio_playback_rate_hz();
-                audio.set_global_listener_pos(globals.camera.center());
+                audio.set_global_listener_pos(get_camera().center());
 
                 self.audio_chunk_timer += get_input().deltatime;
 
@@ -475,11 +458,10 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 }
             }
 
-            draw.finish_frame();
+            get_draw().finish_frame();
         }
 
-        draw.render_frame(renderer);
-
+        get_draw().render_frame(renderer);
         get_input().end_frame();
     }
 
@@ -711,7 +693,7 @@ pub fn game_setup_window(
     }
 }
 
-pub fn debug_game_handle_system_keys() {
+pub fn game_handle_system_keys() {
     if key_recently_pressed(Scancode::F5) {
         platform_window_restart();
     }
@@ -754,10 +736,9 @@ impl<AppStateType: AppStateInterface> InputRecorder<AppStateType> {
     }
 
     fn tick(&mut self, game: &mut AppStateType) {
-        let resources = get_resources();
-        let draw = resources.draw.as_mut().unwrap();
-        let audio = resources.audio.as_mut().unwrap();
-        let globals = resources.globals.as_mut().unwrap();
+        let draw = get_draw();
+        let audio = get_audio();
+        let globals = get_globals();
 
         if key_recently_released(Scancode::O) {
             if !self.is_playing_back {
@@ -932,8 +913,6 @@ impl CursorCoords {
         camera: &Camera,
         screen_width: u32,
         screen_height: u32,
-        canvas_width: u32,
-        canvas_height: u32,
         screen_cursor_pos_x: i32,
         screen_cursor_pos_y: i32,
         screen_cursor_delta_x: i32,
@@ -947,16 +926,16 @@ impl CursorCoords {
             screen_cursor_pos_y,
             screen_width,
             screen_height,
-            canvas_width,
-            canvas_height,
+            camera.dim_canvas.x as u32,
+            camera.dim_canvas.y as u32,
         );
         let canvas_pos_previous = screen_point_to_canvas_point(
             screen_cursor_pos_previous_x,
             screen_cursor_pos_previous_y,
             screen_width,
             screen_height,
-            canvas_width,
-            canvas_height,
+            camera.dim_canvas.x as u32,
+            camera.dim_canvas.y as u32,
         );
 
         // NOTE: We don't transform the screen cursor delta directly because that leads to rounding
@@ -990,15 +969,11 @@ impl Cursors {
         touch: &TouchState,
         screen_width: u32,
         screen_height: u32,
-        canvas_width: u32,
-        canvas_height: u32,
     ) -> Cursors {
         let mouse = CursorCoords::new(
             camera,
             screen_width,
             screen_height,
-            canvas_width,
-            canvas_height,
             mouse.pos_x,
             mouse.pos_y,
             mouse.pos_x - mouse.pos_previous_x,
@@ -1014,8 +989,6 @@ impl Cursors {
                         camera,
                         screen_width,
                         screen_height,
-                        canvas_width,
-                        canvas_height,
                         finger.pos_x,
                         finger.pos_y,
                         finger.pos_x - finger.pos_previous_x,
