@@ -25,7 +25,7 @@ pub struct InputState {
     pub gamepad: GamepadState,
 
     pub deltatime: f32,
-    pub real_world_uptime: f64,
+    pub time_since_startup: f64,
 }
 
 impl InputState {
@@ -540,11 +540,6 @@ impl Default for KeyState {
 }
 
 impl KeyboardState {
-    #[inline]
-    pub fn new() -> KeyboardState {
-        KeyboardState::default()
-    }
-
     #[inline]
     pub fn clear_state_and_transitions(&mut self) {
         self.clear_transitions();

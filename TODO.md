@@ -3,12 +3,13 @@
 - added easy api for input and global objects
 - gamepad input overhaul - now just reading whole button/axis-state instead of events. this will
   make it easier for us to use gamepad web api
+- adds platform windows commands to easy api
   
 
 # CURRENT
 
 - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
-- refactor tick function in lib_game into stages
+- refactor tick function in lib_game into stages and clean it up / make more it sensible
 
 # NEXT:
 

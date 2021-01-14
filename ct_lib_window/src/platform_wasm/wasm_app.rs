@@ -3,7 +3,7 @@ mod wasm_input;
 
 pub use wasm_audio as audio;
 
-use crate::{input::FingerPlatformId, AppCommand, AppEventHandler, MouseButton};
+use crate::{input::FingerPlatformId, AppEventHandler, MouseButton, PlatformWindowCommand};
 
 use super::renderer_opengl::Renderer;
 
@@ -225,6 +225,8 @@ impl FullscreenHandler {
         }
     }
 }
+
+static mut PLATFORM_WINDOW_COMMANDS: Vec<PlatformWindowCommand> = Vec::new();
 
 pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
     appcontext: AppEventHandlerType,
@@ -526,7 +528,6 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // MAINLOOP
 
-    let mut appcommands: Vec<AppCommand> = Vec::new();
     let app_start_time = timer_current_time_seconds();
     let mut frame_start_time = app_start_time;
     log::debug!("Startup took {:.3}ms", app_start_time * 1000.0,);
@@ -595,54 +596,54 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
             current_time,
             &mut renderer,
             &mut audio,
-            &mut appcommands,
         );
 
         //--------------------------------------------------------------------------------------
         // System commands
 
-        for command in &appcommands {
-            match command {
-                AppCommand::FullscreenToggle => {
-                    fullscreen_handler.toggle_fullscreen();
-                }
-                AppCommand::TextinputStart {
-                    inputrect_x: _,
-                    inputrect_y: _,
-                    inputrect_width: _,
-                    inputrect_height: _,
-                } => {
-                    todo!();
-                }
-                AppCommand::TextinputStop => {
-                    todo!();
-                }
-                AppCommand::WindowedModeAllowResizing(_allowed) => {
-                    log::trace!("`WindowedModeAllowResizing` Not available on this platform");
-                }
-                AppCommand::WindowedModeAllow(_allowed) => {
-                    log::trace!("`WindowedModeAllow` Not available on this platform");
-                }
-                AppCommand::WindowedModeSetSize {
-                    width: _,
-                    height: _,
-                    minimum_width: _,
-                    minimum_height: _,
-                } => {
-                    log::trace!("`WindowedModeSetSize` Not available on this platform");
-                }
-                AppCommand::ScreenSetGrabInput(_grab_input) => {
-                    todo!()
-                }
-                AppCommand::Shutdown => {
-                    log::trace!("`Shutdown` Not available on this platform");
-                }
-                AppCommand::Restart => {
-                    log::trace!("`Restart` Not available on this platform");
+        unsafe {
+            for command in PLATFORM_WINDOW_COMMANDS.drain(..) {
+                match command {
+                    PlatformWindowCommand::FullscreenToggle => {
+                        fullscreen_handler.toggle_fullscreen();
+                    }
+                    PlatformWindowCommand::TextinputStart {
+                        inputrect_x: _,
+                        inputrect_y: _,
+                        inputrect_width: _,
+                        inputrect_height: _,
+                    } => {
+                        todo!();
+                    }
+                    PlatformWindowCommand::TextinputStop => {
+                        todo!();
+                    }
+                    PlatformWindowCommand::WindowedModeAllowResizing(_allowed) => {
+                        log::trace!("`WindowedModeAllowResizing` Not available on this platform");
+                    }
+                    PlatformWindowCommand::WindowedModeAllow(_allowed) => {
+                        log::trace!("`WindowedModeAllow` Not available on this platform");
+                    }
+                    PlatformWindowCommand::WindowedModeSetSize {
+                        width: _,
+                        height: _,
+                        minimum_width: _,
+                        minimum_height: _,
+                    } => {
+                        log::trace!("`WindowedModeSetSize` Not available on this platform");
+                    }
+                    PlatformWindowCommand::ScreenSetGrabInput(_grab_input) => {
+                        todo!()
+                    }
+                    PlatformWindowCommand::Shutdown => {
+                        log::trace!("`Shutdown` Not available on this platform");
+                    }
+                    PlatformWindowCommand::Restart => {
+                        log::trace!("`Restart` Not available on this platform");
+                    }
                 }
             }
         }
-        appcommands.clear();
 
         // Schedule ourself for another requestAnimationFrame callback.
         html_request_animation_frame(f.borrow().as_ref().unwrap());
@@ -650,4 +651,9 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
 
     html_request_animation_frame(g.borrow().as_ref().unwrap());
     Ok(())
+}
+
+#[inline]
+pub fn add_platform_window_command(appcommand: PlatformWindowCommand) {
+    unsafe { PLATFORM_WINDOW_COMMANDS.push(appcommand) }
 }

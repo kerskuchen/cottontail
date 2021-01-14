@@ -1,5 +1,6 @@
 pub use crate::input::FingerId;
 pub use crate::input::KeyModifier;
+use ct_lib_window::add_platform_window_command;
 pub use ct_lib_window::input::{GamepadButton, Keycode, MouseButton, Scancode};
 
 use crate::*;
@@ -46,11 +47,16 @@ pub fn time_deltatime() -> f32 {
 
 #[inline]
 pub fn time_since_startup() -> f64 {
-    get_input().real_world_uptime
+    get_globals().time_since_startup
 }
 
 //--------------------------------------------------------------------------------------------------
 // WINDOW
+
+#[inline]
+pub fn window_has_focus() -> bool {
+    get_input().has_focus
+}
 
 #[inline]
 pub fn window_is_fullscreen() -> bool {
@@ -76,6 +82,70 @@ pub fn window_screen_dimensions() -> (u32, u32) {
     )
 }
 
+#[inline]
+pub fn platform_window_toggle_fullscreen() {
+    add_platform_window_command(PlatformWindowCommand::FullscreenToggle)
+}
+
+#[inline]
+pub fn platform_window_start_textinput_mode(
+    inputrect_x: i32,
+    inputrect_y: i32,
+    inputrect_width: u32,
+    inputrect_height: u32,
+) {
+    add_platform_window_command(PlatformWindowCommand::TextinputStart {
+        inputrect_x,
+        inputrect_y,
+        inputrect_width,
+        inputrect_height,
+    })
+}
+
+#[inline]
+pub fn platform_window_stop_textinput_mode() {
+    add_platform_window_command(PlatformWindowCommand::TextinputStop)
+}
+
+#[inline]
+pub fn platform_window_set_cursor_grabbing(enable_grab: bool) {
+    add_platform_window_command(PlatformWindowCommand::ScreenSetGrabInput(enable_grab))
+}
+
+#[inline]
+pub fn platform_window_set_allow_windowed_mode(allow: bool) {
+    add_platform_window_command(PlatformWindowCommand::WindowedModeAllow(allow))
+}
+
+#[inline]
+pub fn platform_window_set_allow_window_resizing_by_user(allow: bool) {
+    add_platform_window_command(PlatformWindowCommand::WindowedModeAllowResizing(allow))
+}
+
+#[inline]
+pub fn platform_window_set_window_size(
+    width: u32,
+    height: u32,
+    minimum_width: u32,
+    minimum_height: u32,
+) {
+    add_platform_window_command(PlatformWindowCommand::WindowedModeSetSize {
+        width,
+        height,
+        minimum_width,
+        minimum_height,
+    })
+}
+
+#[inline]
+pub fn platform_window_shutdown() {
+    add_platform_window_command(PlatformWindowCommand::Shutdown)
+}
+
+#[inline]
+pub fn platform_window_restart() {
+    add_platform_window_command(PlatformWindowCommand::Restart)
+}
 //--------------------------------------------------------------------------------------------------
 // KEYBOARD INPUT
 

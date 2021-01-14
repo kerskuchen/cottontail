@@ -10,6 +10,7 @@ pub mod input;
 pub mod renderer_opengl;
 
 use input::*;
+pub use platform::add_platform_window_command;
 pub use platform::audio::AudioOutput;
 pub use renderer_opengl::Renderer;
 
@@ -18,28 +19,6 @@ pub struct AppInfo {
     pub save_folder_name: String,
     pub company_name: String,
 }
-pub enum AppCommand {
-    FullscreenToggle,
-    TextinputStart {
-        inputrect_x: i32,
-        inputrect_y: i32,
-        inputrect_width: u32,
-        inputrect_height: u32,
-    },
-    TextinputStop,
-    ScreenSetGrabInput(bool),
-    WindowedModeAllowResizing(bool),
-    WindowedModeAllow(bool),
-    WindowedModeSetSize {
-        width: u32,
-        height: u32,
-        minimum_width: u32,
-        minimum_height: u32,
-    },
-    Shutdown,
-    Restart,
-}
-
 pub trait AppEventHandler {
     fn get_app_info(&self) -> AppInfo;
     fn reset(&mut self);
@@ -75,10 +54,31 @@ pub trait AppEventHandler {
         real_world_uptime: f64,
         renderer: &mut Renderer,
         audio: &mut AudioOutput,
-        out_systemcommands: &mut Vec<AppCommand>,
     );
 }
 
 pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(app_context: AppEventHandlerType) {
     platform::run_main(app_context).ok();
+}
+
+pub enum PlatformWindowCommand {
+    FullscreenToggle,
+    TextinputStart {
+        inputrect_x: i32,
+        inputrect_y: i32,
+        inputrect_width: u32,
+        inputrect_height: u32,
+    },
+    TextinputStop,
+    ScreenSetGrabInput(bool),
+    WindowedModeAllowResizing(bool),
+    WindowedModeAllow(bool),
+    WindowedModeSetSize {
+        width: u32,
+        height: u32,
+        minimum_width: u32,
+        minimum_height: u32,
+    },
+    Shutdown,
+    Restart,
 }

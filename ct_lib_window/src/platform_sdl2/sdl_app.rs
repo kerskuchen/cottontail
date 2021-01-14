@@ -3,10 +3,11 @@ mod sdl_input;
 mod sdl_window;
 
 pub use sdl_audio as audio;
+use sdl_input::{sdl_keycode_to_our_keycode, sdl_scancode_to_our_scancode};
 
 use crate::{
-    AppCommand, AppEventHandler, FingerPlatformId, GamepadAxis, GamepadButton, GamepadPlatformId,
-    GamepadPlatformState, MouseButton,
+    AppEventHandler, FingerPlatformId, GamepadAxis, GamepadPlatformState, MouseButton,
+    PlatformWindowCommand,
 };
 
 use ct_lib_core::log;
@@ -15,6 +16,8 @@ use ct_lib_core::*;
 use ct_lib_core::{deserialize_from_json_file, serialize_to_json_file};
 
 use std::{collections::HashMap, time::Duration};
+
+use self::sdl_input::{gilrs_id_to_our_id, our_axis_to_gilrs_axis, our_button_to_gilrs_button};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Configuration
@@ -31,6 +34,8 @@ struct LauncherConfig {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main event loop
+
+static mut PLATFORM_WINDOW_COMMANDS: Vec<PlatformWindowCommand> = Vec::new();
 
 pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
     mut app: AppEventHandlerType,
@@ -184,7 +189,6 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
     // ---------------------------------------------------------------------------------------------
     // Mainloop setup
 
-    let mut appcommands: Vec<AppCommand> = Vec::new();
     let mut event_pump = sdl_context.event_pump().unwrap();
 
     let app_start_time = timer_current_time_seconds();
@@ -237,8 +241,8 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
                     repeat,
                     ..
                 } => {
-                    let keycode = sdl_input::keycode_to_our_keycode(sdl2_keycode);
-                    let scancode = sdl_input::scancode_to_our_scancode(sdl2_scancode);
+                    let keycode = sdl_keycode_to_our_keycode(sdl2_keycode);
+                    let scancode = sdl_scancode_to_our_scancode(sdl2_scancode);
                     app.handle_key_press(scancode, keycode, repeat);
                 }
                 Event::KeyUp {
@@ -246,8 +250,8 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
                     keycode: Some(sdl2_keycode),
                     ..
                 } => {
-                    let keycode = sdl_input::keycode_to_our_keycode(sdl2_keycode);
-                    let scancode = sdl_input::scancode_to_our_scancode(sdl2_scancode);
+                    let keycode = sdl_keycode_to_our_keycode(sdl2_keycode);
+                    let scancode = sdl_scancode_to_our_scancode(sdl2_scancode);
                     app.handle_key_release(scancode, keycode);
                 }
                 //----------------------------------------------------------------------------------
@@ -443,16 +447,16 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
             current_time,
             &mut renderer,
             &mut audio,
-            &mut appcommands,
         );
 
         //--------------------------------------------------------------------------------------
         // System commands
 
-        for command in &appcommands {
-            match command {
-                AppCommand::FullscreenToggle => window.toggle_fullscreen(),
-                AppCommand::TextinputStart {
+        unsafe {
+            for command in PLATFORM_WINDOW_COMMANDS.drain(..) {
+                match command {
+                PlatformWindowCommand::FullscreenToggle => window.toggle_fullscreen(),
+                PlatformWindowCommand::TextinputStart {
                     /*
                     inputrect_x,
                     inputrect_y,
@@ -475,43 +479,43 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
                     text_input.set_rect(text_input_rect);
                      */
                 }
-                AppCommand::TextinputStop => {
+                PlatformWindowCommand::TextinputStop => {
                     /* TODO
                     log::trace!("Textinput mode disabled");
                     input.textinput.is_textinput_enabled = false;
                     text_input.stop();
                      */
                 }
-                AppCommand::WindowedModeAllowResizing(allowed) => {
-                    window.windowed_mode_set_resizable(*allowed);
+                PlatformWindowCommand::WindowedModeAllowResizing(allowed) => {
+                    window.windowed_mode_set_resizable(allowed);
                 }
-                AppCommand::WindowedModeAllow(allowed) => {
-                    window.set_windowed_mode_allowed(*allowed);
+                PlatformWindowCommand::WindowedModeAllow(allowed) => {
+                    window.set_windowed_mode_allowed(allowed);
                 }
-                AppCommand::WindowedModeSetSize {
+                PlatformWindowCommand::WindowedModeSetSize {
                     width,
                     height,
                     minimum_width,
                     minimum_height,
                 } => {
-                    window.set_windowed_mode_size(*width, *height, *minimum_width, *minimum_height);
+                    window.set_windowed_mode_size(width, height, minimum_width, minimum_height);
                 }
-                AppCommand::ScreenSetGrabInput(grab_input) => {
-                    window.set_input_grabbed(*grab_input);
+                PlatformWindowCommand::ScreenSetGrabInput(grab_input) => {
+                    window.set_input_grabbed(grab_input);
                 }
-                AppCommand::Shutdown => {
+                PlatformWindowCommand::Shutdown => {
                     log::info!("Received shutdown signal");
                     is_running = false;
                 }
-                AppCommand::Restart => {
+                PlatformWindowCommand::Restart => {
                     log::info!("Received restart signal");
                     app.reset();
                     renderer.reset();
                     audio.reset();
                 }
             }
+            }
         }
-        appcommands.clear();
 
         window.sdl_window.gl_swap_window();
     }
@@ -531,38 +535,7 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
     Ok(())
 }
 
-fn our_button_to_gilrs_button(button: GamepadButton) -> gilrs::Button {
-    match button {
-        GamepadButton::Start => gilrs::Button::Start,
-        GamepadButton::Back => gilrs::Button::Select,
-        GamepadButton::Home => gilrs::Button::Mode,
-        GamepadButton::MoveUp => gilrs::Button::DPadUp,
-        GamepadButton::MoveDown => gilrs::Button::DPadDown,
-        GamepadButton::MoveLeft => gilrs::Button::DPadLeft,
-        GamepadButton::MoveRight => gilrs::Button::DPadRight,
-        GamepadButton::ActionUp => gilrs::Button::North,
-        GamepadButton::ActionDown => gilrs::Button::South,
-        GamepadButton::ActionLeft => gilrs::Button::West,
-        GamepadButton::ActionRight => gilrs::Button::East,
-        GamepadButton::StickLeft => gilrs::Button::LeftThumb,
-        GamepadButton::StickRight => gilrs::Button::RightThumb,
-        GamepadButton::TriggerLeft1 => gilrs::Button::LeftTrigger,
-        GamepadButton::TriggerLeft2 => gilrs::Button::LeftTrigger2,
-        GamepadButton::TriggerRight1 => gilrs::Button::RightTrigger,
-        GamepadButton::TriggerRight2 => gilrs::Button::RightTrigger2,
-    }
-}
-fn our_axis_to_gilrs_axis(axis: GamepadAxis) -> gilrs::Axis {
-    match axis {
-        GamepadAxis::StickLeftX => gilrs::Axis::LeftStickX,
-        GamepadAxis::StickLeftY => gilrs::Axis::LeftStickY,
-        GamepadAxis::StickRightX => gilrs::Axis::RightStickX,
-        GamepadAxis::StickRightY => gilrs::Axis::RightStickY,
-        GamepadAxis::TriggerLeft => gilrs::Axis::LeftZ,
-        GamepadAxis::TriggerRight => gilrs::Axis::RightZ,
-    }
-}
-fn gilrs_id_to_our_id(id: gilrs::GamepadId) -> GamepadPlatformId {
-    let gamepad_id: usize = id.into();
-    gamepad_id as GamepadPlatformId
+#[inline]
+pub fn add_platform_window_command(appcommand: PlatformWindowCommand) {
+    unsafe { PLATFORM_WINDOW_COMMANDS.push(appcommand) }
 }

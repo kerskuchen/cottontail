@@ -1,43 +1,46 @@
-use crate::{Keycode, Scancode};
+use crate::{
+    input::{GamepadAxis, GamepadButton, GamepadPlatformId},
+    Keycode, Scancode,
+};
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Platform specific input
-
-/// Given a deadzone_threshold in [0.0, 1.0[
-/// Outputs [-1.0, 1.0] if axisValue in [-1.0, -deadzone_threshold] u [deadzone_threshold, 1.0]
-/// or 0.0 if axisValue in ]-deadzone_threshold, deadzone_threshold[
-pub fn _process_gamepad_axis(
-    controller: &sdl2::controller::GameController,
-    axis: sdl2::controller::Axis,
-    deadzone_threshold: f32,
-) -> f32 {
-    debug_assert!(0.0 <= deadzone_threshold && deadzone_threshold < 1.0);
-
-    let mut axis_value = controller.axis(axis) as f32;
-
-    const CONTROLLER_AXIS_ABSMAX_POSITIVE: f32 = 32767.0;
-    const CONTROLLER_AXIS_ABSMAX_NEGATIVE: f32 = 32768.0;
-
-    if axis_value >= 0.0 {
-        axis_value /= CONTROLLER_AXIS_ABSMAX_POSITIVE;
-        axis_value = if axis_value >= deadzone_threshold {
-            (axis_value - deadzone_threshold) / (1.0 - deadzone_threshold)
-        } else {
-            0.0
-        }
-    } else {
-        axis_value /= CONTROLLER_AXIS_ABSMAX_NEGATIVE;
-        axis_value = if axis_value <= -deadzone_threshold {
-            (axis_value + deadzone_threshold) / (1.0 - deadzone_threshold)
-        } else {
-            0.0
-        }
+pub fn our_button_to_gilrs_button(button: GamepadButton) -> gilrs::Button {
+    match button {
+        GamepadButton::Start => gilrs::Button::Start,
+        GamepadButton::Back => gilrs::Button::Select,
+        GamepadButton::Home => gilrs::Button::Mode,
+        GamepadButton::MoveUp => gilrs::Button::DPadUp,
+        GamepadButton::MoveDown => gilrs::Button::DPadDown,
+        GamepadButton::MoveLeft => gilrs::Button::DPadLeft,
+        GamepadButton::MoveRight => gilrs::Button::DPadRight,
+        GamepadButton::ActionUp => gilrs::Button::North,
+        GamepadButton::ActionDown => gilrs::Button::South,
+        GamepadButton::ActionLeft => gilrs::Button::West,
+        GamepadButton::ActionRight => gilrs::Button::East,
+        GamepadButton::StickLeft => gilrs::Button::LeftThumb,
+        GamepadButton::StickRight => gilrs::Button::RightThumb,
+        GamepadButton::TriggerLeft1 => gilrs::Button::LeftTrigger,
+        GamepadButton::TriggerLeft2 => gilrs::Button::LeftTrigger2,
+        GamepadButton::TriggerRight1 => gilrs::Button::RightTrigger,
+        GamepadButton::TriggerRight2 => gilrs::Button::RightTrigger2,
     }
-
-    axis_value
+}
+pub fn our_axis_to_gilrs_axis(axis: GamepadAxis) -> gilrs::Axis {
+    match axis {
+        GamepadAxis::StickLeftX => gilrs::Axis::LeftStickX,
+        GamepadAxis::StickLeftY => gilrs::Axis::LeftStickY,
+        GamepadAxis::StickRightX => gilrs::Axis::RightStickX,
+        GamepadAxis::StickRightY => gilrs::Axis::RightStickY,
+        GamepadAxis::TriggerLeft => gilrs::Axis::LeftZ,
+        GamepadAxis::TriggerRight => gilrs::Axis::RightZ,
+    }
 }
 
-pub fn scancode_to_our_scancode(scancode: sdl2::keyboard::Scancode) -> Scancode {
+pub fn gilrs_id_to_our_id(id: gilrs::GamepadId) -> GamepadPlatformId {
+    let gamepad_id: usize = id.into();
+    gamepad_id as GamepadPlatformId
+}
+
+pub fn sdl_scancode_to_our_scancode(scancode: sdl2::keyboard::Scancode) -> Scancode {
     match scancode {
         sdl2::keyboard::Scancode::Num1 => Scancode::Digit1,
         sdl2::keyboard::Scancode::Num2 => Scancode::Digit2,
@@ -164,7 +167,7 @@ pub fn scancode_to_our_scancode(scancode: sdl2::keyboard::Scancode) -> Scancode 
         _ => Scancode::Unidentified,
     }
 }
-pub fn keycode_to_our_keycode(keycode: sdl2::keyboard::Keycode) -> Keycode {
+pub fn sdl_keycode_to_our_keycode(keycode: sdl2::keyboard::Keycode) -> Keycode {
     match keycode {
         sdl2::keyboard::Keycode::Num1 => Keycode::Digit1,
         sdl2::keyboard::Keycode::Num2 => Keycode::Digit2,

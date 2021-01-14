@@ -20,7 +20,7 @@ pub mod gui;
 pub use gui::*;
 
 mod input;
-use input::{InputState, KeyboardState, MouseState, TouchState};
+use input::{InputState, MouseState, TouchState};
 
 use ct_lib_audio::*;
 use ct_lib_core::serde_derive::{Deserialize, Serialize};
@@ -28,11 +28,8 @@ use ct_lib_core::*;
 use ct_lib_draw::*;
 use ct_lib_image::*;
 use ct_lib_math::*;
-use ct_lib_window::{
-    input::{FingerPlatformId, GamepadPlatformId, GamepadPlatformState},
-    renderer_opengl::Renderer,
-    run_main, AppCommand, AppEventHandler, AppInfo, AudioOutput,
-};
+use ct_lib_window::input::*;
+use ct_lib_window::*;
 
 use std::collections::{HashMap, VecDeque};
 
@@ -53,6 +50,7 @@ pub struct Globals {
     pub debug_deltatime_speed_factor: f32,
     pub deltatime_speed_factor: f32,
     pub deltatime: f32,
+    pub time_since_startup: f64,
     pub is_paused: bool,
 
     pub canvas_width: f32,
@@ -69,13 +67,7 @@ pub trait AppStateInterface: Clone {
     fn get_game_info() -> GameInfo;
     fn get_window_config() -> WindowConfig;
     fn new(draw: &mut Drawstate, audio: &mut Audiostate, assets: &GameAssets) -> Self;
-    fn update(
-        &mut self,
-        draw: &mut Drawstate,
-        audio: &mut Audiostate,
-        assets: &GameAssets,
-        out_systemcommands: &mut Vec<AppCommand>,
-    );
+    fn update(&mut self, draw: &mut Drawstate, audio: &mut Audiostate, assets: &GameAssets);
 }
 
 const SPLASHSCREEN_FADEIN_TIME: f32 = 0.3;
@@ -87,7 +79,6 @@ struct AppResources {
     pub audio: Option<Audiostate>,
     pub globals: Option<Globals>,
     pub input: Option<InputState>,
-    pub out_systemcommands: Option<&'static mut Vec<AppCommand>>,
 }
 
 static mut APP_RESOURCES: AppResources = AppResources {
@@ -96,7 +87,6 @@ static mut APP_RESOURCES: AppResources = AppResources {
     audio: None,
     globals: None,
     input: None,
-    out_systemcommands: None,
 };
 
 #[inline(always)]
@@ -148,20 +138,25 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
     }
 
     fn reset(&mut self) {
-        todo!()
+        if let Some(game) = self.game.as_mut() {
+            let audio = get_resources().audio.as_mut().unwrap();
+            let draw = get_resources().draw.as_mut().unwrap();
+            let assets = get_resources().assets.as_mut().unwrap();
+
+            audio.reset();
+            *game = GameStateType::new(draw, audio, assets);
+        }
     }
 
     fn run_tick(
         &mut self,
-        frametime: f32,
-        real_world_uptime: f64,
+        deltatime: f32,
+        time_since_startup: f64,
         renderer: &mut Renderer,
         audio_output: &mut AudioOutput,
-        out_systemcommands: &mut Vec<AppCommand>,
     ) {
         let resources = get_resources();
         let assets = resources.assets.as_mut().unwrap();
-        let input = resources.input.as_mut().unwrap();
 
         {
             // TODO: Put this into a member function
@@ -171,12 +166,12 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
             //
             // NOTE: We get the mouse delta from querying instead of accumulating
             //       events, as it is faster, more accurate and less error-prone
+            let input = get_input();
             input.touch.calculate_move_deltas();
             input.mouse.delta_x = input.mouse.pos_x - input.mouse.pos_previous_x;
             input.mouse.delta_y = input.mouse.pos_y - input.mouse.pos_previous_y;
-
-            input.deltatime = snap_deltatime_to_nearest_common_refresh_rate(frametime);
-            input.real_world_uptime = real_world_uptime;
+            input.deltatime = snap_deltatime_to_nearest_common_refresh_rate(deltatime);
+            input.time_since_startup = time_since_startup;
         }
 
         //--------------------------------------------------------------------------------------
@@ -188,7 +183,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
             let audio = resources.audio.as_mut().unwrap();
             let globals = resources.globals.as_mut().unwrap();
 
-            if input.keyboard.recently_released(Scancode::O) {
+            if key_recently_released(Scancode::O) {
                 if !input_recorder.is_playing_back {
                     if input_recorder.is_recording {
                         log::info!("Stopping input recording");
@@ -197,16 +192,16 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                         log::info!("Starting input recording");
                         // Clear keyboard input so that we won't get the the `O` Scancode at the
                         // beginning of the recording
-                        input.keyboard.clear_transitions();
+                        get_input().keyboard.clear_transitions();
                         input_recorder.start_recording(game, draw, audio, globals);
                     }
                 }
-            } else if input.keyboard.recently_released(Scancode::P) {
+            } else if key_recently_released(Scancode::P) {
                 if !input_recorder.is_recording {
                     if input_recorder.is_playing_back {
                         log::info!("Stopping input playback");
                         input_recorder.stop_playback();
-                        input.keyboard.clear_state_and_transitions();
+                        get_input().keyboard.clear_state_and_transitions();
                     } else {
                         log::info!("Starting input playback");
                         input_recorder.start_playback(game, draw, audio, globals);
@@ -220,7 +215,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
             //       For this we need to handle the mouse and keyboard a little different. Maybe we
             //       can have `input_last` and `input_current`?
             if input_recorder.is_recording {
-                input_recorder.record_input(&input);
+                input_recorder.record_input(get_input());
             } else if input_recorder.is_playing_back {
                 // NOTE: We need to save the state of the playback-key or the keystate will get
                 //       confused. This can happen when we press down the playback-key and hold it for
@@ -228,6 +223,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 //       playback-key. If we release the playback-key the keystate will think it is
                 //       already released (due to the overwrite) but will get an additional release
                 //       event (which is not good)
+                let input = get_input();
                 if let Some(previous_playback_key_state) =
                     input.keyboard.keys.get(&Scancode::P).cloned()
                 {
@@ -256,9 +252,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 game_setup_window(
                     &mut draw,
                     &window_config,
-                    input.screen_framebuffer_width,
-                    input.screen_framebuffer_height,
-                    out_systemcommands,
+                    window_screen_width(),
+                    window_screen_height(),
                 );
                 draw.set_shaderparams_simple(
                     Color::white(),
@@ -275,8 +270,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                         DEFAULT_WORLD_ZFAR,
                     ),
                     Mat4::ortho_origin_left_top(
-                        input.screen_framebuffer_width as f32,
-                        input.screen_framebuffer_height as f32,
+                        window_screen_width() as f32,
+                        window_screen_height() as f32,
                         DEFAULT_WORLD_ZNEAR,
                         DEFAULT_WORLD_ZFAR,
                     ),
@@ -326,22 +321,26 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 assert!(resources.globals.is_none());
 
                 let window_config = GameStateType::get_window_config();
-                let random = Random::new_from_seed((input.deltatime * 1000000.0) as u64);
+                let random = Random::new_from_seed((time_since_startup * 1000000000.0) as u64);
                 let camera = GameCamera::new(
                     Vec2::zero(),
                     window_config.canvas_width,
                     window_config.canvas_height,
                     false,
                 );
-                let cursors = Cursors::new(
-                    &camera.cam,
-                    &input.mouse,
-                    &input.touch,
-                    input.screen_framebuffer_width,
-                    input.screen_framebuffer_height,
-                    window_config.canvas_width,
-                    window_config.canvas_height,
-                );
+
+                let cursors = {
+                    let input = get_input();
+                    Cursors::new(
+                        &camera.cam,
+                        &input.mouse,
+                        &input.touch,
+                        input.screen_framebuffer_width,
+                        input.screen_framebuffer_height,
+                        window_config.canvas_width,
+                        window_config.canvas_height,
+                    )
+                };
 
                 resources.globals = Some(Globals {
                     random,
@@ -350,7 +349,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
                     debug_deltatime_speed_factor: 1.0,
                     deltatime_speed_factor: 1.0,
-                    deltatime: input.deltatime,
+                    deltatime: get_input().deltatime,
+                    time_since_startup,
                     is_paused: false,
 
                     canvas_width: window_config.canvas_width as f32,
@@ -382,19 +382,18 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
         let draw = resources.draw.as_mut().unwrap();
 
-        if input.has_focus || !self.loadingscreen.is_faded_out() {
+        if window_has_focus() || !self.loadingscreen.is_faded_out() {
             draw.begin_frame();
 
             // Draw loadscreen if necessary
             if !self.loadingscreen.is_faded_out() {
-                let (canvas_width, canvas_height) = draw.get_canvas_dimensions().unwrap_or((
-                    input.screen_framebuffer_width,
-                    input.screen_framebuffer_height,
-                ));
+                let (canvas_width, canvas_height) = draw
+                    .get_canvas_dimensions()
+                    .unwrap_or((window_screen_width(), window_screen_height()));
                 let splash_sprite = assets.get_sprite("splashscreen");
                 self.loadingscreen.update_and_draw(
                     draw,
-                    input.deltatime,
+                    get_input().deltatime,
                     canvas_width,
                     canvas_height,
                     splash_sprite,
@@ -405,49 +404,50 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
             if let Some(game) = self.game.as_mut() {
                 let window_config = GameStateType::get_window_config();
                 let globals = resources.globals.as_mut().unwrap();
-                globals.cursors = Cursors::new(
-                    &globals.camera.cam,
-                    &input.mouse,
-                    &input.touch,
-                    input.screen_framebuffer_width,
-                    input.screen_framebuffer_height,
-                    window_config.canvas_width,
-                    window_config.canvas_height,
-                );
+                globals.cursors = {
+                    let input = get_input();
+                    Cursors::new(
+                        &globals.camera.cam,
+                        &input.mouse,
+                        &input.touch,
+                        input.screen_framebuffer_width,
+                        input.screen_framebuffer_height,
+                        window_config.canvas_width,
+                        window_config.canvas_height,
+                    )
+                };
 
                 // DEBUG GAMESPEED MANIPULATION
                 //
-                if input.keyboard.recently_pressed(Scancode::NumpadAdd) {
+                if key_recently_pressed(Scancode::NumpadAdd) {
                     globals.debug_deltatime_speed_factor += 0.1;
                 }
-                if input.keyboard.recently_pressed(Scancode::NumpadSubtract) {
+                if key_recently_pressed(Scancode::NumpadSubtract) {
                     globals.debug_deltatime_speed_factor -= 0.1;
                     if globals.debug_deltatime_speed_factor < 0.1 {
                         globals.debug_deltatime_speed_factor = 0.1;
                     }
                 }
-                if input
-                    .keyboard
-                    .recently_pressed_ignore_repeat(Scancode::Space)
-                {
+                if key_recently_pressed_ignore_repeat(Scancode::Space) {
                     globals.is_paused = !globals.is_paused;
                 }
                 let deltatime_speed_factor =
                     globals.deltatime_speed_factor * globals.debug_deltatime_speed_factor;
-                let deltatime = if globals.is_paused {
-                    if input.keyboard.recently_pressed(Scancode::N) {
-                        input.deltatime * deltatime_speed_factor
+                let final_deltatime = if globals.is_paused {
+                    if key_recently_pressed(Scancode::N) {
+                        get_input().deltatime * deltatime_speed_factor
                     } else {
                         0.0
                     }
                 } else {
-                    input.deltatime * deltatime_speed_factor
+                    get_input().deltatime * deltatime_speed_factor
                 };
-                globals.deltatime = deltatime;
+                globals.deltatime = final_deltatime;
+                globals.time_since_startup = time_since_startup;
 
                 let audio = resources.audio.as_mut().unwrap();
                 audio.set_global_playback_speed_factor(deltatime_speed_factor);
-                audio.update_deltatime(deltatime);
+                audio.update_deltatime(final_deltatime);
 
                 if !is_effectively_zero(globals.debug_deltatime_speed_factor - 1.0) {
                     draw.debug_log(format!("Timefactor: {:.3}", globals.deltatime_speed_factor));
@@ -463,24 +463,19 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 draw.debug_log(format!("Deltatime: {:.6}", globals.deltatime));
 
                 gui_begin_frame(draw);
-                game.update(draw, audio, &assets, out_systemcommands);
+                game.update(draw, audio, &assets);
                 gui_end_frame(draw);
 
-                let mouse_coords = globals.cursors.mouse;
-                game_handle_mouse_camera_zooming_panning(
-                    &mut globals.camera,
-                    &input.mouse,
-                    &mouse_coords,
-                );
+                game_handle_mouse_camera_zooming_panning();
                 globals.camera.update(globals.deltatime);
-                game_handle_system_keys(&input.keyboard, out_systemcommands);
+                debug_game_handle_system_keys();
 
                 debug_draw_crosshair(
                     draw,
                     &globals.camera.cam,
-                    mouse_coords.pos_world,
-                    input.screen_framebuffer_width as f32,
-                    input.screen_framebuffer_height as f32,
+                    mouse_pos_world(),
+                    window_screen_width() as f32,
+                    window_screen_height() as f32,
                     2.0,
                     Color::red(),
                     DEPTH_MAX,
@@ -490,8 +485,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                     draw,
                     &globals.camera.cam,
                     16.0,
-                    input.screen_framebuffer_width as f32,
-                    input.screen_framebuffer_height as f32,
+                    window_screen_width() as f32,
+                    window_screen_height() as f32,
                     1,
                     Color::greyscale(0.5),
                     DEPTH_MAX,
@@ -507,8 +502,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                         DEFAULT_WORLD_ZFAR,
                     ),
                     Mat4::ortho_origin_left_top(
-                        input.screen_framebuffer_width as f32,
-                        input.screen_framebuffer_height as f32,
+                        window_screen_width() as f32,
+                        window_screen_height() as f32,
                         DEFAULT_WORLD_ZNEAR,
                         DEFAULT_WORLD_ZFAR,
                     ),
@@ -520,7 +515,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 let output_sample_rate_hz = audio_output.get_audio_playback_rate_hz();
                 audio.set_global_listener_pos(globals.camera.center());
 
-                self.audio_chunk_timer += input.deltatime;
+                self.audio_chunk_timer += get_input().deltatime;
 
                 let mut audiochunk = AudioChunk::new_stereo();
                 let audiochunk_length_in_seconds =
@@ -561,6 +556,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
             // TODO: Put this into a member function
 
             // Clear input state
+            let input = get_input();
             input.screen_framebuffer_dimensions_changed = false;
             input.has_foreground_event = false;
             input.has_focus_event = false;
@@ -729,21 +725,18 @@ pub fn start_mainloop<GameStateType: 'static + AppStateInterface>() {
 // Convenience functions
 
 /// Convenience function for camera movement with mouse
-pub fn game_handle_mouse_camera_zooming_panning(
-    camera: &mut GameCamera,
-    mouse: &MouseState,
-    mouse_coords: &CursorCoords,
-) {
-    if mouse.button_middle.is_pressed {
-        camera.pan(mouse_coords.delta_canvas);
+pub fn game_handle_mouse_camera_zooming_panning() {
+    let camera = get_camera();
+    if mouse_is_down_middle() {
+        camera.pan(mouse_delta_canvas());
     }
-    if mouse.has_wheel_event {
-        if mouse.wheel_delta > 0 {
+    if mouse_wheel_event_happened() {
+        if mouse_wheel_delta() > 0 {
             let new_zoom_level = f32::min(camera.cam.zoom_level * 2.0, 8.0);
-            camera.zoom_to_world_point(mouse_coords.pos_world, new_zoom_level);
-        } else if mouse.wheel_delta < 0 {
+            camera.zoom_to_world_point(mouse_pos_world(), new_zoom_level);
+        } else if mouse_wheel_delta() < 0 {
             let new_zoom_level = f32::max(camera.cam.zoom_level / 2.0, 1.0 / 32.0);
-            camera.zoom_to_world_point(mouse_coords.pos_world, new_zoom_level);
+            camera.zoom_to_world_point(mouse_pos_world(), new_zoom_level);
         }
     }
 }
@@ -769,7 +762,6 @@ pub fn game_setup_window(
     config: &WindowConfig,
     screen_resolution_x: u32,
     screen_resolution_y: u32,
-    out_systemcommands: &mut Vec<AppCommand>,
 ) {
     draw.set_clear_color_and_depth(config.color_clear, DEPTH_CLEAR);
 
@@ -777,11 +769,9 @@ pub fn game_setup_window(
         draw.update_canvas_dimensions(config.canvas_width, config.canvas_height);
         draw.set_letterbox_color(config.canvas_color_letterbox);
 
-        out_systemcommands.push(AppCommand::WindowedModeAllow(config.windowed_mode_allow));
+        platform_window_set_allow_windowed_mode(config.windowed_mode_allow);
         if config.windowed_mode_allow {
-            out_systemcommands.push(AppCommand::WindowedModeAllowResizing(
-                config.windowed_mode_allow_resizing,
-            ));
+            platform_window_set_allow_window_resizing_by_user(config.windowed_mode_allow_resizing);
 
             // NOTE: Pick the biggest window dimension possible which is smaller
             //       than our monitor resolution
@@ -799,31 +789,29 @@ pub fn game_setup_window(
                 window_height = height;
             }
 
-            out_systemcommands.push(AppCommand::WindowedModeSetSize {
-                width: window_width,
-                height: window_height,
-                minimum_width: config.canvas_width,
-                minimum_height: config.canvas_height,
-            });
+            platform_window_set_window_size(
+                window_width,
+                window_height,
+                config.canvas_width,
+                config.canvas_height,
+            );
         }
     }
 
     if config.grab_input {
-        out_systemcommands.push(AppCommand::ScreenSetGrabInput(config.grab_input));
+        platform_window_set_cursor_grabbing(config.grab_input);
     }
 }
 
-pub fn game_handle_system_keys(keyboard: &KeyboardState, out_systemcommands: &mut Vec<AppCommand>) {
-    if keyboard.recently_pressed(Scancode::Escape) {
-        out_systemcommands.push(AppCommand::Shutdown);
+pub fn debug_game_handle_system_keys() {
+    if key_recently_pressed(Scancode::F5) {
+        platform_window_restart();
     }
-    if keyboard.recently_pressed(Scancode::Enter)
-        && (keyboard.is_down(Scancode::AltLeft) || keyboard.is_down(Scancode::AltRight))
-    {
-        out_systemcommands.push(AppCommand::FullscreenToggle);
+    if key_recently_pressed(Scancode::Escape) {
+        platform_window_shutdown();
     }
-    if keyboard.recently_pressed(Scancode::F8) {
-        out_systemcommands.push(AppCommand::Restart);
+    if key_recently_pressed(Scancode::Enter) && key_is_down_modifier(KeyModifier::Alt) {
+        platform_window_toggle_fullscreen();
     }
 }
 
