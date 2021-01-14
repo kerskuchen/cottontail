@@ -150,94 +150,22 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
     fn run_tick(
         &mut self,
-        deltatime: f32,
+        time_since_last_frame: f32,
         time_since_startup: f64,
         renderer: &mut Renderer,
         audio_output: &mut AudioOutput,
     ) {
-        let resources = get_resources();
-        let assets = resources.assets.as_mut().unwrap();
-
-        {
-            // TODO: Put this into a member function
-
-            // Mouse x in [0, screen_framebuffer_width - 1]  (left to right)
-            // Mouse y in [0, screen_framebuffer_height - 1] (top to bottom)
-            //
-            // NOTE: We get the mouse delta from querying instead of accumulating
-            //       events, as it is faster, more accurate and less error-prone
-            let input = get_input();
-            input.touch.calculate_move_deltas();
-            input.mouse.delta_x = input.mouse.pos_x - input.mouse.pos_previous_x;
-            input.mouse.delta_y = input.mouse.pos_y - input.mouse.pos_previous_y;
-            input.deltatime = snap_deltatime_to_nearest_common_refresh_rate(deltatime);
-            input.time_since_startup = time_since_startup;
-        }
-
-        //--------------------------------------------------------------------------------------
-        // Start/stop input-recording/-playback
+        get_input().begin_frame(
+            snap_deltatime_to_nearest_common_refresh_rate(time_since_last_frame),
+            time_since_startup,
+        );
 
         if let Some(game) = self.game.as_mut() {
-            let input_recorder = self.input_recorder.as_mut().unwrap();
-            let draw = resources.draw.as_mut().unwrap();
-            let audio = resources.audio.as_mut().unwrap();
-            let globals = resources.globals.as_mut().unwrap();
-
-            if key_recently_released(Scancode::O) {
-                if !input_recorder.is_playing_back {
-                    if input_recorder.is_recording {
-                        log::info!("Stopping input recording");
-                        input_recorder.stop_recording();
-                    } else {
-                        log::info!("Starting input recording");
-                        // Clear keyboard input so that we won't get the the `O` Scancode at the
-                        // beginning of the recording
-                        get_input().keyboard.clear_transitions();
-                        input_recorder.start_recording(game, draw, audio, globals);
-                    }
-                }
-            } else if key_recently_released(Scancode::P) {
-                if !input_recorder.is_recording {
-                    if input_recorder.is_playing_back {
-                        log::info!("Stopping input playback");
-                        input_recorder.stop_playback();
-                        get_input().keyboard.clear_state_and_transitions();
-                    } else {
-                        log::info!("Starting input playback");
-                        input_recorder.start_playback(game, draw, audio, globals);
-                    }
-                }
-            }
-
-            // Playback/record input events
-            //
-            // NOTE: We can move the playback part before polling events to be more interactive!
-            //       For this we need to handle the mouse and keyboard a little different. Maybe we
-            //       can have `input_last` and `input_current`?
-            if input_recorder.is_recording {
-                input_recorder.record_input(get_input());
-            } else if input_recorder.is_playing_back {
-                // NOTE: We need to save the state of the playback-key or the keystate will get
-                //       confused. This can happen when we press down the playback-key and hold it for
-                //       several frames. While we do that the input playback overwrites the state of the
-                //       playback-key. If we release the playback-key the keystate will think it is
-                //       already released (due to the overwrite) but will get an additional release
-                //       event (which is not good)
-                let input = get_input();
-                if let Some(previous_playback_key_state) =
-                    input.keyboard.keys.get(&Scancode::P).cloned()
-                {
-                    *input = input_recorder.playback_input(game, draw, audio, globals);
-                    input
-                        .keyboard
-                        .keys
-                        .insert(Scancode::P, previous_playback_key_state);
-                } else {
-                    *input = input_recorder.playback_input(game, draw, audio, globals);
-                }
-            }
+            self.input_recorder.as_mut().unwrap().tick(game);
         }
 
+        let resources = get_resources();
+        let assets = resources.assets.as_mut().unwrap();
         match assets.update() {
             AssetLoadingStage::SplashStart => return,
             AssetLoadingStage::SplashProgress => return,
@@ -552,27 +480,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
         draw.render_frame(renderer);
 
-        {
-            // TODO: Put this into a member function
-
-            // Clear input state
-            let input = get_input();
-            input.screen_framebuffer_dimensions_changed = false;
-            input.has_foreground_event = false;
-            input.has_focus_event = false;
-
-            input.keyboard.clear_transitions();
-            input.mouse.clear_transitions();
-            input.touch.clear_transitions();
-
-            if input.textinput.is_textinput_enabled {
-                // Reset textinput
-                input.textinput.has_new_textinput_event = false;
-                input.textinput.has_new_composition_event = false;
-                input.textinput.inputtext.clear();
-                input.textinput.composition_text.clear();
-            }
-        }
+        get_input().end_frame();
     }
 
     fn handle_window_resize(&mut self, new_width: u32, new_height: u32, is_fullscreen: bool) {
@@ -845,6 +753,67 @@ impl<AppStateType: AppStateInterface> InputRecorder<AppStateType> {
         }
     }
 
+    fn tick(&mut self, game: &mut AppStateType) {
+        let resources = get_resources();
+        let draw = resources.draw.as_mut().unwrap();
+        let audio = resources.audio.as_mut().unwrap();
+        let globals = resources.globals.as_mut().unwrap();
+
+        if key_recently_released(Scancode::O) {
+            if !self.is_playing_back {
+                if self.is_recording {
+                    log::info!("Stopping input recording");
+                    self.stop_recording();
+                } else {
+                    log::info!("Starting input recording");
+                    // Clear keyboard input so that we won't get the the `O` Scancode at the
+                    // beginning of the recording
+                    get_input().keyboard.clear_transitions();
+                    self.start_recording(game, draw, audio, globals);
+                }
+            }
+        } else if key_recently_released(Scancode::P) {
+            if !self.is_recording {
+                if self.is_playing_back {
+                    log::info!("Stopping input playback");
+                    self.stop_playback();
+                    get_input().keyboard.clear_state_and_transitions();
+                } else {
+                    log::info!("Starting input playback");
+                    self.start_playback(game, draw, audio, globals);
+                }
+            }
+        }
+
+        // Playback/record input events
+        //
+        // NOTE: We can move the playback part before polling events to be more interactive!
+        //       For this we need to handle the mouse and keyboard a little different. Maybe we
+        //       can have `input_last` and `input_current`?
+        if self.is_recording {
+            self.record_input(get_input());
+        } else if self.is_playing_back {
+            // NOTE: We need to save the state of the playback-key or the keystate will get
+            //       confused. This can happen when we press down the playback-key and hold it for
+            //       several frames. While we do that the input playback overwrites the state of the
+            //       playback-key. If we release the playback-key the keystate will think it is
+            //       already released (due to the overwrite) but will get an additional release
+            //       event (which is not good)
+            let input = get_input();
+            if let Some(previous_playback_key_state) =
+                input.keyboard.keys.get(&Scancode::P).cloned()
+            {
+                *input = self.playback_input(game, draw, audio, globals);
+                input
+                    .keyboard
+                    .keys
+                    .insert(Scancode::P, previous_playback_key_state);
+            } else {
+                *input = self.playback_input(game, draw, audio, globals);
+            }
+        }
+    }
+
     fn start_recording(
         &mut self,
         appstate: &AppStateType,
@@ -1032,8 +1001,8 @@ impl Cursors {
             canvas_height,
             mouse.pos_x,
             mouse.pos_y,
-            mouse.delta_x,
-            mouse.delta_y,
+            mouse.pos_x - mouse.pos_previous_x,
+            mouse.pos_y - mouse.pos_previous_y,
         );
         let fingers = touch
             .fingers
@@ -1049,8 +1018,8 @@ impl Cursors {
                         canvas_height,
                         finger.pos_x,
                         finger.pos_y,
-                        finger.delta_x,
-                        finger.delta_y,
+                        finger.pos_x - finger.pos_previous_x,
+                        finger.pos_y - finger.pos_previous_y,
                     ),
                 )
             })

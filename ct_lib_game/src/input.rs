@@ -33,6 +33,33 @@ impl InputState {
     pub fn new() -> InputState {
         InputState::default()
     }
+
+    #[inline]
+    pub fn begin_frame(&mut self, time_since_last_frame: f32, time_since_startup: f64) {
+        self.deltatime = time_since_last_frame;
+        self.time_since_startup = time_since_startup;
+    }
+
+    #[inline]
+    pub fn end_frame(&mut self) {
+        // Clear input state
+        self.screen_framebuffer_dimensions_changed = false;
+        self.has_foreground_event = false;
+        self.has_focus_event = false;
+
+        self.keyboard.clear_transitions();
+        self.mouse.clear_transitions();
+        self.touch.clear_transitions();
+        self.gamepad.clear_transitions();
+
+        if self.textinput.is_textinput_enabled {
+            // Reset textinput
+            self.textinput.has_new_textinput_event = false;
+            self.textinput.has_new_composition_event = false;
+            self.textinput.inputtext.clear();
+            self.textinput.composition_text.clear();
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -114,6 +141,8 @@ impl ButtonState {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Mouse
 
+// Mouse x in [0, screen_framebuffer_width - 1]  (left to right)
+// Mouse y in [0, screen_framebuffer_height - 1] (top to bottom)
 #[derive(Default, Clone)]
 pub struct MouseState {
     pub has_move_event: bool,
@@ -127,9 +156,6 @@ pub struct MouseState {
 
     pub pos_previous_x: i32,
     pub pos_previous_y: i32,
-
-    pub delta_x: i32,
-    pub delta_y: i32,
 
     pub wheel_delta: i32,
 
@@ -150,8 +176,6 @@ impl MouseState {
 
         self.pos_previous_x = self.pos_x;
         self.pos_previous_y = self.pos_y;
-        self.delta_x = 0;
-        self.delta_y = 0;
         self.wheel_delta = 0;
 
         self.button_left.clear_transitions();
@@ -167,6 +191,8 @@ impl MouseState {
 
 pub type FingerId = usize;
 
+// Finger x in [0, screen_framebuffer_width - 1]  (left to right)
+// Finger y in [0, screen_framebuffer_height - 1] (top to bottom)
 #[derive(Clone)]
 pub struct TouchFinger {
     pub state: ButtonState,
@@ -175,8 +201,8 @@ pub struct TouchFinger {
     pub pos_x: i32,
     pub pos_y: i32,
 
-    pub delta_x: i32,
-    pub delta_y: i32,
+    pub pos_previous_x: i32,
+    pub pos_previous_y: i32,
 
     pub id: FingerId,              // Given by us
     platform_id: FingerPlatformId, // Given by the Implementation
@@ -189,8 +215,8 @@ impl TouchFinger {
             state: ButtonState::default(),
             pos_x,
             pos_y,
-            delta_x: 0,
-            delta_y: 0,
+            pos_previous_x: 0,
+            pos_previous_y: 0,
             id,
             platform_id,
         }
@@ -204,7 +230,6 @@ pub struct TouchState {
     pub has_release_event: bool,
 
     pub fingers: HashMap<FingerId, TouchFinger>,
-    fingers_previous: HashMap<FingerId, TouchFinger>,
 }
 
 impl TouchState {
@@ -264,24 +289,6 @@ impl TouchState {
     }
 
     #[inline]
-    pub fn calculate_move_deltas(&mut self) {
-        let ids: Vec<FingerId> = self.fingers.keys().cloned().collect();
-        for id in ids {
-            let previous_pos = {
-                self.fingers_previous
-                    .get(&id)
-                    .map(|previous_finger| (previous_finger.pos_x, previous_finger.pos_y))
-            };
-
-            if let Some((previous_pos_x, previous_pos_y)) = previous_pos {
-                let mut finger = self.fingers.get_mut(&id).unwrap();
-                finger.delta_x = finger.pos_x - previous_pos_x;
-                finger.delta_y = finger.pos_y - previous_pos_y;
-            }
-        }
-    }
-
-    #[inline]
     pub fn clear_transitions(&mut self) {
         self.has_move_event = false;
         self.has_press_event = false;
@@ -289,29 +296,13 @@ impl TouchState {
 
         for finger in self.fingers.values_mut() {
             finger.state.transition_count = 0;
-            finger.delta_x = 0;
-            finger.delta_y = 0;
+            finger.pos_previous_x = finger.pos_x;
+            finger.pos_previous_y = finger.pos_y;
         }
 
         // Remove inactive fingers
         self.fingers
             .retain(|_id, finger| finger.state.is_pressed || finger.state.recently_released());
-
-        self.fingers_previous = self.fingers.clone();
-    }
-
-    #[inline]
-    pub fn pos(&self, finger: FingerId) -> Option<(i32, i32)> {
-        self.fingers
-            .get(&finger)
-            .map(|finger| (finger.pos_x, finger.pos_y))
-    }
-
-    #[inline]
-    pub fn pos_delta(&self, finger: FingerId) -> Option<(i32, i32)> {
-        self.fingers
-            .get(&finger)
-            .map(|finger| (finger.delta_x, finger.delta_y))
     }
 
     #[inline]
@@ -382,8 +373,14 @@ pub struct GamepadState {
     pub stick_left: Vec2,
     pub stick_right: Vec2,
 
+    pub stick_left_previous: Vec2,
+    pub stick_right_previous: Vec2,
+
     pub trigger_left: f32,
     pub trigger_right: f32,
+
+    pub trigger_left_previous: f32,
+    pub trigger_right_previous: f32,
 }
 
 impl Default for GamepadState {
@@ -425,13 +422,36 @@ impl Default for GamepadState {
             stick_left: Vec2::zero(),
             stick_right: Vec2::zero(),
 
+            stick_left_previous: Vec2::zero(),
+            stick_right_previous: Vec2::zero(),
+
             trigger_left: 0.0,
             trigger_right: 0.0,
+
+            trigger_left_previous: 0.0,
+            trigger_right_previous: 0.0,
         }
     }
 }
 
 impl GamepadState {
+    #[inline]
+    pub fn clear_transitions(&mut self) {
+        self.has_stick_event = false;
+        self.has_press_event = false;
+        self.has_release_event = false;
+        self.has_trigger_event = false;
+
+        for button in self.buttons.values_mut() {
+            button.clear_transitions();
+        }
+
+        self.stick_left_previous = self.stick_left;
+        self.stick_right_previous = self.stick_right;
+        self.trigger_left_previous = self.trigger_left;
+        self.trigger_right_previous = self.trigger_right;
+    }
+
     #[inline]
     pub fn process_button_state(&mut self, button: GamepadButton, is_pressed: bool) {
         self.is_connected = true;
