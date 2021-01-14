@@ -218,6 +218,14 @@ impl ParticleSystem {
         }
     }
 
+    pub fn pos(&self) -> Vec2 {
+        self.root_pos
+    }
+
+    pub fn count(&self) -> usize {
+        self.pos.len()
+    }
+
     pub fn set_count_max(&mut self, count_max: usize) {
         self.count_max = count_max;
     }
@@ -263,14 +271,20 @@ impl ParticleSystem {
                 self.params.color_end,
                 age_percentage,
             );
-            draw.draw_rect_transformed(
-                Vec2::ones(),
-                true,
-                true,
-                Vec2::zero(),
-                Transform::from_pos_scale_uniform(self.pos[index].pixel_snapped(), scale),
-                Drawparams::new(depth, color, additivity, drawspace),
-            );
+            let pos = self.pos[index].pixel_snapped();
+            let drawparams = Drawparams::new(depth, color, additivity, drawspace);
+            if scale > 1.0 {
+                draw.draw_rect_transformed(
+                    Vec2::ones(),
+                    true,
+                    true,
+                    Vec2::zero(),
+                    Transform::from_pos_scale_uniform(pos, scale),
+                    drawparams,
+                );
+            } else {
+                draw.draw_pixel(pos, drawparams);
+            }
         }
 
         // Remove old
