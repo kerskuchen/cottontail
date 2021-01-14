@@ -4,7 +4,7 @@ pub mod camera;
 pub mod choreographer;
 pub mod debug;
 pub mod gui;
-pub mod input;
+mod input;
 
 pub use animations_fx::*;
 pub use assets::*;
@@ -12,9 +12,9 @@ pub use camera::*;
 pub use choreographer::*;
 pub use debug::*;
 pub use gui::*;
-use input::*;
+use input::{InputState, KeyboardState, MouseState, TouchState};
 
-use camera::{CursorCoords, Cursors, GameCamera};
+use camera::GameCamera;
 use choreographer::LoadingScreen;
 use debug::{debug_draw_crosshair, debug_draw_grid};
 
@@ -24,13 +24,13 @@ use ct_lib_image::*;
 use ct_lib_math::*;
 use ct_lib_window::{
     platform::audio::AudioOutput, renderer_opengl::Renderer, run_main, AppCommand, AppEventHandler,
-    AppInfo, FingerPlatformId, MouseButton,
+    AppInfo, FingerPlatformId,
 };
 
 use ct_lib_core::serde_derive::{Deserialize, Serialize};
 use ct_lib_core::*;
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 pub const DEPTH_DEBUG: Depth = 90.0;
 pub const DEPTH_DEVELOP_OVERLAY: Depth = 80.0;
@@ -79,7 +79,6 @@ pub trait AppStateInterface: Clone {
         draw: &mut Drawstate,
         audio: &mut Audiostate,
         assets: &GameAssets,
-        input: &InputState,
         globals: &mut Globals,
     ) -> Self;
     fn update(
@@ -87,7 +86,6 @@ pub trait AppStateInterface: Clone {
         draw: &mut Drawstate,
         audio: &mut Audiostate,
         assets: &GameAssets,
-        input: &InputState,
         globals: &mut Globals,
         out_systemcommands: &mut Vec<AppCommand>,
     );
@@ -372,13 +370,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                     canvas_height: window_config.canvas_height as f32,
                 };
 
-                self.game = Some(GameStateType::new(
-                    draw,
-                    audio,
-                    &assets,
-                    &input,
-                    &mut globals,
-                ));
+                self.game = Some(GameStateType::new(draw, audio, &assets, &mut globals));
                 resources.globals = Some(globals);
 
                 self.loadingscreen.start_fading_out();
@@ -484,8 +476,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 }
                 draw.debug_log(format!("Deltatime: {:.6}", globals.deltatime));
 
-                gui_begin_frame(draw, &globals.cursors, input);
-                game.update(draw, audio, &assets, input, globals, out_systemcommands);
+                gui_begin_frame(draw);
+                game.update(draw, audio, &assets, globals, out_systemcommands);
                 gui_end_frame(draw);
 
                 let mouse_coords = globals.cursors.mouse;
@@ -673,7 +665,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
     fn handle_mouse_move(&mut self, pos_x: i32, pos_y: i32) {
         let input = get_input();
-        input.mouse.has_moved = true;
+        input.mouse.has_move_event = true;
         input.mouse.pos_x = pos_x;
         input.mouse.pos_y = pos_y;
     }
@@ -702,6 +694,43 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
     fn handle_touch_cancelled(&mut self, finger_id: FingerPlatformId, pos_x: i32, pos_y: i32) {
         let input = get_input();
         input.touch.process_finger_up(finger_id, pos_x, pos_y);
+    }
+
+    fn handle_gamepad_connected(&mut self, gamepad_id: ct_lib_window::GamepadPlatformId) {
+        if gamepad_id != 0 {
+            // TODO: Currently we only support one gamepad
+            return;
+        }
+        let input = get_input();
+        input.gamepad.is_connected = true;
+    }
+
+    fn handle_gamepad_disconnected(&mut self, gamepad_id: ct_lib_window::GamepadPlatformId) {
+        if gamepad_id != 0 {
+            // TODO: Currently we only support one gamepad
+            return;
+        }
+        let input = get_input();
+        input.gamepad.is_connected = false;
+    }
+
+    fn handle_gamepad_new_state(
+        &mut self,
+        gamepad_id: ct_lib_window::GamepadPlatformId,
+        state: &ct_lib_window::GamepadPlatformState,
+    ) {
+        if gamepad_id != 0 {
+            // TODO: Currently we only support one gamepad
+            return;
+        }
+
+        let input = get_input();
+        for (&button_name, &is_pressed) in state.buttons.iter() {
+            input.gamepad.process_button_state(button_name, is_pressed);
+        }
+        for (&axis_name, &value) in state.axes.iter() {
+            input.gamepad.process_axis_state(axis_name, value);
+        }
     }
 }
 
@@ -942,12 +971,168 @@ impl<AppStateType: AppStateInterface> InputRecorder<AppStateType> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Cursors
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct CursorCoords {
+    pub pos_screen: Canvaspoint,
+    pub pos_canvas: Canvaspoint,
+    pub pos_world: Worldpoint,
+
+    pub delta_screen: Canvasvec,
+    pub delta_canvas: Canvasvec,
+    pub delta_world: Worldvec,
+}
+
+impl CursorCoords {
+    fn new(
+        camera: &Camera,
+        screen_width: u32,
+        screen_height: u32,
+        canvas_width: u32,
+        canvas_height: u32,
+        screen_cursor_pos_x: i32,
+        screen_cursor_pos_y: i32,
+        screen_cursor_delta_x: i32,
+        screen_cursor_delta_y: i32,
+    ) -> CursorCoords {
+        let screen_cursor_pos_previous_x = screen_cursor_pos_x - screen_cursor_delta_x;
+        let screen_cursor_pos_previous_y = screen_cursor_pos_y - screen_cursor_delta_y;
+
+        let canvas_pos = screen_point_to_canvas_point(
+            screen_cursor_pos_x,
+            screen_cursor_pos_y,
+            screen_width,
+            screen_height,
+            canvas_width,
+            canvas_height,
+        );
+        let canvas_pos_previous = screen_point_to_canvas_point(
+            screen_cursor_pos_previous_x,
+            screen_cursor_pos_previous_y,
+            screen_width,
+            screen_height,
+            canvas_width,
+            canvas_height,
+        );
+
+        // NOTE: We don't transform the screen cursor delta directly because that leads to rounding
+        //       errors that can accumulate. For example if we have a small canvas and big screen we can
+        //       move the cursor slowly such that the delta keeps being (0,0) but the canvas position
+        //       changes
+        let canvas_delta = canvas_pos - canvas_pos_previous;
+
+        CursorCoords {
+            pos_screen: Vec2::new(screen_cursor_pos_x as f32, screen_cursor_pos_y as f32),
+            pos_canvas: Vec2::from(canvas_pos),
+            pos_world: camera.canvaspoint_to_worldpoint(Vec2::from(canvas_pos)),
+
+            delta_screen: Vec2::new(screen_cursor_delta_x as f32, screen_cursor_delta_y as f32),
+            delta_canvas: Vec2::from(canvas_delta),
+            delta_world: camera.canvas_vec_to_world_vec(Vec2::from(canvas_delta)),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct Cursors {
+    pub mouse: CursorCoords,
+    pub fingers: HashMap<FingerId, CursorCoords>,
+}
+
+impl Cursors {
+    pub fn new(
+        camera: &Camera,
+        mouse: &MouseState,
+        touch: &TouchState,
+        screen_width: u32,
+        screen_height: u32,
+        canvas_width: u32,
+        canvas_height: u32,
+    ) -> Cursors {
+        let mouse = CursorCoords::new(
+            camera,
+            screen_width,
+            screen_height,
+            canvas_width,
+            canvas_height,
+            mouse.pos_x,
+            mouse.pos_y,
+            mouse.delta_x,
+            mouse.delta_y,
+        );
+        let fingers = touch
+            .fingers
+            .iter()
+            .map(|(id, finger)| {
+                (
+                    *id,
+                    CursorCoords::new(
+                        camera,
+                        screen_width,
+                        screen_height,
+                        canvas_width,
+                        canvas_height,
+                        finger.pos_x,
+                        finger.pos_y,
+                        finger.delta_x,
+                        finger.delta_y,
+                    ),
+                )
+            })
+            .collect();
+
+        Cursors { mouse, fingers }
+    }
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // EASY API FUNCTIONS
+
+//--------------------------------------------------------------------------------------------------
+// TIMING
+
+#[inline]
+pub fn time_deltatime() -> f32 {
+    get_globals().deltatime
+}
+
+#[inline]
+pub fn time_since_startup() -> f64 {
+    get_input().real_world_uptime
+}
+
+//--------------------------------------------------------------------------------------------------
+// WINDOW
+
+#[inline]
+pub fn window_is_fullscreen() -> bool {
+    get_input().screen_is_fullscreen
+}
+
+#[inline]
+pub fn window_screen_width() -> u32 {
+    get_input().screen_framebuffer_width
+}
+
+#[inline]
+pub fn window_screen_height() -> u32 {
+    get_input().screen_framebuffer_height
+}
+
+#[inline]
+pub fn window_screen_dimensions() -> (u32, u32) {
+    let input = get_input();
+    (
+        input.screen_framebuffer_width,
+        input.screen_framebuffer_height,
+    )
+}
 
 //--------------------------------------------------------------------------------------------------
 // KEYBOARD INPUT
 
-pub use ct_lib_window::input::{FingerId, Keycode, Scancode};
+pub use ct_lib_window::input::{Keycode, Scancode};
+pub use input::KeyModifier;
 
 // Keyboard events
 
@@ -1041,6 +1226,8 @@ pub fn key_recently_released_modifier(modifier: KeyModifier) -> bool {
 //--------------------------------------------------------------------------------------------------
 // MOUSE INPUT
 
+pub use ct_lib_window::input::MouseButton;
+
 // Mouse events
 
 #[inline]
@@ -1055,7 +1242,7 @@ pub fn mouse_release_event_happened() -> bool {
 
 #[inline]
 pub fn mouse_move_event_happened() -> bool {
-    get_input().mouse.has_moved
+    get_input().mouse.has_move_event
 }
 
 #[inline]
@@ -1184,4 +1371,207 @@ pub fn mouse_recently_pressed_x2() -> bool {
 #[inline]
 pub fn mouse_recently_released_x2() -> bool {
     get_input().mouse.button_x2.recently_released()
+}
+
+// Mouse button any
+
+#[inline]
+pub fn mouse_is_down(button: MouseButton) -> bool {
+    match button {
+        MouseButton::Left => mouse_is_down_left(),
+        MouseButton::Right => mouse_is_down_right(),
+        MouseButton::Middle => mouse_is_down_middle(),
+        MouseButton::X1 => mouse_is_down_x1(),
+        MouseButton::X2 => mouse_is_down_x2(),
+    }
+}
+
+#[inline]
+pub fn mouse_recently_pressed(button: MouseButton) -> bool {
+    match button {
+        MouseButton::Left => mouse_recently_pressed_left(),
+        MouseButton::Right => mouse_recently_pressed_right(),
+        MouseButton::Middle => mouse_recently_pressed_middle(),
+        MouseButton::X1 => mouse_recently_pressed_x1(),
+        MouseButton::X2 => mouse_recently_pressed_x2(),
+    }
+}
+
+#[inline]
+pub fn mouse_recently_released(button: MouseButton) -> bool {
+    match button {
+        MouseButton::Left => mouse_recently_released_left(),
+        MouseButton::Right => mouse_recently_released_right(),
+        MouseButton::Middle => mouse_recently_released_middle(),
+        MouseButton::X1 => mouse_recently_released_x1(),
+        MouseButton::X2 => mouse_recently_released_x2(),
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+// TOUCH INPUT
+
+pub use input::FingerId;
+
+// Touch events
+
+#[inline]
+pub fn touch_press_event_happened() -> bool {
+    get_input().touch.has_press_event
+}
+
+#[inline]
+pub fn touch_release_event_happened() -> bool {
+    get_input().touch.has_release_event
+}
+
+#[inline]
+pub fn touch_move_event_happened() -> bool {
+    get_input().touch.has_move_event
+}
+
+// Touch position
+
+#[inline]
+pub fn touch_pos_screen(finger: FingerId) -> Option<Vec2> {
+    get_globals()
+        .cursors
+        .fingers
+        .get(&finger)
+        .map(|cursor_coord| cursor_coord.pos_screen)
+}
+
+#[inline]
+pub fn touch_pos_canvas(finger: FingerId) -> Option<Vec2> {
+    get_globals()
+        .cursors
+        .fingers
+        .get(&finger)
+        .map(|cursor_coord| cursor_coord.pos_canvas)
+}
+
+#[inline]
+pub fn touch_pos_world(finger: FingerId) -> Option<Vec2> {
+    get_globals()
+        .cursors
+        .fingers
+        .get(&finger)
+        .map(|cursor_coord| cursor_coord.pos_world)
+}
+
+#[inline]
+pub fn touch_delta_screen(finger: FingerId) -> Option<Vec2> {
+    get_globals()
+        .cursors
+        .fingers
+        .get(&finger)
+        .map(|cursor_coord| cursor_coord.delta_screen)
+}
+
+#[inline]
+pub fn touch_delta_canvas(finger: FingerId) -> Option<Vec2> {
+    get_globals()
+        .cursors
+        .fingers
+        .get(&finger)
+        .map(|cursor_coord| cursor_coord.delta_canvas)
+}
+
+#[inline]
+pub fn touch_delta_world(finger: FingerId) -> Option<Vec2> {
+    get_globals()
+        .cursors
+        .fingers
+        .get(&finger)
+        .map(|cursor_coord| cursor_coord.delta_world)
+}
+
+// Touch state
+
+#[inline]
+pub fn touch_is_down(finger: FingerId) -> bool {
+    get_input().touch.is_down(finger)
+}
+
+#[inline]
+pub fn touch_recently_pressed(finger: FingerId) -> bool {
+    get_input().touch.recently_pressed(finger)
+}
+
+#[inline]
+pub fn touch_recently_released(finger: FingerId) -> bool {
+    get_input().touch.recently_released(finger)
+}
+
+//--------------------------------------------------------------------------------------------------
+// GAMEPAD
+
+use input::GamepadButton;
+
+// Gamepad events
+
+#[inline]
+pub fn gamepad_press_event_happened() -> bool {
+    get_input().gamepad.has_press_event
+}
+
+#[inline]
+pub fn gamepad_release_event_happened() -> bool {
+    get_input().gamepad.has_release_event
+}
+
+#[inline]
+pub fn gamepad_stick_event_happened() -> bool {
+    get_input().gamepad.has_stick_event
+}
+
+#[inline]
+pub fn gamepad_trigger_event_happened() -> bool {
+    get_input().gamepad.has_trigger_event
+}
+
+// Gamepad status
+
+#[inline]
+pub fn gamepad_is_connected() -> bool {
+    get_input().gamepad.is_connected
+}
+
+// Gamepad sticks and triggers
+
+#[inline]
+pub fn gamepad_stick_left() -> Vec2 {
+    get_input().gamepad.stick_left
+}
+
+#[inline]
+pub fn gamepad_stick_right() -> Vec2 {
+    get_input().gamepad.stick_right
+}
+
+#[inline]
+pub fn gamepad_trigger_left() -> f32 {
+    get_input().gamepad.trigger_left
+}
+
+#[inline]
+pub fn gamepad_trigger_right() -> f32 {
+    get_input().gamepad.trigger_right
+}
+
+// Gamepad button state
+
+#[inline]
+pub fn gamepad_is_down(button: GamepadButton) -> bool {
+    get_input().gamepad.is_down(button)
+}
+
+#[inline]
+pub fn gamepad_recently_pressed(button: GamepadButton) -> bool {
+    get_input().gamepad.recently_pressed(button)
+}
+
+#[inline]
+pub fn gamepad_recently_released(button: GamepadButton) -> bool {
+    get_input().gamepad.recently_released(button)
 }

@@ -62,6 +62,14 @@ pub trait AppEventHandler {
     fn handle_touch_move(&mut self, finger_id: FingerPlatformId, pos_x: i32, pos_y: i32);
     fn handle_touch_cancelled(&mut self, finger_id: FingerPlatformId, pos_x: i32, pos_y: i32);
 
+    fn handle_gamepad_connected(&mut self, gamepad_id: GamepadPlatformId);
+    fn handle_gamepad_disconnected(&mut self, gamepad_id: GamepadPlatformId);
+    fn handle_gamepad_new_state(
+        &mut self,
+        gamepad_id: GamepadPlatformId,
+        state: &GamepadPlatformState,
+    );
+
     fn run_tick(
         &mut self,
         frametime: f32,

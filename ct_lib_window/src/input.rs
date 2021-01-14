@@ -1,3 +1,92 @@
+use std::collections::HashMap;
+
+pub type FingerPlatformId = i64;
+pub type GamepadPlatformId = i64;
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub enum GamepadButton {
+    Start,
+    Back,
+    Home,
+
+    MoveUp,
+    MoveDown,
+    MoveLeft,
+    MoveRight,
+
+    ActionUp,
+    ActionDown,
+    ActionLeft,
+    ActionRight,
+
+    StickLeft,
+    StickRight,
+
+    TriggerLeft1,
+    TriggerLeft2,
+
+    TriggerRight1,
+    TriggerRight2,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub enum GamepadAxis {
+    StickLeftX,
+    StickLeftY,
+    StickRightX,
+    StickRightY,
+
+    TriggerLeft,
+    TriggerRight,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct GamepadPlatformState {
+    pub buttons: HashMap<GamepadButton, bool>,
+    pub axes: HashMap<GamepadAxis, f32>,
+}
+
+impl Default for GamepadPlatformState {
+    fn default() -> Self {
+        let buttons_list = [
+            GamepadButton::Start,
+            GamepadButton::Back,
+            GamepadButton::Home,
+            GamepadButton::MoveUp,
+            GamepadButton::MoveDown,
+            GamepadButton::MoveLeft,
+            GamepadButton::MoveRight,
+            GamepadButton::ActionUp,
+            GamepadButton::ActionDown,
+            GamepadButton::ActionLeft,
+            GamepadButton::ActionRight,
+            GamepadButton::StickLeft,
+            GamepadButton::StickRight,
+            GamepadButton::TriggerLeft1,
+            GamepadButton::TriggerLeft2,
+            GamepadButton::TriggerRight1,
+            GamepadButton::TriggerRight2,
+        ];
+        let axes_list = [
+            GamepadAxis::StickLeftX,
+            GamepadAxis::StickLeftY,
+            GamepadAxis::StickRightX,
+            GamepadAxis::StickRightY,
+            GamepadAxis::TriggerLeft,
+            GamepadAxis::TriggerRight,
+        ];
+        let buttons = buttons_list.iter().map(|&button| (button, false)).collect();
+        let axes = axes_list.iter().map(|&axis| (axis, 0.0)).collect();
+        GamepadPlatformState { buttons, axes }
+    }
+}
+impl GamepadPlatformState {
+    pub fn new() -> GamepadPlatformState {
+        GamepadPlatformState::default()
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum MouseButton {
     Left,
     Right,
@@ -5,9 +94,6 @@ pub enum MouseButton {
     X1,
     X2,
 }
-
-pub type FingerId = usize;
-pub type FingerPlatformId = i64;
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Scancode {

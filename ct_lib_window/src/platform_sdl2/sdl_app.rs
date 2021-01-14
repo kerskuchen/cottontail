@@ -4,14 +4,17 @@ mod sdl_window;
 
 pub use sdl_audio as audio;
 
-use crate::{AppCommand, AppEventHandler, FingerPlatformId, MouseButton};
+use crate::{
+    AppCommand, AppEventHandler, FingerPlatformId, GamepadAxis, GamepadButton, GamepadPlatformId,
+    GamepadPlatformState, MouseButton,
+};
 
 use ct_lib_core::log;
 use ct_lib_core::serde_derive::{Deserialize, Serialize};
 use ct_lib_core::*;
 use ct_lib_core::{deserialize_from_json_file, serialize_to_json_file};
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Configuration
@@ -117,7 +120,7 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
     // ---------------------------------------------------------------------------------------------
     // Input
 
-    let gamepad_subsystem = {
+    let mut gamepad_subsystem = {
         const GAME_CONTROLLER_DB: &[u8] = include_bytes!("../../resources/gamecontrollerdb.txt");
 
         let savedata_mappings_path = path_join(&savedata_dir, "gamecontrollerdb.txt");
@@ -150,6 +153,7 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
     };
 
     // Print some info about the currently connected gamepads
+    let mut gamepads = HashMap::new();
     if let Some(gamepad_subsystem) = &gamepad_subsystem {
         if gamepad_subsystem.gamepads().count() == 0 {
             log::info!("No gamepads connected");
@@ -162,6 +166,9 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
                     gamepad.name(),
                     gamepad.power_info()
                 );
+
+                let gamepad_id = gilrs_id_to_our_id(id);
+                gamepads.insert(gamepad_id, GamepadPlatformState::new());
             }
             log::info!("{}", gamepad_info);
         }
@@ -380,84 +387,48 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
             }
         }
 
-        // TODO
-        /*
-
-        // Gamepad events
-        // NOTE: Currently we collect events from all available gamepads
-        if let Some(gamepad_subsystem) = &mut gamepad_subsystem {
-            while let Some(gilrs::Event { event, .. }) = gamepad_subsystem.next_event() {
-                let maybe_button_event = match event {
-                    gilrs::EventType::ButtonPressed(button, _) => Some((button, true)),
-                    gilrs::EventType::ButtonReleased(button, _) => Some((button, false)),
+        // Gamepad
+        if let Some(gamepad_subsystem) = gamepad_subsystem.as_mut() {
+            // NOTE: We collect connect/disconnect events here only and not individual button
+            //       presses or axis events. Later on we just extract the whole state and forward
+            //       it to the application
+            while let Some(gilrs::Event { id, event, .. }) = gamepad_subsystem.next_event() {
+                let gamepad_id = gilrs_id_to_our_id(id);
+                match event {
                     gilrs::EventType::Connected => {
-                        input.gamepad.is_connected = true;
-                        None
+                        gamepads.insert(gamepad_id, GamepadPlatformState::new());
+                        app.handle_gamepad_connected(gamepad_id);
                     }
                     gilrs::EventType::Disconnected => {
-                        input.gamepad.is_connected = true;
-                        None
+                        gamepads.remove(&gamepad_id);
+                        app.handle_gamepad_disconnected(gamepad_id);
                     }
-                    gilrs::EventType::AxisChanged(axis, value, _) => {
-                        input.gamepad.is_connected = true;
-                        match axis {
-                            gilrs::Axis::LeftStickX => input.gamepad.stick_left.x = value,
-                            gilrs::Axis::LeftStickY => input.gamepad.stick_left.y = -value,
-                            gilrs::Axis::LeftZ => input.gamepad.trigger_left = value,
-                            gilrs::Axis::RightStickX => input.gamepad.stick_right.x = value,
-                            gilrs::Axis::RightStickY => input.gamepad.stick_right.y = -value,
-                            gilrs::Axis::RightZ => input.gamepad.trigger_right = value,
-                            _ => {}
-                        };
-                        None
-                    }
-                    _ => None,
-                };
-
-                if let Some((button, is_pressed)) = maybe_button_event {
-                    input.gamepad.is_connected = true;
-                    let gamepad_button = match button {
-                        gilrs::Button::South => Some(&mut input.gamepad.action_down),
-                        gilrs::Button::East => Some(&mut input.gamepad.action_right),
-                        gilrs::Button::North => Some(&mut input.gamepad.action_up),
-                        gilrs::Button::West => Some(&mut input.gamepad.action_left),
-                        gilrs::Button::LeftTrigger => {
-                            Some(&mut input.gamepad.trigger_button_left_1)
-                        }
-                        gilrs::Button::LeftTrigger2 => {
-                            Some(&mut input.gamepad.trigger_button_left_2)
-                        }
-                        gilrs::Button::RightTrigger => {
-                            Some(&mut input.gamepad.trigger_button_right_1)
-                        }
-                        gilrs::Button::RightTrigger2 => {
-                            Some(&mut input.gamepad.trigger_button_right_2)
-                        }
-                        gilrs::Button::Select => Some(&mut input.gamepad.back),
-                        gilrs::Button::Start => Some(&mut input.gamepad.start),
-                        gilrs::Button::Mode => Some(&mut input.gamepad.home),
-                        gilrs::Button::LeftThumb => Some(&mut input.gamepad.stick_button_left),
-                        gilrs::Button::RightThumb => Some(&mut input.gamepad.stick_button_right),
-                        gilrs::Button::DPadUp => Some(&mut input.gamepad.move_up),
-                        gilrs::Button::DPadDown => Some(&mut input.gamepad.move_down),
-                        gilrs::Button::DPadLeft => Some(&mut input.gamepad.move_left),
-                        gilrs::Button::DPadRight => Some(&mut input.gamepad.move_right),
-                        gilrs::Button::C => None,
-                        gilrs::Button::Z => None,
-                        gilrs::Button::Unknown => None,
-                    };
-
-                    if let Some(button) = gamepad_button {
-                        if is_pressed {
-                            button.process_press_event();
-                        } else {
-                            button.process_release_event();
-                        }
-                    }
+                    _ => {}
                 }
             }
+
+            // Collect and forward gamepad states to the application
+            for (id, gamepad) in gamepad_subsystem.gamepads() {
+                let gamepad_id = gilrs_id_to_our_id(id);
+                let our_gamepad = gamepads.entry(gamepad_id).or_default();
+                for (&our_button, is_pressed) in our_gamepad.buttons.iter_mut() {
+                    *is_pressed = gamepad
+                        .button_data(our_button_to_gilrs_button(our_button))
+                        .map(|button_data| button_data.is_pressed())
+                        .unwrap_or(false);
+                }
+                for (&our_axis, value) in our_gamepad.axes.iter_mut() {
+                    *value = gamepad
+                        .axis_data(our_axis_to_gilrs_axis(our_axis))
+                        .map(|axis_data| axis_data.value())
+                        .unwrap_or(0.0);
+                    if our_axis == GamepadAxis::StickLeftY || our_axis == GamepadAxis::StickRightY {
+                        *value *= -1.0;
+                    }
+                }
+                app.handle_gamepad_new_state(gamepad_id, our_gamepad);
+            }
         }
-        */
 
         renderer.update_screen_dimensions(screen_width, screen_height);
 
@@ -558,4 +529,40 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
     std::thread::sleep(Duration::from_secs_f32(audio_winddown_time_sec));
 
     Ok(())
+}
+
+fn our_button_to_gilrs_button(button: GamepadButton) -> gilrs::Button {
+    match button {
+        GamepadButton::Start => gilrs::Button::Start,
+        GamepadButton::Back => gilrs::Button::Select,
+        GamepadButton::Home => gilrs::Button::Mode,
+        GamepadButton::MoveUp => gilrs::Button::DPadUp,
+        GamepadButton::MoveDown => gilrs::Button::DPadDown,
+        GamepadButton::MoveLeft => gilrs::Button::DPadLeft,
+        GamepadButton::MoveRight => gilrs::Button::DPadRight,
+        GamepadButton::ActionUp => gilrs::Button::North,
+        GamepadButton::ActionDown => gilrs::Button::South,
+        GamepadButton::ActionLeft => gilrs::Button::West,
+        GamepadButton::ActionRight => gilrs::Button::East,
+        GamepadButton::StickLeft => gilrs::Button::LeftThumb,
+        GamepadButton::StickRight => gilrs::Button::RightThumb,
+        GamepadButton::TriggerLeft1 => gilrs::Button::LeftTrigger,
+        GamepadButton::TriggerLeft2 => gilrs::Button::LeftTrigger2,
+        GamepadButton::TriggerRight1 => gilrs::Button::RightTrigger,
+        GamepadButton::TriggerRight2 => gilrs::Button::RightTrigger2,
+    }
+}
+fn our_axis_to_gilrs_axis(axis: GamepadAxis) -> gilrs::Axis {
+    match axis {
+        GamepadAxis::StickLeftX => gilrs::Axis::LeftStickX,
+        GamepadAxis::StickLeftY => gilrs::Axis::LeftStickY,
+        GamepadAxis::StickRightX => gilrs::Axis::RightStickX,
+        GamepadAxis::StickRightY => gilrs::Axis::RightStickY,
+        GamepadAxis::TriggerLeft => gilrs::Axis::LeftZ,
+        GamepadAxis::TriggerRight => gilrs::Axis::RightZ,
+    }
+}
+fn gilrs_id_to_our_id(id: gilrs::GamepadId) -> GamepadPlatformId {
+    let gamepad_id: usize = id.into();
+    gamepad_id as GamepadPlatformId
 }

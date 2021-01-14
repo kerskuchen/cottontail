@@ -85,8 +85,8 @@ impl GuiState {
     }
 
     #[inline]
-    pub fn begin_frame(&mut self, draw: &mut Drawstate, cursors: &Cursors, input: &InputState) {
-        self.finger_pos_canvas = cursors.finger_primary.map(|coords| coords.pos_canvas);
+    pub fn begin_frame(&mut self, draw: &mut Drawstate) {
+        self.finger_pos_canvas = touch_pos_canvas(0);
 
         if let Some(finger_pos_canvas) = self.finger_pos_canvas {
             let delta = finger_pos_canvas - self.finger_pos_canvas_previous;
@@ -101,47 +101,45 @@ impl GuiState {
         }
         draw.debug_log(dformat!(self.finger_canvas_delta_average));
 
-        self.finger_recently_pressed = input.touch.recently_pressed(0);
+        self.finger_recently_pressed = touch_recently_pressed(0);
         if self.finger_recently_pressed {
             self.finger_canvas_delta_average = Vec2::zero();
         }
-        self.finger_recently_released = input.touch.recently_released(0);
+        self.finger_recently_released = touch_recently_released(0);
 
-        self.mouse_is_down = input.mouse.button_left.is_pressed;
-        self.mouse_recently_pressed = input.mouse.button_left.recently_pressed();
-        self.mouse_recently_released = input.mouse.button_left.recently_released();
-        self.mouse_canvas_delta = cursors.mouse.delta_canvas;
-        self.mouse_canvas_pos = cursors.mouse.pos_canvas;
-        self.mouse_wheel_delta = input.mouse.wheel_delta;
+        self.mouse_is_down = mouse_is_down_left();
+        self.mouse_recently_pressed = mouse_recently_pressed_left();
+        self.mouse_recently_released = mouse_recently_released_left();
+        self.mouse_canvas_delta = mouse_delta_canvas();
+        self.mouse_canvas_pos = mouse_pos_canvas();
+        self.mouse_wheel_delta = mouse_wheel_delta();
 
-        self.current_action = if (input.keyboard.is_down(Scancode::ShiftLeft)
-            || input.keyboard.is_down(Scancode::ShiftRight))
-            && input.keyboard.recently_pressed(Scancode::Tab)
-        {
-            Some(GuiAction::Previous)
-        } else if input.keyboard.recently_pressed(Scancode::Tab) {
-            Some(GuiAction::Next)
-        } else if input.keyboard.recently_pressed(Scancode::Enter) {
-            Some(GuiAction::Accept)
-        } else if input.keyboard.recently_pressed(Scancode::ArrowDown) {
-            Some(GuiAction::Down)
-        } else if input.keyboard.recently_pressed(Scancode::ArrowUp) {
-            Some(GuiAction::Up)
-        } else if input.keyboard.recently_pressed(Scancode::ArrowLeft) {
-            Some(GuiAction::Left)
-        } else if input.keyboard.recently_pressed(Scancode::ArrowRight) {
-            Some(GuiAction::Right)
-        } else if input.keyboard.recently_pressed(Scancode::NumpadAdd) {
-            Some(GuiAction::Increase)
-        } else if input.keyboard.recently_pressed(Scancode::NumpadSubtract) {
-            Some(GuiAction::Decrease)
-        } else if input.keyboard.recently_pressed(Scancode::PageDown) {
-            Some(GuiAction::PageDown)
-        } else if input.keyboard.recently_pressed(Scancode::PageUp) {
-            Some(GuiAction::PageUp)
-        } else {
-            None
-        };
+        self.current_action =
+            if key_is_down_modifier(KeyModifier::Shift) && key_recently_pressed(Scancode::Tab) {
+                Some(GuiAction::Previous)
+            } else if key_recently_pressed(Scancode::Tab) {
+                Some(GuiAction::Next)
+            } else if key_recently_pressed(Scancode::Enter) {
+                Some(GuiAction::Accept)
+            } else if key_recently_pressed(Scancode::ArrowDown) {
+                Some(GuiAction::Down)
+            } else if key_recently_pressed(Scancode::ArrowUp) {
+                Some(GuiAction::Up)
+            } else if key_recently_pressed(Scancode::ArrowLeft) {
+                Some(GuiAction::Left)
+            } else if key_recently_pressed(Scancode::ArrowRight) {
+                Some(GuiAction::Right)
+            } else if key_recently_pressed(Scancode::NumpadAdd) {
+                Some(GuiAction::Increase)
+            } else if key_recently_pressed(Scancode::NumpadSubtract) {
+                Some(GuiAction::Decrease)
+            } else if key_recently_pressed(Scancode::PageDown) {
+                Some(GuiAction::PageDown)
+            } else if key_recently_pressed(Scancode::PageUp) {
+                Some(GuiAction::PageUp)
+            } else {
+                None
+            };
     }
 
     #[inline]
@@ -637,8 +635,8 @@ fn gui_get() -> &'static mut GuiState {
 }
 
 #[inline]
-pub fn gui_begin_frame(draw: &mut Drawstate, cursors: &Cursors, input: &InputState) {
-    gui_get().begin_frame(draw, cursors, input)
+pub fn gui_begin_frame(draw: &mut Drawstate) {
+    gui_get().begin_frame(draw)
 }
 
 #[inline]

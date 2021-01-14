@@ -116,7 +116,7 @@ impl ButtonState {
 
 #[derive(Default, Clone)]
 pub struct MouseState {
-    pub has_moved: bool,
+    pub has_move_event: bool,
     pub has_press_event: bool,
     pub has_release_event: bool,
     pub has_wheel_event: bool,
@@ -143,7 +143,7 @@ pub struct MouseState {
 impl MouseState {
     #[inline]
     pub fn clear_transitions(&mut self) {
-        self.has_moved = false;
+        self.has_move_event = false;
         self.has_press_event = false;
         self.has_release_event = false;
         self.has_wheel_event = false;
@@ -166,7 +166,6 @@ impl MouseState {
 // Touch
 
 pub type FingerId = usize;
-pub type FingerPlatformId = i64;
 
 #[derive(Clone)]
 pub struct TouchFinger {
@@ -332,7 +331,7 @@ impl TouchState {
     }
 
     #[inline]
-    pub fn is_pressed(&self, finger: FingerId) -> bool {
+    pub fn is_down(&self, finger: FingerId) -> bool {
         self.fingers
             .get(&finger)
             .map(|finger| finger.state.is_pressed)
@@ -369,38 +368,146 @@ impl TouchState {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Gamepad
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct GamepadState {
     pub is_connected: bool,
 
-    pub start: ButtonState,
-    pub back: ButtonState,
-    pub home: ButtonState,
+    pub has_stick_event: bool,
+    pub has_press_event: bool,
+    pub has_release_event: bool,
+    pub has_trigger_event: bool,
 
-    pub move_up: ButtonState,
-    pub move_down: ButtonState,
-    pub move_left: ButtonState,
-    pub move_right: ButtonState,
-
-    pub action_up: ButtonState,
-    pub action_down: ButtonState,
-    pub action_left: ButtonState,
-    pub action_right: ButtonState,
+    pub buttons: HashMap<GamepadButton, ButtonState>,
 
     pub stick_left: Vec2,
     pub stick_right: Vec2,
 
-    pub stick_button_left: ButtonState,
-    pub stick_button_right: ButtonState,
-
     pub trigger_left: f32,
     pub trigger_right: f32,
+}
 
-    pub trigger_button_left_1: ButtonState,
-    pub trigger_button_left_2: ButtonState,
+impl Default for GamepadState {
+    fn default() -> Self {
+        let buttons_list = [
+            GamepadButton::Start,
+            GamepadButton::Back,
+            GamepadButton::Home,
+            GamepadButton::MoveUp,
+            GamepadButton::MoveDown,
+            GamepadButton::MoveLeft,
+            GamepadButton::MoveRight,
+            GamepadButton::ActionUp,
+            GamepadButton::ActionDown,
+            GamepadButton::ActionLeft,
+            GamepadButton::ActionRight,
+            GamepadButton::StickLeft,
+            GamepadButton::StickRight,
+            GamepadButton::TriggerLeft1,
+            GamepadButton::TriggerLeft2,
+            GamepadButton::TriggerRight1,
+            GamepadButton::TriggerRight2,
+        ];
+        let buttons = buttons_list
+            .iter()
+            .map(|&button| (button, ButtonState::default()))
+            .collect();
 
-    pub trigger_button_right_1: ButtonState,
-    pub trigger_button_right_2: ButtonState,
+        GamepadState {
+            is_connected: false,
+
+            has_stick_event: false,
+            has_press_event: false,
+            has_release_event: false,
+            has_trigger_event: false,
+
+            buttons,
+
+            stick_left: Vec2::zero(),
+            stick_right: Vec2::zero(),
+
+            trigger_left: 0.0,
+            trigger_right: 0.0,
+        }
+    }
+}
+
+impl GamepadState {
+    #[inline]
+    pub fn process_button_state(&mut self, button: GamepadButton, is_pressed: bool) {
+        self.is_connected = true;
+
+        let button = self.buttons.get_mut(&button).unwrap();
+        if is_pressed == button.is_pressed {
+            // Out button state has not changed
+            return;
+        }
+        if is_pressed {
+            self.has_press_event = true;
+            button.process_press_event()
+        } else {
+            self.has_release_event = true;
+            button.process_release_event()
+        }
+    }
+
+    #[inline]
+    pub fn process_axis_state(&mut self, axis: GamepadAxis, value: f32) {
+        self.is_connected = true;
+
+        match axis {
+            GamepadAxis::StickLeftX => {
+                if value != self.stick_left.x {
+                    self.has_stick_event = true;
+                    self.stick_left.x = value
+                }
+            }
+            GamepadAxis::StickLeftY => {
+                if value != self.stick_left.y {
+                    self.has_stick_event = true;
+                    self.stick_left.y = value
+                }
+            }
+            GamepadAxis::StickRightX => {
+                if value != self.stick_right.x {
+                    self.has_stick_event = true;
+                    self.stick_right.x = value
+                }
+            }
+            GamepadAxis::StickRightY => {
+                if value != self.stick_right.y {
+                    self.has_stick_event = true;
+                    self.stick_right.y = value
+                }
+            }
+            GamepadAxis::TriggerLeft => {
+                if value != self.trigger_left {
+                    self.has_trigger_event = true;
+                    self.trigger_left = value
+                }
+            }
+            GamepadAxis::TriggerRight => {
+                if value != self.trigger_right {
+                    self.has_trigger_event = true;
+                    self.trigger_right = value
+                }
+            }
+        }
+    }
+
+    #[inline]
+    pub fn is_down(&self, button: GamepadButton) -> bool {
+        self.buttons.get(&button).unwrap().is_pressed
+    }
+
+    #[inline]
+    pub fn recently_pressed(&self, button: GamepadButton) -> bool {
+        self.buttons.get(&button).unwrap().recently_pressed()
+    }
+
+    #[inline]
+    pub fn recently_released(&self, button: GamepadButton) -> bool {
+        self.buttons.get(&button).unwrap().recently_released()
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -557,6 +664,7 @@ const SCANCODE_DIGITS_KEYPAD: [Scancode; 10] = [
 impl KeyboardState {
     #[inline]
     pub fn is_down_digit(&self, digit: usize) -> bool {
+        assert!(digit < 10);
         let code = SCANCODE_DIGITS[digit];
         let code_keypad = SCANCODE_DIGITS_KEYPAD[digit];
         self.is_down(code) || self.is_down(code_keypad)
@@ -564,6 +672,7 @@ impl KeyboardState {
 
     #[inline]
     pub fn recently_pressed_digit(&self, digit: usize) -> bool {
+        assert!(digit < 10);
         let code = SCANCODE_DIGITS[digit];
         let code_keypad = SCANCODE_DIGITS_KEYPAD[digit];
         self.recently_pressed(code) || self.recently_pressed(code_keypad)
@@ -571,6 +680,7 @@ impl KeyboardState {
 
     #[inline]
     pub fn recently_pressed_ignore_repeat_digit(&self, digit: usize) -> bool {
+        assert!(digit < 10);
         let code = SCANCODE_DIGITS[digit];
         let code_keypad = SCANCODE_DIGITS_KEYPAD[digit];
         self.recently_pressed_ignore_repeat(code)
@@ -579,6 +689,7 @@ impl KeyboardState {
 
     #[inline]
     pub fn recently_released_digit(&self, digit: usize) -> bool {
+        assert!(digit < 10);
         let code = SCANCODE_DIGITS[digit];
         let code_keypad = SCANCODE_DIGITS_KEYPAD[digit];
         self.recently_released(code) || self.recently_released(code_keypad)
