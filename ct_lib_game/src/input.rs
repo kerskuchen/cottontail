@@ -29,6 +29,7 @@ pub struct InputState {
 }
 
 impl InputState {
+    #[inline]
     pub fn new() -> InputState {
         InputState::default()
     }
@@ -67,6 +68,7 @@ pub struct ButtonState {
 impl ButtonState {
     /// Changes state of a button while counting all transitions from pressed -> released and from
     /// released -> pressed
+    #[inline]
     pub fn process_press_event(&mut self) {
         if !self.is_pressed {
             self.transition_count += 1;
@@ -75,6 +77,8 @@ impl ButtonState {
             self.system_repeat_count += 1;
         }
     }
+
+    #[inline]
     pub fn process_release_event(&mut self) {
         if self.is_pressed {
             self.transition_count += 1;
@@ -85,18 +89,22 @@ impl ButtonState {
         }
     }
 
+    #[inline]
     pub fn recently_pressed(&self) -> bool {
         self.is_pressed && ((self.transition_count > 0) || (self.system_repeat_count > 0))
     }
 
+    #[inline]
     pub fn recently_pressed_ignore_repeat(&self) -> bool {
         self.is_pressed && (self.transition_count > 0)
     }
 
+    #[inline]
     pub fn recently_released(&self) -> bool {
         !self.is_pressed && (self.transition_count > 0)
     }
 
+    #[inline]
     pub fn clear_transitions(&mut self) {
         self.transition_count = 0;
         self.system_repeat_count = 0;
@@ -133,6 +141,7 @@ pub struct MouseState {
 }
 
 impl MouseState {
+    #[inline]
     pub fn clear_transitions(&mut self) {
         self.has_moved = false;
         self.has_press_event = false;
@@ -175,6 +184,7 @@ pub struct TouchFinger {
 }
 
 impl TouchFinger {
+    #[inline]
     fn new(id: FingerId, platform_id: FingerPlatformId, pos_x: i32, pos_y: i32) -> TouchFinger {
         TouchFinger {
             state: ButtonState::default(),
@@ -199,6 +209,7 @@ pub struct TouchState {
 }
 
 impl TouchState {
+    #[inline]
     pub fn process_finger_down(&mut self, platform_id: FingerPlatformId, pos_x: i32, pos_y: i32) {
         // NOTE: It can happen that the implementation re-used a finger ID faster
         //       than we could delete our corresponding finger one. If that happens we just delete
@@ -216,6 +227,7 @@ impl TouchState {
         self.fingers.insert(id, finger);
     }
 
+    #[inline]
     pub fn process_finger_up(&mut self, platform_id: FingerPlatformId, pos_x: i32, pos_y: i32) {
         self.has_release_event |= {
             if let Some(finger) = self.get_finger_by_platform_id_mut(platform_id) {
@@ -234,6 +246,7 @@ impl TouchState {
         };
     }
 
+    #[inline]
     pub fn process_finger_move(&mut self, platform_id: FingerPlatformId, pos_x: i32, pos_y: i32) {
         self.has_move_event |= {
             if let Some(finger) = self.get_finger_by_platform_id_mut(platform_id) {
@@ -251,6 +264,7 @@ impl TouchState {
         };
     }
 
+    #[inline]
     pub fn calculate_move_deltas(&mut self) {
         let ids: Vec<FingerId> = self.fingers.keys().cloned().collect();
         for id in ids {
@@ -268,6 +282,7 @@ impl TouchState {
         }
     }
 
+    #[inline]
     pub fn clear_transitions(&mut self) {
         self.has_move_event = false;
         self.has_press_event = false;
@@ -286,18 +301,21 @@ impl TouchState {
         self.fingers_previous = self.fingers.clone();
     }
 
+    #[inline]
     pub fn pos(&self, finger: FingerId) -> Option<(i32, i32)> {
         self.fingers
             .get(&finger)
             .map(|finger| (finger.pos_x, finger.pos_y))
     }
 
+    #[inline]
     pub fn pos_delta(&self, finger: FingerId) -> Option<(i32, i32)> {
         self.fingers
             .get(&finger)
             .map(|finger| (finger.delta_x, finger.delta_y))
     }
 
+    #[inline]
     pub fn recently_pressed(&self, finger: FingerId) -> bool {
         self.fingers
             .get(&finger)
@@ -305,6 +323,7 @@ impl TouchState {
             .unwrap_or(false)
     }
 
+    #[inline]
     pub fn recently_released(&self, finger: FingerId) -> bool {
         self.fingers
             .get(&finger)
@@ -312,6 +331,7 @@ impl TouchState {
             .unwrap_or(false)
     }
 
+    #[inline]
     pub fn is_pressed(&self, finger: FingerId) -> bool {
         self.fingers
             .get(&finger)
@@ -402,6 +422,7 @@ pub struct KeyState {
 }
 
 impl Default for KeyState {
+    #[inline]
     fn default() -> Self {
         KeyState {
             keycode: Keycode::Unidentified,
@@ -412,10 +433,12 @@ impl Default for KeyState {
 }
 
 impl KeyboardState {
+    #[inline]
     pub fn new() -> KeyboardState {
         KeyboardState::default()
     }
 
+    #[inline]
     pub fn clear_state_and_transitions(&mut self) {
         self.clear_transitions();
         self.keys.values_mut().for_each(|keystate| {
@@ -423,6 +446,7 @@ impl KeyboardState {
         });
     }
 
+    #[inline]
     pub fn clear_transitions(&mut self) {
         self.has_press_event = false;
         self.has_release_event = false;
@@ -434,6 +458,7 @@ impl KeyboardState {
         });
     }
 
+    #[inline]
     pub fn process_key_press_event(&mut self, scancode: Scancode, keycode: Keycode) {
         let mut key = self.keys.entry(scancode).or_insert(KeyState {
             keycode,
@@ -448,6 +473,7 @@ impl KeyboardState {
         key.button.process_press_event();
     }
 
+    #[inline]
     pub fn process_key_release_event(&mut self, scancode: Scancode, keycode: Keycode) {
         let mut key = self.keys.entry(scancode).or_insert(KeyState {
             keycode,
@@ -462,6 +488,7 @@ impl KeyboardState {
         key.button.process_release_event();
     }
 
+    #[inline]
     pub fn is_down(&self, scancode: Scancode) -> bool {
         if let Some(key) = self.keys.get(&scancode) {
             key.button.is_pressed
@@ -470,6 +497,7 @@ impl KeyboardState {
         }
     }
 
+    #[inline]
     pub fn recently_pressed(&self, scancode: Scancode) -> bool {
         if let Some(key) = self.keys.get(&scancode) {
             key.button.recently_pressed()
@@ -478,6 +506,7 @@ impl KeyboardState {
         }
     }
 
+    #[inline]
     pub fn recently_pressed_ignore_repeat(&self, scancode: Scancode) -> bool {
         if let Some(key) = self.keys.get(&scancode) {
             key.button.recently_pressed_ignore_repeat()
@@ -486,6 +515,7 @@ impl KeyboardState {
         }
     }
 
+    #[inline]
     pub fn recently_released(&self, scancode: Scancode) -> bool {
         if let Some(key) = self.keys.get(&scancode) {
             key.button.recently_released()
@@ -525,28 +555,127 @@ const SCANCODE_DIGITS_KEYPAD: [Scancode; 10] = [
 ];
 
 impl KeyboardState {
+    #[inline]
     pub fn is_down_digit(&self, digit: usize) -> bool {
         let code = SCANCODE_DIGITS[digit];
         let code_keypad = SCANCODE_DIGITS_KEYPAD[digit];
         self.is_down(code) || self.is_down(code_keypad)
     }
 
+    #[inline]
     pub fn recently_pressed_digit(&self, digit: usize) -> bool {
         let code = SCANCODE_DIGITS[digit];
         let code_keypad = SCANCODE_DIGITS_KEYPAD[digit];
         self.recently_pressed(code) || self.recently_pressed(code_keypad)
     }
 
-    pub fn recently_pressed_digit_ignore_repeat(&self, digit: usize) -> bool {
+    #[inline]
+    pub fn recently_pressed_ignore_repeat_digit(&self, digit: usize) -> bool {
         let code = SCANCODE_DIGITS[digit];
         let code_keypad = SCANCODE_DIGITS_KEYPAD[digit];
         self.recently_pressed_ignore_repeat(code)
             || self.recently_pressed_ignore_repeat(code_keypad)
     }
 
+    #[inline]
     pub fn recently_released_digit(&self, digit: usize) -> bool {
         let code = SCANCODE_DIGITS[digit];
         let code_keypad = SCANCODE_DIGITS_KEYPAD[digit];
         self.recently_released(code) || self.recently_released(code_keypad)
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+// Handling modifier keys
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub enum KeyModifier {
+    Shift,
+    Alt,
+    Control,
+    Meta,
+}
+
+impl KeyboardState {
+    #[inline]
+    pub fn is_down_modifier(&self, modifier: KeyModifier) -> bool {
+        match modifier {
+            KeyModifier::Shift => {
+                self.is_down(Scancode::ShiftLeft) || self.is_down(Scancode::ShiftRight)
+            }
+            KeyModifier::Alt => self.is_down(Scancode::AltLeft) || self.is_down(Scancode::AltRight),
+            KeyModifier::Control => {
+                self.is_down(Scancode::ControlLeft) || self.is_down(Scancode::ControlRight)
+            }
+            KeyModifier::Meta => {
+                self.is_down(Scancode::MetaLeft) || self.is_down(Scancode::MetaRight)
+            }
+        }
+    }
+
+    #[inline]
+    pub fn recently_pressed_modifier(&self, modifier: KeyModifier) -> bool {
+        match modifier {
+            KeyModifier::Shift => {
+                self.recently_pressed(Scancode::ShiftLeft)
+                    || self.recently_pressed(Scancode::ShiftRight)
+            }
+            KeyModifier::Alt => {
+                self.recently_pressed(Scancode::AltLeft)
+                    || self.recently_pressed(Scancode::AltRight)
+            }
+            KeyModifier::Control => {
+                self.recently_pressed(Scancode::ControlLeft)
+                    || self.recently_pressed(Scancode::ControlRight)
+            }
+            KeyModifier::Meta => {
+                self.recently_pressed(Scancode::MetaLeft)
+                    || self.recently_pressed(Scancode::MetaRight)
+            }
+        }
+    }
+
+    #[inline]
+    pub fn recently_pressed_ignore_repeat_modifier(&self, modifier: KeyModifier) -> bool {
+        match modifier {
+            KeyModifier::Shift => {
+                self.recently_pressed_ignore_repeat(Scancode::ShiftLeft)
+                    || self.recently_pressed_ignore_repeat(Scancode::ShiftRight)
+            }
+            KeyModifier::Alt => {
+                self.recently_pressed_ignore_repeat(Scancode::AltLeft)
+                    || self.recently_pressed_ignore_repeat(Scancode::AltRight)
+            }
+            KeyModifier::Control => {
+                self.recently_pressed_ignore_repeat(Scancode::ControlLeft)
+                    || self.recently_pressed_ignore_repeat(Scancode::ControlRight)
+            }
+            KeyModifier::Meta => {
+                self.recently_pressed_ignore_repeat(Scancode::MetaLeft)
+                    || self.recently_pressed_ignore_repeat(Scancode::MetaRight)
+            }
+        }
+    }
+
+    #[inline]
+    pub fn recently_released_modifier(&self, modifier: KeyModifier) -> bool {
+        match modifier {
+            KeyModifier::Shift => {
+                self.recently_released(Scancode::ShiftLeft)
+                    || self.recently_released(Scancode::ShiftRight)
+            }
+            KeyModifier::Alt => {
+                self.recently_released(Scancode::AltLeft)
+                    || self.recently_released(Scancode::AltRight)
+            }
+            KeyModifier::Control => {
+                self.recently_released(Scancode::ControlLeft)
+                    || self.recently_released(Scancode::ControlRight)
+            }
+            KeyModifier::Meta => {
+                self.recently_released(Scancode::MetaLeft)
+                    || self.recently_released(Scancode::MetaRight)
+            }
+        }
     }
 }

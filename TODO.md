@@ -7,8 +7,8 @@
 # CURRENT
 
 
-- make gamepad on sdl2 working again
 - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
+- refactor tick function in lib_game into stages
 
 # NEXT:
 
@@ -60,6 +60,8 @@
   it should work because it does so in the MSWindows control panel
 - make refresh rate snapping more smart (especially for deltatimes without vsync which is currently 
   wrong). (ie. we could use the values of the last ten frames as basis for snapping)
+- make gamepad on sdl2 working again
+- make textinput on sdl2 working again
 
 ## better project structure and generator
 - we can put example scenes into ct_lib_game or its own crate?

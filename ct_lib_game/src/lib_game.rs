@@ -12,7 +12,7 @@ pub use camera::*;
 pub use choreographer::*;
 pub use debug::*;
 pub use gui::*;
-pub use input::*;
+use input::*;
 
 use camera::{CursorCoords, Cursors, GameCamera};
 use choreographer::LoadingScreen;
@@ -117,6 +117,10 @@ static mut APP_RESOURCES: AppResources = AppResources {
 #[inline(always)]
 fn get_resources() -> &'static mut AppResources {
     unsafe { &mut APP_RESOURCES }
+}
+#[inline(always)]
+fn get_globals() -> &'static mut Globals {
+    unsafe { APP_RESOURCES.globals.as_mut().unwrap() }
 }
 #[inline(always)]
 fn get_input() -> &'static mut InputState {
@@ -935,4 +939,249 @@ impl<AppStateType: AppStateInterface> InputRecorder<AppStateType> {
             self.queue_playback.pop_front().unwrap()
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// EASY API FUNCTIONS
+
+//--------------------------------------------------------------------------------------------------
+// KEYBOARD INPUT
+
+pub use ct_lib_window::input::{FingerId, Keycode, Scancode};
+
+// Keyboard events
+
+#[inline]
+pub fn key_press_event_happened() -> bool {
+    get_input().keyboard.has_press_event
+}
+
+#[inline]
+pub fn key_release_event_happened() -> bool {
+    get_input().keyboard.has_release_event
+}
+
+#[inline]
+pub fn key_repeat_event_happened() -> bool {
+    get_input().keyboard.has_system_repeat_event
+}
+
+// Keyboard regular keys
+
+#[inline]
+pub fn key_is_down(scancode: Scancode) -> bool {
+    get_input().keyboard.is_down(scancode)
+}
+
+#[inline]
+pub fn key_recently_pressed(scancode: Scancode) -> bool {
+    get_input().keyboard.recently_pressed(scancode)
+}
+
+#[inline]
+pub fn key_recently_pressed_ignore_repeat(scancode: Scancode) -> bool {
+    get_input()
+        .keyboard
+        .recently_pressed_ignore_repeat(scancode)
+}
+
+#[inline]
+pub fn key_recently_released(scancode: Scancode) -> bool {
+    get_input().keyboard.recently_released(scancode)
+}
+
+// Keyboard digit keys
+
+#[inline]
+pub fn key_is_down_digit(digit: usize) -> bool {
+    get_input().keyboard.is_down_digit(digit)
+}
+
+#[inline]
+pub fn key_recently_pressed_digit(digit: usize) -> bool {
+    get_input().keyboard.recently_pressed_digit(digit)
+}
+
+#[inline]
+pub fn key_recently_pressed_ignore_repeat_digit(digit: usize) -> bool {
+    get_input()
+        .keyboard
+        .recently_pressed_ignore_repeat_digit(digit)
+}
+
+#[inline]
+pub fn key_recently_released_digit(digit: usize) -> bool {
+    get_input().keyboard.recently_released_digit(digit)
+}
+
+// Keyboard modifier keys
+
+#[inline]
+pub fn key_is_down_modifier(modifier: KeyModifier) -> bool {
+    get_input().keyboard.is_down_modifier(modifier)
+}
+
+#[inline]
+pub fn key_recently_pressed_modifier(modifier: KeyModifier) -> bool {
+    get_input().keyboard.recently_pressed_modifier(modifier)
+}
+
+#[inline]
+pub fn key_recently_pressed_ignore_repeat_modifier(modifier: KeyModifier) -> bool {
+    get_input()
+        .keyboard
+        .recently_pressed_ignore_repeat_modifier(modifier)
+}
+
+#[inline]
+pub fn key_recently_released_modifier(modifier: KeyModifier) -> bool {
+    get_input().keyboard.recently_released_modifier(modifier)
+}
+
+//--------------------------------------------------------------------------------------------------
+// MOUSE INPUT
+
+// Mouse events
+
+#[inline]
+pub fn mouse_press_event_happened() -> bool {
+    get_input().mouse.has_press_event
+}
+
+#[inline]
+pub fn mouse_release_event_happened() -> bool {
+    get_input().mouse.has_release_event
+}
+
+#[inline]
+pub fn mouse_move_event_happened() -> bool {
+    get_input().mouse.has_moved
+}
+
+#[inline]
+pub fn mouse_wheel_event_happened() -> bool {
+    get_input().mouse.has_wheel_event
+}
+
+// Mouse position / delta
+
+#[inline]
+pub fn mouse_pos_screen() -> Vec2 {
+    get_globals().cursors.mouse.pos_screen
+}
+
+#[inline]
+pub fn mouse_pos_canvas() -> Vec2 {
+    get_globals().cursors.mouse.pos_canvas
+}
+
+#[inline]
+pub fn mouse_pos_world() -> Vec2 {
+    get_globals().cursors.mouse.pos_world
+}
+
+#[inline]
+pub fn mouse_delta_screen() -> Vec2 {
+    get_globals().cursors.mouse.delta_screen
+}
+
+#[inline]
+pub fn mouse_delta_canvas() -> Vec2 {
+    get_globals().cursors.mouse.delta_canvas
+}
+
+#[inline]
+pub fn mouse_delta_world() -> Vec2 {
+    get_globals().cursors.mouse.delta_world
+}
+
+// Mouse wheel
+
+pub fn mouse_wheel_delta() -> i32 {
+    get_input().mouse.wheel_delta
+}
+
+// Mouse button left
+
+#[inline]
+pub fn mouse_is_down_left() -> bool {
+    get_input().mouse.button_left.is_pressed
+}
+
+#[inline]
+pub fn mouse_recently_pressed_left() -> bool {
+    get_input().mouse.button_left.recently_pressed()
+}
+
+#[inline]
+pub fn mouse_recently_released_left() -> bool {
+    get_input().mouse.button_left.recently_released()
+}
+
+// Mouse button right
+
+#[inline]
+pub fn mouse_is_down_right() -> bool {
+    get_input().mouse.button_right.is_pressed
+}
+
+#[inline]
+pub fn mouse_recently_pressed_right() -> bool {
+    get_input().mouse.button_right.recently_pressed()
+}
+
+#[inline]
+pub fn mouse_recently_released_right() -> bool {
+    get_input().mouse.button_right.recently_released()
+}
+
+// Mouse button middle
+
+#[inline]
+pub fn mouse_is_down_middle() -> bool {
+    get_input().mouse.button_middle.is_pressed
+}
+
+#[inline]
+pub fn mouse_recently_pressed_middle() -> bool {
+    get_input().mouse.button_middle.recently_pressed()
+}
+
+#[inline]
+pub fn mouse_recently_released_middle() -> bool {
+    get_input().mouse.button_middle.recently_released()
+}
+
+// Mouse button x1
+
+#[inline]
+pub fn mouse_is_down_x1() -> bool {
+    get_input().mouse.button_x1.is_pressed
+}
+
+#[inline]
+pub fn mouse_recently_pressed_x1() -> bool {
+    get_input().mouse.button_x1.recently_pressed()
+}
+
+#[inline]
+pub fn mouse_recently_released_x1() -> bool {
+    get_input().mouse.button_x1.recently_released()
+}
+
+// Mouse button x2
+
+#[inline]
+pub fn mouse_is_down_x2() -> bool {
+    get_input().mouse.button_x2.is_pressed
+}
+
+#[inline]
+pub fn mouse_recently_pressed_x2() -> bool {
+    get_input().mouse.button_x2.recently_pressed()
+}
+
+#[inline]
+pub fn mouse_recently_released_x2() -> bool {
+    get_input().mouse.button_x2.recently_released()
 }
