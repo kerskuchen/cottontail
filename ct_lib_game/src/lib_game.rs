@@ -75,18 +75,12 @@ pub struct GameInfo {
 pub trait AppStateInterface: Clone {
     fn get_game_info() -> GameInfo;
     fn get_window_config() -> WindowConfig;
-    fn new(
-        draw: &mut Drawstate,
-        audio: &mut Audiostate,
-        assets: &GameAssets,
-        globals: &mut Globals,
-    ) -> Self;
+    fn new(draw: &mut Drawstate, audio: &mut Audiostate, assets: &GameAssets) -> Self;
     fn update(
         &mut self,
         draw: &mut Drawstate,
         audio: &mut Audiostate,
         assets: &GameAssets,
-        globals: &mut Globals,
         out_systemcommands: &mut Vec<AppCommand>,
     );
 }
@@ -356,7 +350,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                     window_config.canvas_height,
                 );
 
-                let mut globals = Globals {
+                resources.globals = Some(Globals {
                     random,
                     camera,
                     cursors,
@@ -368,10 +362,9 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
                     canvas_width: window_config.canvas_width as f32,
                     canvas_height: window_config.canvas_height as f32,
-                };
+                });
 
-                self.game = Some(GameStateType::new(draw, audio, &assets, &mut globals));
-                resources.globals = Some(globals);
+                self.game = Some(GameStateType::new(draw, audio, &assets));
 
                 self.loadingscreen.start_fading_out();
             }
@@ -477,7 +470,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 draw.debug_log(format!("Deltatime: {:.6}", globals.deltatime));
 
                 gui_begin_frame(draw);
-                game.update(draw, audio, &assets, globals, out_systemcommands);
+                game.update(draw, audio, &assets, out_systemcommands);
                 gui_end_frame(draw);
 
                 let mouse_coords = globals.cursors.mouse;
@@ -1087,6 +1080,38 @@ impl Cursors {
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // EASY API FUNCTIONS
+
+//--------------------------------------------------------------------------------------------------
+// Global objects
+
+#[inline]
+pub fn get_camera() -> &'static mut GameCamera {
+    &mut get_globals().camera
+}
+
+#[inline]
+pub fn get_random_generator() -> &'static mut Random {
+    &mut get_globals().random
+}
+
+//--------------------------------------------------------------------------------------------------
+// CANVAS
+
+#[inline]
+pub fn canvas_width() -> f32 {
+    get_globals().canvas_width
+}
+
+#[inline]
+pub fn canvas_height() -> f32 {
+    get_globals().canvas_height
+}
+
+#[inline]
+pub fn canvas_dimensions() -> Vec2 {
+    let globals = get_globals();
+    Vec2::new(globals.canvas_width, globals.canvas_height)
+}
 
 //--------------------------------------------------------------------------------------------------
 // TIMING
