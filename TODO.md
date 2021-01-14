@@ -1,11 +1,11 @@
 # DONE:
 
-- move inputstate out of platform layer
-- make inputrecorder on non-wasm working again
-- working input recording on wasm target
+- added easy api for input and global objects
+- gamepad input overhaul - now just reading whole button/axis-state instead of events. this will
+  make it easier for us to use gamepad web api
+  
 
 # CURRENT
-
 
 - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
 - refactor tick function in lib_game into stages
@@ -322,3 +322,7 @@
   - we will wait until cargo supports nested workspaces because right now it is to much work and 
     infrastructure complexity to do that. (we would need to put our workspace into cottontail and 
     change all out .vs tasks and batch files)
+
+- move inputstate out of platform layer
+- make inputrecorder on non-wasm working again
+- working input recording on wasm target

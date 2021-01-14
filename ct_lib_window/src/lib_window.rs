@@ -1,18 +1,17 @@
 #[cfg(target_arch = "wasm32")]
 #[path = "platform_wasm/wasm_app.rs"]
-pub mod platform;
+mod platform;
 
 #[cfg(not(target_arch = "wasm32"))]
 #[path = "platform_sdl2/sdl_app.rs"]
-pub mod platform;
+mod platform;
 
 pub mod input;
-pub use input::*;
-
 pub mod renderer_opengl;
 
-use platform::audio::AudioOutput;
-use renderer_opengl::Renderer;
+use input::*;
+pub use platform::audio::AudioOutput;
+pub use renderer_opengl::Renderer;
 
 pub struct AppInfo {
     pub window_title: String,

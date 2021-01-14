@@ -1,34 +1,38 @@
-pub mod animations_fx;
-pub mod assets;
-pub mod camera;
-pub mod choreographer;
-pub mod debug;
-pub mod gui;
-mod input;
+pub mod easyapi;
+pub use easyapi::*;
 
+pub mod animations_fx;
 pub use animations_fx::*;
+
+pub mod assets;
 pub use assets::*;
+
+pub mod camera;
 pub use camera::*;
+
+pub mod choreographer;
 pub use choreographer::*;
+
+pub mod debug;
 pub use debug::*;
+
+pub mod gui;
 pub use gui::*;
+
+mod input;
 use input::{InputState, KeyboardState, MouseState, TouchState};
 
-use camera::GameCamera;
-use choreographer::LoadingScreen;
-use debug::{debug_draw_crosshair, debug_draw_grid};
-
 use ct_lib_audio::*;
+use ct_lib_core::serde_derive::{Deserialize, Serialize};
+use ct_lib_core::*;
 use ct_lib_draw::*;
 use ct_lib_image::*;
 use ct_lib_math::*;
 use ct_lib_window::{
-    platform::audio::AudioOutput, renderer_opengl::Renderer, run_main, AppCommand, AppEventHandler,
-    AppInfo, FingerPlatformId,
+    input::{FingerPlatformId, GamepadPlatformId, GamepadPlatformState},
+    renderer_opengl::Renderer,
+    run_main, AppCommand, AppEventHandler, AppInfo, AudioOutput,
 };
-
-use ct_lib_core::serde_derive::{Deserialize, Serialize};
-use ct_lib_core::*;
 
 use std::collections::{HashMap, VecDeque};
 
@@ -37,17 +41,6 @@ pub const DEPTH_DEVELOP_OVERLAY: Depth = 80.0;
 pub const DEPTH_SPLASH: Depth = 70.0;
 pub const DEPTH_SCREEN_FADER: Depth = 60.0;
 
-fn snap_deltatime_to_nearest_common_refresh_rate(deltatime: f32) -> f32 {
-    let common_refresh_rates = [30, 60, 72, 75, 85, 90, 120, 144, 240, 360];
-    let index_with_smallest_distance = common_refresh_rates
-        .iter()
-        .map(|refresh_rate| (deltatime - 1.0 / *refresh_rate as f32).abs())
-        .enumerate()
-        .min_by(|(_index_a, a), (_index_b, b)| a.partial_cmp(b).unwrap())
-        .unwrap()
-        .0;
-    1.0 / common_refresh_rates[index_with_smallest_distance] as f32
-}
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Gamestate
 
@@ -689,7 +682,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
         input.touch.process_finger_up(finger_id, pos_x, pos_y);
     }
 
-    fn handle_gamepad_connected(&mut self, gamepad_id: ct_lib_window::GamepadPlatformId) {
+    fn handle_gamepad_connected(&mut self, gamepad_id: GamepadPlatformId) {
         if gamepad_id != 0 {
             // TODO: Currently we only support one gamepad
             return;
@@ -698,7 +691,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
         input.gamepad.is_connected = true;
     }
 
-    fn handle_gamepad_disconnected(&mut self, gamepad_id: ct_lib_window::GamepadPlatformId) {
+    fn handle_gamepad_disconnected(&mut self, gamepad_id: GamepadPlatformId) {
         if gamepad_id != 0 {
             // TODO: Currently we only support one gamepad
             return;
@@ -709,8 +702,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
     fn handle_gamepad_new_state(
         &mut self,
-        gamepad_id: ct_lib_window::GamepadPlatformId,
-        state: &ct_lib_window::GamepadPlatformState,
+        gamepad_id: GamepadPlatformId,
+        state: &GamepadPlatformState,
     ) {
         if gamepad_id != 0 {
             // TODO: Currently we only support one gamepad
@@ -1078,525 +1071,15 @@ impl Cursors {
         Cursors { mouse, fingers }
     }
 }
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// EASY API FUNCTIONS
 
-//--------------------------------------------------------------------------------------------------
-// Global objects
-
-#[inline]
-pub fn get_camera() -> &'static mut GameCamera {
-    &mut get_globals().camera
-}
-
-#[inline]
-pub fn get_random_generator() -> &'static mut Random {
-    &mut get_globals().random
-}
-
-//--------------------------------------------------------------------------------------------------
-// CANVAS
-
-#[inline]
-pub fn canvas_width() -> f32 {
-    get_globals().canvas_width
-}
-
-#[inline]
-pub fn canvas_height() -> f32 {
-    get_globals().canvas_height
-}
-
-#[inline]
-pub fn canvas_dimensions() -> Vec2 {
-    let globals = get_globals();
-    Vec2::new(globals.canvas_width, globals.canvas_height)
-}
-
-//--------------------------------------------------------------------------------------------------
-// TIMING
-
-#[inline]
-pub fn time_deltatime() -> f32 {
-    get_globals().deltatime
-}
-
-#[inline]
-pub fn time_since_startup() -> f64 {
-    get_input().real_world_uptime
-}
-
-//--------------------------------------------------------------------------------------------------
-// WINDOW
-
-#[inline]
-pub fn window_is_fullscreen() -> bool {
-    get_input().screen_is_fullscreen
-}
-
-#[inline]
-pub fn window_screen_width() -> u32 {
-    get_input().screen_framebuffer_width
-}
-
-#[inline]
-pub fn window_screen_height() -> u32 {
-    get_input().screen_framebuffer_height
-}
-
-#[inline]
-pub fn window_screen_dimensions() -> (u32, u32) {
-    let input = get_input();
-    (
-        input.screen_framebuffer_width,
-        input.screen_framebuffer_height,
-    )
-}
-
-//--------------------------------------------------------------------------------------------------
-// KEYBOARD INPUT
-
-pub use ct_lib_window::input::{Keycode, Scancode};
-pub use input::KeyModifier;
-
-// Keyboard events
-
-#[inline]
-pub fn key_press_event_happened() -> bool {
-    get_input().keyboard.has_press_event
-}
-
-#[inline]
-pub fn key_release_event_happened() -> bool {
-    get_input().keyboard.has_release_event
-}
-
-#[inline]
-pub fn key_repeat_event_happened() -> bool {
-    get_input().keyboard.has_system_repeat_event
-}
-
-// Keyboard regular keys
-
-#[inline]
-pub fn key_is_down(scancode: Scancode) -> bool {
-    get_input().keyboard.is_down(scancode)
-}
-
-#[inline]
-pub fn key_recently_pressed(scancode: Scancode) -> bool {
-    get_input().keyboard.recently_pressed(scancode)
-}
-
-#[inline]
-pub fn key_recently_pressed_ignore_repeat(scancode: Scancode) -> bool {
-    get_input()
-        .keyboard
-        .recently_pressed_ignore_repeat(scancode)
-}
-
-#[inline]
-pub fn key_recently_released(scancode: Scancode) -> bool {
-    get_input().keyboard.recently_released(scancode)
-}
-
-// Keyboard digit keys
-
-#[inline]
-pub fn key_is_down_digit(digit: usize) -> bool {
-    get_input().keyboard.is_down_digit(digit)
-}
-
-#[inline]
-pub fn key_recently_pressed_digit(digit: usize) -> bool {
-    get_input().keyboard.recently_pressed_digit(digit)
-}
-
-#[inline]
-pub fn key_recently_pressed_ignore_repeat_digit(digit: usize) -> bool {
-    get_input()
-        .keyboard
-        .recently_pressed_ignore_repeat_digit(digit)
-}
-
-#[inline]
-pub fn key_recently_released_digit(digit: usize) -> bool {
-    get_input().keyboard.recently_released_digit(digit)
-}
-
-// Keyboard modifier keys
-
-#[inline]
-pub fn key_is_down_modifier(modifier: KeyModifier) -> bool {
-    get_input().keyboard.is_down_modifier(modifier)
-}
-
-#[inline]
-pub fn key_recently_pressed_modifier(modifier: KeyModifier) -> bool {
-    get_input().keyboard.recently_pressed_modifier(modifier)
-}
-
-#[inline]
-pub fn key_recently_pressed_ignore_repeat_modifier(modifier: KeyModifier) -> bool {
-    get_input()
-        .keyboard
-        .recently_pressed_ignore_repeat_modifier(modifier)
-}
-
-#[inline]
-pub fn key_recently_released_modifier(modifier: KeyModifier) -> bool {
-    get_input().keyboard.recently_released_modifier(modifier)
-}
-
-//--------------------------------------------------------------------------------------------------
-// MOUSE INPUT
-
-pub use ct_lib_window::input::MouseButton;
-
-// Mouse events
-
-#[inline]
-pub fn mouse_press_event_happened() -> bool {
-    get_input().mouse.has_press_event
-}
-
-#[inline]
-pub fn mouse_release_event_happened() -> bool {
-    get_input().mouse.has_release_event
-}
-
-#[inline]
-pub fn mouse_move_event_happened() -> bool {
-    get_input().mouse.has_move_event
-}
-
-#[inline]
-pub fn mouse_wheel_event_happened() -> bool {
-    get_input().mouse.has_wheel_event
-}
-
-// Mouse position / delta
-
-#[inline]
-pub fn mouse_pos_screen() -> Vec2 {
-    get_globals().cursors.mouse.pos_screen
-}
-
-#[inline]
-pub fn mouse_pos_canvas() -> Vec2 {
-    get_globals().cursors.mouse.pos_canvas
-}
-
-#[inline]
-pub fn mouse_pos_world() -> Vec2 {
-    get_globals().cursors.mouse.pos_world
-}
-
-#[inline]
-pub fn mouse_delta_screen() -> Vec2 {
-    get_globals().cursors.mouse.delta_screen
-}
-
-#[inline]
-pub fn mouse_delta_canvas() -> Vec2 {
-    get_globals().cursors.mouse.delta_canvas
-}
-
-#[inline]
-pub fn mouse_delta_world() -> Vec2 {
-    get_globals().cursors.mouse.delta_world
-}
-
-// Mouse wheel
-
-pub fn mouse_wheel_delta() -> i32 {
-    get_input().mouse.wheel_delta
-}
-
-// Mouse button left
-
-#[inline]
-pub fn mouse_is_down_left() -> bool {
-    get_input().mouse.button_left.is_pressed
-}
-
-#[inline]
-pub fn mouse_recently_pressed_left() -> bool {
-    get_input().mouse.button_left.recently_pressed()
-}
-
-#[inline]
-pub fn mouse_recently_released_left() -> bool {
-    get_input().mouse.button_left.recently_released()
-}
-
-// Mouse button right
-
-#[inline]
-pub fn mouse_is_down_right() -> bool {
-    get_input().mouse.button_right.is_pressed
-}
-
-#[inline]
-pub fn mouse_recently_pressed_right() -> bool {
-    get_input().mouse.button_right.recently_pressed()
-}
-
-#[inline]
-pub fn mouse_recently_released_right() -> bool {
-    get_input().mouse.button_right.recently_released()
-}
-
-// Mouse button middle
-
-#[inline]
-pub fn mouse_is_down_middle() -> bool {
-    get_input().mouse.button_middle.is_pressed
-}
-
-#[inline]
-pub fn mouse_recently_pressed_middle() -> bool {
-    get_input().mouse.button_middle.recently_pressed()
-}
-
-#[inline]
-pub fn mouse_recently_released_middle() -> bool {
-    get_input().mouse.button_middle.recently_released()
-}
-
-// Mouse button x1
-
-#[inline]
-pub fn mouse_is_down_x1() -> bool {
-    get_input().mouse.button_x1.is_pressed
-}
-
-#[inline]
-pub fn mouse_recently_pressed_x1() -> bool {
-    get_input().mouse.button_x1.recently_pressed()
-}
-
-#[inline]
-pub fn mouse_recently_released_x1() -> bool {
-    get_input().mouse.button_x1.recently_released()
-}
-
-// Mouse button x2
-
-#[inline]
-pub fn mouse_is_down_x2() -> bool {
-    get_input().mouse.button_x2.is_pressed
-}
-
-#[inline]
-pub fn mouse_recently_pressed_x2() -> bool {
-    get_input().mouse.button_x2.recently_pressed()
-}
-
-#[inline]
-pub fn mouse_recently_released_x2() -> bool {
-    get_input().mouse.button_x2.recently_released()
-}
-
-// Mouse button any
-
-#[inline]
-pub fn mouse_is_down(button: MouseButton) -> bool {
-    match button {
-        MouseButton::Left => mouse_is_down_left(),
-        MouseButton::Right => mouse_is_down_right(),
-        MouseButton::Middle => mouse_is_down_middle(),
-        MouseButton::X1 => mouse_is_down_x1(),
-        MouseButton::X2 => mouse_is_down_x2(),
-    }
-}
-
-#[inline]
-pub fn mouse_recently_pressed(button: MouseButton) -> bool {
-    match button {
-        MouseButton::Left => mouse_recently_pressed_left(),
-        MouseButton::Right => mouse_recently_pressed_right(),
-        MouseButton::Middle => mouse_recently_pressed_middle(),
-        MouseButton::X1 => mouse_recently_pressed_x1(),
-        MouseButton::X2 => mouse_recently_pressed_x2(),
-    }
-}
-
-#[inline]
-pub fn mouse_recently_released(button: MouseButton) -> bool {
-    match button {
-        MouseButton::Left => mouse_recently_released_left(),
-        MouseButton::Right => mouse_recently_released_right(),
-        MouseButton::Middle => mouse_recently_released_middle(),
-        MouseButton::X1 => mouse_recently_released_x1(),
-        MouseButton::X2 => mouse_recently_released_x2(),
-    }
-}
-
-//--------------------------------------------------------------------------------------------------
-// TOUCH INPUT
-
-pub use input::FingerId;
-
-// Touch events
-
-#[inline]
-pub fn touch_press_event_happened() -> bool {
-    get_input().touch.has_press_event
-}
-
-#[inline]
-pub fn touch_release_event_happened() -> bool {
-    get_input().touch.has_release_event
-}
-
-#[inline]
-pub fn touch_move_event_happened() -> bool {
-    get_input().touch.has_move_event
-}
-
-// Touch position
-
-#[inline]
-pub fn touch_pos_screen(finger: FingerId) -> Option<Vec2> {
-    get_globals()
-        .cursors
-        .fingers
-        .get(&finger)
-        .map(|cursor_coord| cursor_coord.pos_screen)
-}
-
-#[inline]
-pub fn touch_pos_canvas(finger: FingerId) -> Option<Vec2> {
-    get_globals()
-        .cursors
-        .fingers
-        .get(&finger)
-        .map(|cursor_coord| cursor_coord.pos_canvas)
-}
-
-#[inline]
-pub fn touch_pos_world(finger: FingerId) -> Option<Vec2> {
-    get_globals()
-        .cursors
-        .fingers
-        .get(&finger)
-        .map(|cursor_coord| cursor_coord.pos_world)
-}
-
-#[inline]
-pub fn touch_delta_screen(finger: FingerId) -> Option<Vec2> {
-    get_globals()
-        .cursors
-        .fingers
-        .get(&finger)
-        .map(|cursor_coord| cursor_coord.delta_screen)
-}
-
-#[inline]
-pub fn touch_delta_canvas(finger: FingerId) -> Option<Vec2> {
-    get_globals()
-        .cursors
-        .fingers
-        .get(&finger)
-        .map(|cursor_coord| cursor_coord.delta_canvas)
-}
-
-#[inline]
-pub fn touch_delta_world(finger: FingerId) -> Option<Vec2> {
-    get_globals()
-        .cursors
-        .fingers
-        .get(&finger)
-        .map(|cursor_coord| cursor_coord.delta_world)
-}
-
-// Touch state
-
-#[inline]
-pub fn touch_is_down(finger: FingerId) -> bool {
-    get_input().touch.is_down(finger)
-}
-
-#[inline]
-pub fn touch_recently_pressed(finger: FingerId) -> bool {
-    get_input().touch.recently_pressed(finger)
-}
-
-#[inline]
-pub fn touch_recently_released(finger: FingerId) -> bool {
-    get_input().touch.recently_released(finger)
-}
-
-//--------------------------------------------------------------------------------------------------
-// GAMEPAD
-
-use input::GamepadButton;
-
-// Gamepad events
-
-#[inline]
-pub fn gamepad_press_event_happened() -> bool {
-    get_input().gamepad.has_press_event
-}
-
-#[inline]
-pub fn gamepad_release_event_happened() -> bool {
-    get_input().gamepad.has_release_event
-}
-
-#[inline]
-pub fn gamepad_stick_event_happened() -> bool {
-    get_input().gamepad.has_stick_event
-}
-
-#[inline]
-pub fn gamepad_trigger_event_happened() -> bool {
-    get_input().gamepad.has_trigger_event
-}
-
-// Gamepad status
-
-#[inline]
-pub fn gamepad_is_connected() -> bool {
-    get_input().gamepad.is_connected
-}
-
-// Gamepad sticks and triggers
-
-#[inline]
-pub fn gamepad_stick_left() -> Vec2 {
-    get_input().gamepad.stick_left
-}
-
-#[inline]
-pub fn gamepad_stick_right() -> Vec2 {
-    get_input().gamepad.stick_right
-}
-
-#[inline]
-pub fn gamepad_trigger_left() -> f32 {
-    get_input().gamepad.trigger_left
-}
-
-#[inline]
-pub fn gamepad_trigger_right() -> f32 {
-    get_input().gamepad.trigger_right
-}
-
-// Gamepad button state
-
-#[inline]
-pub fn gamepad_is_down(button: GamepadButton) -> bool {
-    get_input().gamepad.is_down(button)
-}
-
-#[inline]
-pub fn gamepad_recently_pressed(button: GamepadButton) -> bool {
-    get_input().gamepad.recently_pressed(button)
-}
-
-#[inline]
-pub fn gamepad_recently_released(button: GamepadButton) -> bool {
-    get_input().gamepad.recently_released(button)
+fn snap_deltatime_to_nearest_common_refresh_rate(deltatime: f32) -> f32 {
+    let common_refresh_rates = [30, 60, 72, 75, 85, 90, 120, 144, 240, 360];
+    let index_with_smallest_distance = common_refresh_rates
+        .iter()
+        .map(|refresh_rate| (deltatime - 1.0 / *refresh_rate as f32).abs())
+        .enumerate()
+        .min_by(|(_index_a, a), (_index_b, b)| a.partial_cmp(b).unwrap())
+        .unwrap()
+        .0;
+    1.0 / common_refresh_rates[index_with_smallest_distance] as f32
 }
