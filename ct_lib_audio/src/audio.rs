@@ -1842,14 +1842,11 @@ impl Audiostate {
 
     #[inline]
     pub fn current_time_seconds(&self) -> f64 {
-        self.audio_time
-    }
-
-    pub fn current_time_seconds_smoothed(&self) -> f64 {
         self.audio_time_smoothed
     }
 
     /// IMPORTANT: This needs to be called exactly once per frame to have correct time reporting
+    #[inline]
     pub fn update_deltatime(&mut self, deltatime: f32) {
         self.audio_time_smoothed += deltatime as f64;
     }
@@ -2055,7 +2052,7 @@ impl Audiostate {
     }
 
     #[inline]
-    pub fn render_audio_chunk_internal(&mut self) {
+    fn render_audio_chunk_internal(&mut self) {
         // Remove streams that have finished
         let mut streams_removed = vec![];
         for &stream_id in &self.streams_to_delete_after_finish {

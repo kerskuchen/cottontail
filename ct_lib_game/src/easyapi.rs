@@ -964,3 +964,123 @@ pub fn gui_text_scroller(
         inout_acc, depth,
     )
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Audio
+
+#[inline]
+pub fn audio_current_time_seconds() -> f64 {
+    get_audio().current_time_seconds()
+}
+
+#[inline]
+pub fn audio_set_global_volume(volume: f32) {
+    get_audio().set_global_volume(volume)
+}
+
+/// NOTE: If spatial_params is Some(..) then pan will be ignored
+#[must_use]
+#[inline]
+pub fn audio_play(
+    recording_name: &str,
+    group_id: AudioGroupId,
+    schedule_time_seconds: f64,
+    play_looped: bool,
+    volume: f32,
+    playback_speed: f32,
+    pan: f32,
+    spatial_params: Option<AudioSpatialParams>,
+) -> AudioStreamId {
+    get_audio().play(
+        recording_name,
+        group_id,
+        schedule_time_seconds,
+        play_looped,
+        volume,
+        playback_speed,
+        pan,
+        spatial_params,
+    )
+}
+
+/// NOTE: If spatial_params is Some(..) then pan will be ignored
+#[inline]
+pub fn audio_play_oneshot(
+    recording_name: &str,
+    group_id: AudioGroupId,
+    schedule_time_seconds: f64,
+    volume: f32,
+    playback_speed: f32,
+    pan: f32,
+    spatial_params: Option<AudioSpatialParams>,
+) {
+    get_audio().play_oneshot(
+        recording_name,
+        group_id,
+        schedule_time_seconds,
+        volume,
+        playback_speed,
+        pan,
+        spatial_params,
+    )
+}
+
+#[inline]
+pub fn audio_stream_has_finished(stream_id: AudioStreamId) -> bool {
+    get_audio().stream_has_finished(stream_id)
+}
+
+#[inline]
+pub fn audio_stream_forget(stream_id: AudioStreamId) {
+    get_audio().stream_forget(stream_id)
+}
+
+#[inline]
+pub fn audio_group_mute(group_id: AudioGroupId) {
+    get_audio().group_mute(group_id)
+}
+
+#[inline]
+pub fn audio_group_unmute(group_id: AudioGroupId) {
+    get_audio().group_unmute(group_id)
+}
+
+#[inline]
+pub fn audio_stream_mute(stream_id: AudioStreamId) {
+    get_audio().stream_mute(stream_id)
+}
+
+#[inline]
+pub fn audio_stream_unmute(stream_id: AudioStreamId) {
+    get_audio().stream_unmute(stream_id)
+}
+
+#[inline]
+pub fn audio_stream_completion_ratio(stream_id: AudioStreamId) -> Option<f32> {
+    get_audio().stream_completion_ratio(stream_id)
+}
+
+#[inline]
+pub fn audio_stream_set_spatial_pos(stream_id: AudioStreamId, pos: Vec2) {
+    get_audio().stream_set_spatial_pos(stream_id, pos)
+}
+
+#[inline]
+pub fn audio_stream_set_spatial_vel(stream_id: AudioStreamId, vel: Vec2) {
+    get_audio().stream_set_spatial_vel(stream_id, vel)
+}
+
+#[inline]
+pub fn audio_stream_set_volume(stream_id: AudioStreamId, volume: f32) {
+    get_audio().stream_set_volume(stream_id, volume)
+}
+
+#[inline]
+pub fn audio_stream_set_pan(stream_id: AudioStreamId, pan: f32) {
+    get_audio().stream_set_pan(stream_id, pan)
+}
+
+#[inline]
+pub fn audio_stream_set_playback_speed(stream_id: AudioStreamId, playback_speed: f32) {
+    get_audio().stream_set_playback_speed(stream_id, playback_speed)
+}

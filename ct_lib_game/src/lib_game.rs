@@ -69,8 +69,8 @@ pub struct GameInfo {
 pub trait AppStateInterface: Clone {
     fn get_game_info() -> GameInfo;
     fn get_window_config() -> WindowConfig;
-    fn new(audio: &mut Audiostate, assets: &GameAssets) -> Self;
-    fn update(&mut self, audio: &mut Audiostate, assets: &GameAssets);
+    fn new(assets: &GameAssets) -> Self;
+    fn update(&mut self, assets: &GameAssets);
 }
 
 const SPLASHSCREEN_FADEIN_TIME: f32 = 0.3;
@@ -162,7 +162,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
     fn reset(&mut self) {
         if let Some(game) = self.game.as_mut() {
             get_audio().reset();
-            *game = GameStateType::new(get_audio(), get_assets());
+            *game = GameStateType::new(get_assets());
         }
     }
 
@@ -295,7 +295,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 }
 
                 assert!(self.game.is_none());
-                self.game = Some(GameStateType::new(get_audio(), get_assets()));
+                self.game = Some(GameStateType::new(get_assets()));
 
                 self.loadingscreen.start_fading_out();
             }
@@ -398,20 +398,19 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                     get_draw().debug_log(format!("Deltatime: {:.6}", globals.deltatime));
                 }
 
-                let audio = get_audio();
-                audio.set_global_playback_speed_factor(time_deltatime_speed_factor_total());
-                audio.update_deltatime(time_deltatime());
+                get_audio().set_global_playback_speed_factor(time_deltatime_speed_factor_total());
+                get_audio().update_deltatime(time_deltatime());
 
                 gui_begin_frame();
-                game.update(audio, &get_assets());
+                game.update(&get_assets());
                 gui_end_frame();
 
                 game_handle_system_keys();
                 game_handle_mouse_camera_zooming_panning();
                 get_camera().update(time_deltatime());
+                get_audio().set_global_listener_pos(get_camera().center());
 
-                let draw = get_draw();
-                draw.set_shaderparams_default(
+                get_draw().set_shaderparams_default(
                     Color::white(),
                     get_camera().proj_view_matrix(),
                     Mat4::ortho_origin_left_top(

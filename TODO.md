@@ -1,23 +1,14 @@
 # DONE:
   
 - added simple api for drawstate
+- added simple api for audiostate
+- make draw/audio/other things global for easier use (we run everything on the same thread anyway)
 
 # CURRENT
 
-- make draw/audio/other things global for easier use (we run everything on the same thread anyway)
-- refactor tick function in lib_game into stages and clean it up / make more it sensible
+- refactor tick function in lib_game into stages and clean it up / make more it sensible / easier to grok
 
 # NEXT:
-
-- To correctly draw translucent object we need to do the following in drawstate:
-  for framebuffer
-    for shader
-      for texture 
-        for uniform
-          draw opaque drawobject
-    for tranclucent drawobject (ordered back to front with disabled depth write)
-      set shader, set uniform, set texture if necessary
-        draw drawobject
 
 
 ## writing games easier
@@ -128,6 +119,15 @@
   in renderer and drawstate
 - can we make the sorting faster? alternatively can we get rid of sorting for non-translucent 
   drawobjects by dividing them up into two drawbatches?
+  - To correctly draw translucent object we need to do the following in drawstate:
+    for framebuffer
+      for shader
+        for texture 
+          for uniform
+            draw opaque drawobject
+      for tranclucent drawobject (ordered back to front with disabled depth write)
+        set shader, set uniform, set texture if necessary
+          draw drawobject
 - add ability to add new shaders from drawstate
 
 ## Asset baker
