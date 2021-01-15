@@ -2,6 +2,8 @@
   
 - added simple api for drawstate
 - added simple api for audiostate
+- added simple api for assets
+- added simple api for coordinate conversion
 - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
 
 # CURRENT

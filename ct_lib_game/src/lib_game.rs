@@ -69,8 +69,8 @@ pub struct GameInfo {
 pub trait AppStateInterface: Clone {
     fn get_game_info() -> GameInfo;
     fn get_window_config() -> WindowConfig;
-    fn new(assets: &GameAssets) -> Self;
-    fn update(&mut self, assets: &GameAssets);
+    fn new() -> Self;
+    fn update(&mut self);
 }
 
 const SPLASHSCREEN_FADEIN_TIME: f32 = 0.3;
@@ -162,7 +162,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
     fn reset(&mut self) {
         if let Some(game) = self.game.as_mut() {
             get_audio().reset();
-            *game = GameStateType::new(get_assets());
+            *game = GameStateType::new();
         }
     }
 
@@ -295,7 +295,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 }
 
                 assert!(self.game.is_none());
-                self.game = Some(GameStateType::new(get_assets()));
+                self.game = Some(GameStateType::new());
 
                 self.loadingscreen.start_fading_out();
             }
@@ -401,7 +401,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 get_audio().update_deltatime(time_deltatime());
 
                 gui_begin_frame();
-                game.update(&get_assets());
+                game.update();
                 gui_end_frame();
 
                 game_handle_system_keys();

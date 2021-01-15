@@ -1115,3 +1115,36 @@ pub fn audio_stream_set_pan(stream_id: AudioStreamId, pan: f32) {
 pub fn audio_stream_set_playback_speed(stream_id: AudioStreamId, playback_speed: f32) {
     get_audio().stream_set_playback_speed(stream_id, playback_speed)
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// ASSETS
+
+#[inline]
+pub fn assets_get_content_filedata(filename: &str) -> &[u8] {
+    get_assets().get_content_filedata(filename)
+}
+
+#[inline]
+pub fn assets_get_anim(animation_name: &str) -> &Animation<Sprite> {
+    get_assets().get_anim(animation_name)
+}
+
+#[inline]
+pub fn assets_get_anim_3d(animation_name: &str) -> &Animation<Sprite3D> {
+    get_assets().get_anim_3d(animation_name)
+}
+
+#[inline]
+pub fn assets_get_font(font_name: &str) -> &SpriteFont {
+    get_assets().get_font(font_name)
+}
+
+#[inline]
+pub fn assets_get_sprite(sprite_name: &str) -> &Sprite {
+    get_assets().get_sprite(sprite_name)
+}
+
+#[inline]
+pub fn assets_get_sprite_3d(sprite_name: &str) -> &Sprite3D {
+    get_assets().get_sprite_3d(sprite_name)
+}
