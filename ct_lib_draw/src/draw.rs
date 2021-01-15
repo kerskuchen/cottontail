@@ -395,7 +395,6 @@ struct DrawBatch {
 //       on mobile)
 // TODO: Maybe we can get rid of this when Rust updates its borrowchecker someday
 static mut DRAWSTATE_DEBUG_LOG_FONT: Option<SpriteFont> = None;
-
 #[derive(Clone)]
 pub struct Drawstate {
     textures: Vec<Rc<RefCell<Bitmap>>>,

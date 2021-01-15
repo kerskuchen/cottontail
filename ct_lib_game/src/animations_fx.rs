@@ -236,7 +236,6 @@ impl ParticleSystem {
 
     pub fn update_and_draw(
         &mut self,
-        draw: &mut Drawstate,
         random: &mut Random,
         deltatime: f32,
         depth: f32,
@@ -274,7 +273,7 @@ impl ParticleSystem {
             let pos = self.pos[index].pixel_snapped();
             let drawparams = Drawparams::new(depth, color, additivity, drawspace);
             if scale > 1.0 {
-                draw.draw_rect_transformed(
+                draw_rect_transformed(
                     Vec2::ones(),
                     true,
                     true,
@@ -283,7 +282,7 @@ impl ParticleSystem {
                     drawparams,
                 );
             } else {
-                draw.draw_pixel(pos, drawparams);
+                draw_pixel(pos, drawparams);
             }
         }
 
@@ -404,13 +403,7 @@ impl Afterimage {
         }
     }
 
-    pub fn update_and_draw(
-        &mut self,
-        draw: &mut Drawstate,
-        deltatime: f32,
-        draw_depth: f32,
-        drawspace: Drawspace,
-    ) {
+    pub fn update_and_draw(&mut self, deltatime: f32, draw_depth: f32, drawspace: Drawspace) {
         for index in 0..self.sprite.len() {
             let age_percentage = self.age[index] / self.lifetime;
             let additivity = lerp(
@@ -424,7 +417,7 @@ impl Afterimage {
                 age_percentage,
             );
 
-            draw.draw_sprite(
+            draw_sprite(
                 &self.sprite[index],
                 self.xform[index],
                 self.flip_horizontally[index],

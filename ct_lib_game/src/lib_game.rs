@@ -69,8 +69,8 @@ pub struct GameInfo {
 pub trait AppStateInterface: Clone {
     fn get_game_info() -> GameInfo;
     fn get_window_config() -> WindowConfig;
-    fn new(draw: &mut Drawstate, audio: &mut Audiostate, assets: &GameAssets) -> Self;
-    fn update(&mut self, draw: &mut Drawstate, audio: &mut Audiostate, assets: &GameAssets);
+    fn new(audio: &mut Audiostate, assets: &GameAssets) -> Self;
+    fn update(&mut self, audio: &mut Audiostate, assets: &GameAssets);
 }
 
 const SPLASHSCREEN_FADEIN_TIME: f32 = 0.3;
@@ -82,6 +82,7 @@ struct AppResources {
     pub audio: Option<Audiostate>,
     pub globals: Option<Globals>,
     pub input: Option<InputState>,
+    pub gui: Option<GuiState>,
 }
 
 static mut APP_RESOURCES: AppResources = AppResources {
@@ -90,6 +91,7 @@ static mut APP_RESOURCES: AppResources = AppResources {
     audio: None,
     globals: None,
     input: None,
+    gui: None,
 };
 
 #[inline(always)]
@@ -116,6 +118,10 @@ fn get_audio() -> &'static mut Audiostate {
 fn get_assets() -> &'static mut GameAssets {
     unsafe { APP_RESOURCES.assets.as_mut().unwrap() }
 }
+#[inline(always)]
+fn get_gui() -> &'static mut GuiState {
+    unsafe { APP_RESOURCES.gui.as_mut().unwrap() }
+}
 
 pub struct AppTicker<AppStateType: AppStateInterface> {
     game: Option<AppStateType>,
@@ -129,6 +135,7 @@ impl<AppStateType: AppStateInterface> AppTicker<AppStateType> {
         let window_config = AppStateType::get_window_config();
         get_resources().assets = Some(GameAssets::new("resources"));
         get_resources().input = Some(InputState::new());
+        get_resources().gui = Some(GuiState::new());
         AppTicker {
             loadingscreen: LoadingScreen::new(
                 SPLASHSCREEN_FADEIN_TIME,
@@ -155,7 +162,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
     fn reset(&mut self) {
         if let Some(game) = self.game.as_mut() {
             get_audio().reset();
-            *game = GameStateType::new(get_draw(), get_audio(), get_assets());
+            *game = GameStateType::new(get_audio(), get_assets());
         }
     }
 
@@ -288,7 +295,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 }
 
                 assert!(self.game.is_none());
-                self.game = Some(GameStateType::new(get_draw(), get_audio(), get_assets()));
+                self.game = Some(GameStateType::new(get_audio(), get_assets()));
 
                 self.loadingscreen.start_fading_out();
             }
@@ -395,15 +402,15 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 audio.set_global_playback_speed_factor(time_deltatime_speed_factor_total());
                 audio.update_deltatime(time_deltatime());
 
-                let draw = get_draw();
-                gui_begin_frame(draw);
-                game.update(draw, audio, &get_assets());
-                gui_end_frame(draw);
+                gui_begin_frame();
+                game.update(audio, &get_assets());
+                gui_end_frame();
 
                 game_handle_system_keys();
                 game_handle_mouse_camera_zooming_panning();
                 get_camera().update(time_deltatime());
 
+                let draw = get_draw();
                 draw.set_shaderparams_default(
                     Color::white(),
                     get_camera().proj_view_matrix(),

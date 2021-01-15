@@ -1,10 +1,6 @@
 # DONE:
-
-- added easy api for input and global objects
-- gamepad input overhaul - now just reading whole button/axis-state instead of events. this will
-  make it easier for us to use gamepad web api
-- adds platform windows commands to easy api
   
+- added simple api for drawstate
 
 # CURRENT
 
@@ -14,13 +10,14 @@
 # NEXT:
 
 - To correctly draw translucent object we need to do the following in drawstate:
-  for shader
-    for uniform 
+  for framebuffer
+    for shader
       for texture 
-        draw opaque drawobject
-  for tranclucent drawobject (ordered back to front with disabled depth write)
-    set shader, set uniform, set texture if necessary
-      draw drawobject
+        for uniform
+          draw opaque drawobject
+    for tranclucent drawobject (ordered back to front with disabled depth write)
+      set shader, set uniform, set texture if necessary
+        draw drawobject
 
 
 ## writing games easier
@@ -336,3 +333,8 @@
 - move inputstate out of platform layer
 - make inputrecorder on non-wasm working again
 - working input recording on wasm target
+
+- added easy api for input and global objects
+- gamepad input overhaul - now just reading whole button/axis-state instead of events. this will
+  make it easier for us to use gamepad web api
+- adds platform windows commands to easy api

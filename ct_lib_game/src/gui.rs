@@ -85,7 +85,7 @@ impl GuiState {
     }
 
     #[inline]
-    pub fn begin_frame(&mut self, draw: &mut Drawstate) {
+    pub fn begin_frame(&mut self) {
         self.finger_pos_canvas = touch_pos_canvas(0);
 
         if let Some(finger_pos_canvas) = self.finger_pos_canvas {
@@ -99,7 +99,7 @@ impl GuiState {
         if self.finger_canvas_delta_average.magnitude_squared() <= 1.0 {
             self.finger_canvas_delta_average = Vec2::zero();
         }
-        draw.debug_log(dformat!(self.finger_canvas_delta_average));
+        draw_debug_log(dformat!(self.finger_canvas_delta_average));
 
         self.finger_recently_pressed = touch_recently_pressed(0);
         if self.finger_recently_pressed {
@@ -143,7 +143,7 @@ impl GuiState {
     }
 
     #[inline]
-    pub fn end_frame(&mut self, _draw: &mut Drawstate) {
+    pub fn end_frame(&mut self) {
         if let Some(finger_pos_canvas) = self.finger_pos_canvas {
             self.finger_pos_canvas_previous = finger_pos_canvas;
         }
@@ -169,7 +169,6 @@ impl GuiState {
     #[must_use = "Returns whether the button was pressed or clicked or not"]
     pub fn button(
         &mut self,
-        draw: &mut Drawstate,
         id: GuiElemId,
         button_rect: Rect,
         label: &str,
@@ -218,7 +217,7 @@ impl GuiState {
         };
 
         // Draw buttons with outlines
-        draw.draw_rect(
+        draw_rect(
             button_rect,
             true,
             Drawparams {
@@ -226,7 +225,7 @@ impl GuiState {
                 ..drawparams
             },
         );
-        draw.draw_rect(
+        draw_rect(
             button_rect,
             false,
             Drawparams {
@@ -236,7 +235,7 @@ impl GuiState {
         );
 
         // Draw button text
-        draw.draw_text(
+        draw_text(
             label,
             label_font,
             1.0,
@@ -281,7 +280,6 @@ impl GuiState {
     #[must_use = "Returns a new percentage value if the slider was mutated"]
     pub fn horizontal_slider(
         &mut self,
-        draw: &mut Drawstate,
         id: GuiElemId,
         slider_rect: Rect,
         cur_value: f32,
@@ -311,7 +309,7 @@ impl GuiState {
         }
 
         if self.keyboard_highlighted_item == Some(id) {
-            draw.draw_rect(
+            draw_rect(
                 slider_rect.extended_uniformly_by(2.0),
                 true,
                 Drawparams::without_additivity(depth, Color::cyan(), Drawspace::Canvas),
@@ -328,12 +326,12 @@ impl GuiState {
             Color::blue()
         };
 
-        draw.draw_rect(
+        draw_rect(
             slider_rect,
             true,
             Drawparams::without_additivity(depth, Color::white(), Drawspace::Canvas),
         );
-        draw.draw_rect(
+        draw_rect(
             knob_rect,
             true,
             Drawparams::without_additivity(depth, color, Drawspace::Canvas),
@@ -375,7 +373,6 @@ impl GuiState {
     #[inline]
     pub fn text_scroller(
         &mut self,
-        draw: &mut Drawstate,
         id: GuiElemId,
         dt: f32,
         rect: Rect,
@@ -416,7 +413,7 @@ impl GuiState {
         }
 
         if self.keyboard_highlighted_item == Some(id) {
-            draw.draw_rect(
+            draw_rect(
                 rect.extended_uniformly_by(2.0),
                 false,
                 Drawparams::without_additivity(depth, Color::cyan(), Drawspace::Canvas),
@@ -561,7 +558,7 @@ impl GuiState {
                    if self.keyboard_highlighted_item == Some(id) {
                        {
                            // TODO: Keyboard focus here
-                           draw.draw_rect(
+                           draw_rect(
                                rect.extended_uniformly_by(1.0),
                                true,
                                Drawparams::without_additivity(
@@ -574,13 +571,13 @@ impl GuiState {
 
                        // Draw background
                        if self.active_item == Some(id) || self.mouse_highlighted_item == Some(id) {
-                           draw.draw_rect(
+                           draw_rect(
                                rect,
                                true,
                                Drawparams::without_additivity(depth, Color::red(), Drawspace::Canvas),
                            );
                        } else {
-                           draw.draw_rect(
+                           draw_rect(
                                rect,
                                true,
                                Drawparams::without_additivity(depth, Color::black(), Drawspace::Canvas),
@@ -591,7 +588,7 @@ impl GuiState {
         */
 
         // Draw text
-        draw.draw_text_clipped(
+        draw_text_clipped(
             text,
             font,
             font_scale,
@@ -615,88 +612,4 @@ impl GuiState {
             self.keyboard_highlighted_item = Some(id);
         }
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Easy API
-
-static mut GUI_STATE: Option<GuiState> = None;
-
-#[inline]
-fn gui_get() -> &'static mut GuiState {
-    unsafe {
-        if let Some(gui) = GUI_STATE.as_mut() {
-            gui
-        } else {
-            GUI_STATE = Some(GuiState::new());
-            GUI_STATE.as_mut().unwrap()
-        }
-    }
-}
-
-#[inline]
-pub fn gui_begin_frame(draw: &mut Drawstate) {
-    gui_get().begin_frame(draw)
-}
-
-#[inline]
-pub fn gui_end_frame(draw: &mut Drawstate) {
-    gui_get().end_frame(draw)
-}
-
-#[inline]
-#[must_use = "It returns whether the button was pressed or clicked or not"]
-pub fn gui_button(
-    draw: &mut Drawstate,
-    id: GuiElemId,
-    button_rect: Rect,
-    label: &str,
-    label_font: &SpriteFont,
-    color_label: Color,
-    color_background: Color,
-    drawparams: Drawparams,
-) -> (bool, bool) {
-    gui_get().button(
-        draw,
-        id,
-        button_rect,
-        label,
-        label_font,
-        color_label,
-        color_background,
-        drawparams,
-    )
-}
-
-#[inline]
-#[must_use = "It returns a new percentage value if the slider was mutated"]
-pub fn gui_horizontal_slider(
-    draw: &mut Drawstate,
-    id: GuiElemId,
-    slider_rect: Rect,
-    cur_value: f32,
-    depth: f32,
-) -> Option<f32> {
-    gui_get().horizontal_slider(draw, id, slider_rect, cur_value, depth)
-}
-
-pub fn gui_text_scroller(
-    draw: &mut Drawstate,
-    id: GuiElemId,
-    dt: f32,
-    rect: Rect,
-    font: &SpriteFont,
-    font_scale: f32,
-    text_color: Color,
-    text: &str,
-    linecount: usize,
-    inout_pos: &mut f32,
-    inout_vel: &mut f32,
-    inout_acc: &mut f32,
-    depth: f32,
-) {
-    gui_get().text_scroller(
-        draw, id, dt, rect, font, font_scale, text_color, text, linecount, inout_pos, inout_vel,
-        inout_acc, depth,
-    )
 }
