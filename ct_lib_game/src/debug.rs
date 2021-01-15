@@ -1,5 +1,3 @@
-use crate::camera::Camera;
-
 use super::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -43,19 +41,10 @@ pub fn debug_save_sprite_as_png(assets: &GameAssets, sprite_name: &str, filepath
 }
 
 #[inline]
-pub fn debug_draw_grid(
-    draw: &mut Drawstate,
-    camera: &Camera,
-    world_grid_size: f32,
-    screen_width: f32,
-    screen_height: f32,
-    line_thickness: i32,
-    color: Color,
-    depth: f32,
-) {
+pub fn draw_debug_grid(world_grid_size: f32, line_thickness: i32, color: Color, depth: f32) {
     assert!(line_thickness > 0);
 
-    let frustum = camera.bounds_pixelsnapped();
+    let frustum = get_camera().bounds_pixelsnapped();
     let top = f32::floor(frustum.top() / world_grid_size) * world_grid_size;
     let bottom = f32::ceil(frustum.bottom() / world_grid_size) * world_grid_size;
     let left = f32::floor(frustum.left() / world_grid_size) * world_grid_size;
@@ -63,28 +52,8 @@ pub fn debug_draw_grid(
 
     let mut x = left;
     while x <= right {
-        let start = Vec2::new(x, top);
-        let end = Vec2::new(x, bottom);
-
-        let start = camera.worldpoint_to_canvaspoint(start);
-        let end = camera.worldpoint_to_canvaspoint(end);
-
-        let start = canvas_point_to_screen_point(
-            start.x,
-            start.y,
-            screen_width as u32,
-            screen_height as u32,
-            camera.dim_canvas.x as u32,
-            camera.dim_canvas.y as u32,
-        );
-        let end = canvas_point_to_screen_point(
-            end.x,
-            end.y,
-            screen_width as u32,
-            screen_height as u32,
-            camera.dim_canvas.x as u32,
-            camera.dim_canvas.y as u32,
-        );
+        let start = coordinates_world_to_screen(Vec2::new(x, top)).pixel_snapped();
+        let end = coordinates_world_to_screen(Vec2::new(x, bottom)).pixel_snapped();
 
         let rect = Rect::from_bounds_left_top_right_bottom(
             start.x,
@@ -92,7 +61,7 @@ pub fn debug_draw_grid(
             start.x + line_thickness as f32,
             end.y,
         );
-        draw.draw_rect(
+        draw_rect(
             rect,
             true,
             Drawparams::new(depth, color, ADDITIVITY_NONE, Drawspace::Screen),
@@ -102,28 +71,8 @@ pub fn debug_draw_grid(
     }
     let mut y = top;
     while y <= bottom {
-        let start = Vec2::new(left, y);
-        let end = Vec2::new(right, y);
-
-        let start = camera.worldpoint_to_canvaspoint(start);
-        let end = camera.worldpoint_to_canvaspoint(end);
-
-        let start = canvas_point_to_screen_point(
-            start.x,
-            start.y,
-            screen_width as u32,
-            screen_height as u32,
-            camera.dim_canvas.x as u32,
-            camera.dim_canvas.y as u32,
-        );
-        let end = canvas_point_to_screen_point(
-            end.x,
-            end.y,
-            screen_width as u32,
-            screen_height as u32,
-            camera.dim_canvas.x as u32,
-            camera.dim_canvas.y as u32,
-        );
+        let start = coordinates_world_to_screen(Vec2::new(left, y)).pixel_snapped();
+        let end = coordinates_world_to_screen(Vec2::new(right, y)).pixel_snapped();
 
         let rect = Rect::from_bounds_left_top_right_bottom(
             start.x,
@@ -131,7 +80,7 @@ pub fn debug_draw_grid(
             end.x,
             start.y + line_thickness as f32,
         );
-        draw.draw_rect(
+        draw_rect(
             rect,
             true,
             Drawparams::new(depth, color, ADDITIVITY_NONE, Drawspace::Screen),
@@ -141,43 +90,12 @@ pub fn debug_draw_grid(
     }
 }
 
-pub fn debug_draw_crosshair(
-    draw: &mut Drawstate,
-    camera: &Camera,
-    pos_world: Vec2,
-    screen_width: f32,
-    screen_height: f32,
-    line_thickness: f32,
-    color: Color,
+pub fn draw_debug_crosshair(pos_world: Vec2, line_thickness: f32, color: Color, depth: f32) {
+    let frustum = get_camera().bounds_pixelsnapped();
 
-    depth: f32,
-) {
-    let frustum = camera.bounds_pixelsnapped();
-
-    let start = Vec2::new(frustum.left(), pos_world.y);
-    let end = Vec2::new(frustum.right(), pos_world.y);
-
-    let start = camera.worldpoint_to_canvaspoint(start);
-    let end = camera.worldpoint_to_canvaspoint(end);
-
-    let start = canvas_point_to_screen_point(
-        start.x,
-        start.y,
-        screen_width as u32,
-        screen_height as u32,
-        camera.dim_canvas.x as u32,
-        camera.dim_canvas.y as u32,
-    );
-    let end = canvas_point_to_screen_point(
-        end.x,
-        end.y,
-        screen_width as u32,
-        screen_height as u32,
-        camera.dim_canvas.x as u32,
-        camera.dim_canvas.y as u32,
-    );
-
-    draw.draw_line_with_thickness(
+    let start = coordinates_world_to_screen(Vec2::new(frustum.left(), pos_world.y));
+    let end = coordinates_world_to_screen(Vec2::new(frustum.right(), pos_world.y));
+    draw_line_with_thickness(
         start,
         end,
         line_thickness,
@@ -185,30 +103,9 @@ pub fn debug_draw_crosshair(
         Drawparams::new(depth, color, ADDITIVITY_NONE, Drawspace::Screen),
     );
 
-    let start = Vec2::new(pos_world.x, frustum.top());
-    let end = Vec2::new(pos_world.x, frustum.bottom());
-
-    let start = camera.worldpoint_to_canvaspoint(start);
-    let end = camera.worldpoint_to_canvaspoint(end);
-
-    let start = canvas_point_to_screen_point(
-        start.x,
-        start.y,
-        screen_width as u32,
-        screen_height as u32,
-        camera.dim_canvas.x as u32,
-        camera.dim_canvas.y as u32,
-    );
-    let end = canvas_point_to_screen_point(
-        end.x,
-        end.y,
-        screen_width as u32,
-        screen_height as u32,
-        camera.dim_canvas.x as u32,
-        camera.dim_canvas.y as u32,
-    );
-
-    draw.draw_line_with_thickness(
+    let start = coordinates_world_to_screen(Vec2::new(pos_world.x, frustum.top()));
+    let end = coordinates_world_to_screen(Vec2::new(pos_world.x, frustum.bottom()));
+    draw_line_with_thickness(
         start,
         end,
         line_thickness,

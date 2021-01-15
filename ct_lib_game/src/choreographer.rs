@@ -526,19 +526,13 @@ impl CanvasFader {
         self.timer.completion_ratio()
     }
 
-    pub fn update_and_draw(
-        &mut self,
-        draw: &mut Drawstate,
-        deltatime: f32,
-        canvas_width: u32,
-        canvas_height: u32,
-    ) {
+    pub fn update_and_draw(&mut self, deltatime: f32, canvas_width: u32, canvas_height: u32) {
         self.timer.update(deltatime);
 
         let percent = self.timer.completion_ratio();
         let color = Color::mix(self.color_start, self.color_end, percent);
         if color.a > 0.0 {
-            draw.draw_rect(
+            draw_rect(
                 Rect::from_width_height(canvas_width as f32, canvas_height as f32),
                 true,
                 Drawparams::new(
@@ -609,7 +603,6 @@ impl LoadingScreen {
 
     pub fn update_and_draw(
         &mut self,
-        draw: &mut Drawstate,
         deltatime: f32,
         canvas_width: u32,
         canvas_height: u32,
@@ -621,7 +614,7 @@ impl LoadingScreen {
         }
 
         self.fader
-            .update_and_draw(draw, deltatime, canvas_width, canvas_height);
+            .update_and_draw(deltatime, canvas_width, canvas_height);
 
         let opacity = if self.state <= LoadingScreenState::Sustain {
             self.fader.completion_ratio()
@@ -635,7 +628,7 @@ impl LoadingScreen {
             canvas_width as i32,
             canvas_height as i32,
         );
-        draw.draw_sprite(
+        draw_sprite(
             &sprite,
             Transform::from_pos(Vec2::new(
                 splash_rect.left() as f32,
@@ -652,7 +645,7 @@ impl LoadingScreen {
         );
 
         for letterbox_rect in &letterbox_rects {
-            draw.draw_rect(
+            draw_rect(
                 Rect::from(*letterbox_rect),
                 true,
                 Drawparams::new(
@@ -667,7 +660,7 @@ impl LoadingScreen {
         // Draw progress bar
         if let Some(progress_percentage) = progress_percentage {
             let progress_bar_height = (canvas_height as f32 / 25.0).round();
-            draw.draw_rect(
+            draw_rect(
                 Rect::from_bounds_left_top_right_bottom(
                     0.0,
                     canvas_height as f32 - progress_bar_height,

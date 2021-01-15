@@ -102,7 +102,7 @@ impl AudioResources {
 }
 
 #[derive(Default, Clone, Serialize, Deserialize)]
-pub struct GraphicsResources {
+pub struct GraphicResources {
     pub animations: IndexMap<ResourceName, Animation<Sprite>>,
     pub animations_3d: IndexMap<ResourceName, Animation<Sprite3D>>,
     pub sprites: IndexMap<ResourceName, Sprite>,
@@ -116,10 +116,10 @@ pub struct GraphicsResources {
 pub struct GameAssets {
     assets_folder: String,
 
-    pub audio: AudioResources,
-    pub graphics_splash: GraphicsResources,
-    pub graphics: GraphicsResources,
-    pub content: HashMap<String, Vec<u8>>,
+    audio_resources: AudioResources,
+    graphic_resources_splash: GraphicResources,
+    graphic_resources: GraphicResources,
+    content: HashMap<String, Vec<u8>>,
 
     decoded_audio_recordings: HashMap<ResourceName, Rc<RefCell<AudioRecording>>>,
     decoded_atlas_textures: Vec<Rc<RefCell<Bitmap>>>,
@@ -143,8 +143,8 @@ impl Clone for GameAssets {
         result.files_loading_stage = self.files_loading_stage.clone();
         result.files_loaders = HashMap::new();
 
-        result.audio = self.audio.clone();
-        result.graphics = self.graphics.clone();
+        result.audio_resources = self.audio_resources.clone();
+        result.graphic_resources = self.graphic_resources.clone();
         result.content = self.content.clone();
 
         result
@@ -159,9 +159,9 @@ impl GameAssets {
     pub fn new(assets_folder: &str) -> GameAssets {
         GameAssets {
             assets_folder: assets_folder.to_owned(),
-            audio: AudioResources::default(),
-            graphics_splash: GraphicsResources::default(),
-            graphics: GraphicsResources::default(),
+            audio_resources: AudioResources::default(),
+            graphic_resources_splash: GraphicResources::default(),
+            graphic_resources: GraphicResources::default(),
             content: HashMap::new(),
 
             decoded_audio_recordings: HashMap::new(),
@@ -226,7 +226,7 @@ impl GameAssets {
                         log::debug!("Loaded resource file '{}'", filepath);
 
                         if filepath == &path_join(&self.assets_folder, "graphics_splash.data") {
-                            self.graphics_splash = bincode::deserialize(&content).expect(
+                            self.graphic_resources_splash = bincode::deserialize(&content).expect(
                                 "Could not deserialize 'graphics_splash.data' (file corrupt?)",
                             );
                             log::info!("Loaded splash graphics resources");
@@ -298,13 +298,13 @@ impl GameAssets {
                         log::debug!("Loaded resource file '{}'", filepath);
 
                         if filepath == &path_join(&self.assets_folder, "graphics.data") {
-                            self.graphics = bincode::deserialize(&bindata)
+                            self.graphic_resources = bincode::deserialize(&bindata)
                                 .expect("Could not deserialize 'graphics.data' (file corrupt?)");
                             log::info!("Loaded graphics resources");
                         } else if filepath == &path_join(&self.assets_folder, "audio.data")
                             || filepath == &path_join(&self.assets_folder, "audio_wasm.data")
                         {
-                            self.audio = bincode::deserialize(&bindata)
+                            self.audio_resources = bincode::deserialize(&bindata)
                                 .expect("Could not deserialize 'audio.data' (file corrupt?)");
                             log::info!("Loaded audio resources");
                         } else if filepath == &path_join(&self.assets_folder, "content.data") {
@@ -390,7 +390,7 @@ impl GameAssets {
     fn decode_atlas_textures_splash(&mut self) {
         assert!(self.files_loading_stage == AssetLoadingStage::SplashFinish);
         self.decoded_atlas_textures_splash =
-            GameAssets::decode_png_images(&self.graphics_splash.textures_png_data);
+            GameAssets::decode_png_images(&self.graphic_resources_splash.textures_png_data);
 
         log::info!("Decoded splash bitmap textures");
     }
@@ -398,7 +398,7 @@ impl GameAssets {
     fn decode_atlas_textures(&mut self) {
         assert!(self.files_loading_stage >= AssetLoadingStage::DecodingProgress);
         self.decoded_atlas_textures =
-            GameAssets::decode_png_images(&self.graphics.textures_png_data);
+            GameAssets::decode_png_images(&self.graphic_resources.textures_png_data);
 
         // Make sprites out of the atlas pages themselves for debug purposes
         for page_index in 0..self.decoded_atlas_textures.len() {
@@ -416,6 +416,11 @@ impl GameAssets {
         log::info!("Decoded bitmap textures");
     }
 
+    pub fn get_audio_resources_sample_rate_hz(&self) -> usize {
+        assert!(self.files_loading_stage >= AssetLoadingStage::FilesFinish);
+        self.audio_resources.resource_sample_rate_hz
+    }
+
     pub fn get_audiorecordings(&self) -> &HashMap<ResourceName, Rc<RefCell<AudioRecording>>> {
         assert!(self.files_loading_stage >= AssetLoadingStage::DecodingFinish);
         &self.decoded_audio_recordings
@@ -423,11 +428,11 @@ impl GameAssets {
     fn decode_audiorecordings(&mut self) {
         assert!(self.files_loading_stage >= AssetLoadingStage::DecodingProgress);
         self.decoded_audio_recordings = self
-            .audio
+            .audio_resources
             .metadata
             .iter()
             .map(|(resource_name, metadata)| {
-                let ogg_data = &self.audio.recordings_ogg_data[resource_name];
+                let ogg_data = &self.audio_resources.recordings_ogg_data[resource_name];
                 let recording = AudioRecording::new_from_ogg_stream_with_loopsection(
                     resource_name.clone(),
                     metadata.framecount,
@@ -457,7 +462,7 @@ impl GameAssets {
         has_translucency: bool,
     ) -> Sprite {
         assert!(self.files_loading_stage >= AssetLoadingStage::DecodingProgress);
-        debug_assert!(!self.graphics.sprites.contains_key(&sprite_name));
+        debug_assert!(!self.graphic_resources.sprites.contains_key(&sprite_name));
 
         let texture_size = self.decoded_atlas_textures[atlas_texture_index as usize]
             .borrow()
@@ -476,7 +481,7 @@ impl GameAssets {
             trimmed_uvs: AAQuad::from_rect(sprite_rect.scaled_from_origin(Vec2::filled(uv_scale))),
         };
 
-        self.graphics
+        self.graphic_resources
             .sprites
             .insert(sprite_name.clone(), sprite.clone());
         sprite
@@ -491,7 +496,7 @@ impl GameAssets {
 
     pub fn get_anim(&self, animation_name: &str) -> &Animation<Sprite> {
         assert!(self.files_loading_stage >= AssetLoadingStage::DecodingFinish);
-        self.graphics
+        self.graphic_resources
             .animations
             .get(animation_name)
             .unwrap_or_else(|| panic!("Could not find animation '{}'", animation_name))
@@ -499,7 +504,7 @@ impl GameAssets {
 
     pub fn get_anim_3d(&self, animation_name: &str) -> &Animation<Sprite3D> {
         assert!(self.files_loading_stage >= AssetLoadingStage::DecodingFinish);
-        self.graphics
+        self.graphic_resources
             .animations_3d
             .get(animation_name)
             .unwrap_or_else(|| panic!("Could not find animation '{}'", animation_name))
@@ -507,10 +512,10 @@ impl GameAssets {
 
     pub fn get_font(&self, font_name: &str) -> &SpriteFont {
         let fonts = if self.files_loading_stage >= AssetLoadingStage::DecodingFinish {
-            &self.graphics.fonts
+            &self.graphic_resources.fonts
         } else {
             assert!(self.files_loading_stage >= AssetLoadingStage::SplashFinish);
-            &self.graphics_splash.fonts
+            &self.graphic_resources_splash.fonts
         };
 
         fonts
@@ -520,10 +525,10 @@ impl GameAssets {
 
     pub fn get_sprite(&self, sprite_name: &str) -> &Sprite {
         let sprites = if self.files_loading_stage >= AssetLoadingStage::DecodingFinish {
-            &self.graphics.sprites
+            &self.graphic_resources.sprites
         } else {
             assert!(self.files_loading_stage >= AssetLoadingStage::SplashFinish);
-            &self.graphics_splash.sprites
+            &self.graphic_resources_splash.sprites
         };
 
         if let Some(result) = sprites.get(sprite_name) {
@@ -539,12 +544,12 @@ impl GameAssets {
 
     pub fn get_sprite_3d(&self, sprite_name: &str) -> &Sprite3D {
         assert!(self.files_loading_stage >= AssetLoadingStage::DecodingFinish);
-        if let Some(result) = self.graphics.sprites_3d.get(sprite_name) {
+        if let Some(result) = self.graphic_resources.sprites_3d.get(sprite_name) {
             result
         } else {
             // NOTE: By adding ".0" automatically we can conveniently call the first (or only) frame
             //       of a sprite without the ".0" suffix
-            self.graphics
+            self.graphic_resources
                 .sprites_3d
                 .get(&format!("{}.0", sprite_name))
                 .unwrap_or_else(|| panic!("Sprite with name '{}' does not exist", sprite_name))
@@ -613,7 +618,7 @@ impl GameAssets {
             }
 
             if LAST_WRITE_TIME_GRAPHICS != last_write_time_graphics {
-                self.graphics = deserialize_from_binary_file(&path_graphics);
+                self.graphic_resources = deserialize_from_binary_file(&path_graphics);
                 self.decode_atlas_textures();
                 LAST_WRITE_TIME_GRAPHICS = last_write_time_graphics;
                 reload_happened = true;
@@ -624,7 +629,7 @@ impl GameAssets {
                 reload_happened = true;
             }
             if LAST_WRITE_TIME_AUDIO != last_write_time_audio {
-                self.audio = deserialize_from_binary_file(&path_audio);
+                self.audio_resources = deserialize_from_binary_file(&path_audio);
                 self.decode_audiorecordings();
                 LAST_WRITE_TIME_AUDIO = last_write_time_audio;
                 reload_happened = true;

@@ -1308,7 +1308,7 @@ impl GraphicsSheet {
             .collect();
 
         // Create GraphicsResources for serialization
-        let graphics_resources = GraphicsResources {
+        let graphics_resources = GraphicResources {
             animations,
             animations_3d,
             fonts,

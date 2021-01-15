@@ -248,7 +248,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                     assert!(get_resources().audio.is_none());
                     let window_config = GameStateType::get_window_config();
                     let mut audio = Audiostate::new(
-                        get_assets().audio.resource_sample_rate_hz,
+                        get_assets().get_audio_resources_sample_rate_hz(),
                         window_config.canvas_width as f32 / 2.0,
                         10_000.0,
                     );
@@ -328,7 +328,6 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                     .unwrap_or((window_screen_width(), window_screen_height()));
                 let splash_sprite = get_assets().get_sprite("splashscreen");
                 self.loadingscreen.update_and_draw(
-                    get_draw(),
                     get_input().deltatime,
                     canvas_width,
                     canvas_height,

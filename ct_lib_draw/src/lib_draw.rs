@@ -181,7 +181,7 @@ pub fn screen_point_to_canvas_point(
     screen_height: u32,
     canvas_width: u32,
     canvas_height: u32,
-) -> Pointi {
+) -> Point {
     let blit_rect = BlitRect::new_for_fixed_canvas_size(
         screen_width,
         screen_height,
@@ -195,7 +195,7 @@ pub fn screen_point_to_canvas_point(
     let pos_canvas_x = canvas_width as f32 * (pos_blitrect_x as f32 / blit_rect.width as f32);
     let pos_canvas_y = canvas_height as f32 * (pos_blitrect_y as f32 / blit_rect.height as f32);
 
-    Pointi::new(floori(pos_canvas_x), floori(pos_canvas_y))
+    Point::new(pos_canvas_x, pos_canvas_y)
 }
 
 /// Inverse of `screen_point_to_canvas_point`

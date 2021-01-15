@@ -19,6 +19,67 @@ pub fn get_random_generator() -> &'static mut Random {
 }
 
 //--------------------------------------------------------------------------------------------------
+// COORDINATES
+
+/// Converts a screen point to coordinates respecting the canvas
+/// dimensions and its offsets
+///
+/// screen_pos_x in [0, screen_width - 1] (left to right)
+/// screen_pos_y in [0, screen_height - 1] (top to bottom)
+/// result in [0, canvas_width - 1]x[0, canvas_height - 1] (relative to clamped canvas area,
+///                                                         top-left to bottom-right)
+///
+/// WARNING: This does not work optimally if the pixel-scale-factor
+/// (which is screen_width / canvas_width) is not an integer value
+///
+#[inline]
+pub fn coordinates_screen_to_canvas(screen_pos: Vec2) -> Vec2 {
+    screen_point_to_canvas_point(
+        screen_pos.x as i32,
+        screen_pos.y as i32,
+        window_screen_width(),
+        window_screen_height(),
+        canvas_width() as u32,
+        canvas_height() as u32,
+    )
+}
+
+#[inline]
+pub fn coordinates_screen_to_world(screen_pos: Point) -> Worldpoint {
+    let canvas_pos = coordinates_screen_to_canvas(screen_pos);
+    coordinates_canvas_to_world(canvas_pos)
+}
+
+/// Inverse of `coordinates_screen_to_canvas`
+#[inline]
+pub fn coordinates_canvas_to_screen(canvas_pos: Canvaspoint) -> Point {
+    canvas_point_to_screen_point(
+        canvas_pos.x,
+        canvas_pos.y,
+        window_screen_width(),
+        window_screen_height(),
+        canvas_width() as u32,
+        canvas_height() as u32,
+    )
+}
+
+#[inline]
+pub fn coordinates_canvas_to_world(canvas_pos: Canvaspoint) -> Worldpoint {
+    get_camera().cam.canvaspoint_to_worldpoint(canvas_pos)
+}
+
+#[inline]
+pub fn coordinates_world_to_canvas(world_pos: Worldpoint) -> Canvaspoint {
+    get_camera().cam.worldpoint_to_canvaspoint(world_pos)
+}
+
+#[inline]
+pub fn coordinates_world_to_screen(world_pos: Worldpoint) -> Point {
+    let screen_pos = coordinates_world_to_canvas(world_pos);
+    coordinates_canvas_to_screen(screen_pos)
+}
+
+//--------------------------------------------------------------------------------------------------
 // CANVAS
 
 #[inline]
@@ -867,36 +928,6 @@ pub fn draw_debug_log_visualize_value(
     value_max: f32,
 ) {
     get_draw().debug_log_visualize_value(label, color, value, value_min, value_max)
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Multiresource
-
-#[inline]
-pub fn draw_debug_grid(world_grid_size: f32, line_thickness: i32, color: Color, depth: f32) {
-    debug_draw_grid(
-        get_draw(),
-        &get_camera().cam,
-        world_grid_size,
-        window_screen_width() as f32,
-        window_screen_height() as f32,
-        line_thickness,
-        color,
-        depth,
-    )
-}
-
-pub fn draw_debug_crosshair(pos_world: Vec2, line_thickness: f32, color: Color, depth: f32) {
-    debug_draw_crosshair(
-        get_draw(),
-        &get_camera().cam,
-        pos_world,
-        window_screen_width() as f32,
-        window_screen_height() as f32,
-        line_thickness,
-        color,
-        depth,
-    )
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
