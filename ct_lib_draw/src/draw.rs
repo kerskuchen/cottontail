@@ -695,6 +695,7 @@ impl Drawstate {
                 ),
                 world_batch.indices_start_offset,
                 world_batch.indices_count,
+                true,
             );
         }
         for canvas_batch in &self.default_batches_canvas {
@@ -708,6 +709,7 @@ impl Drawstate {
                 ),
                 canvas_batch.indices_start_offset,
                 canvas_batch.indices_count,
+                true,
             );
         }
 
@@ -748,6 +750,7 @@ impl Drawstate {
                 ),
                 screen_batch.indices_start_offset,
                 screen_batch.indices_count,
+                true,
             );
         }
     }

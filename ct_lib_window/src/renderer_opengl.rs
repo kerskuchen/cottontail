@@ -852,10 +852,12 @@ impl DrawObject {
         }
     }
 
-    fn draw(&self, indices_start_offset: u32, indices_count: usize) {
+    fn draw(&self, indices_start_offset: u32, indices_count: usize, depth_write_enabled: bool) {
         let gl = &self.gl;
         let indices_offset_in_bytes = std::mem::size_of::<u32>() * indices_start_offset as usize;
         unsafe {
+            gl.depth_mask(depth_write_enabled);
+
             // Draw
             gl.bind_vertex_array(Some(self.vertex_array_id));
             gl.draw_elements(
@@ -867,6 +869,8 @@ impl DrawObject {
             gl.bind_vertex_array(None);
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
             gl.bind_buffer(glow::ARRAY_BUFFER, None);
+
+            gl.depth_mask(true);
         }
 
         debug_assert!(
@@ -1101,6 +1105,7 @@ impl Renderer {
         texture: &str,
         indices_start_offset: u32,
         indices_count: usize,
+        depth_write_enabled: bool,
     ) {
         assert!(
             shader != "blit",
@@ -1127,7 +1132,7 @@ impl Renderer {
         self.drawobjects
             .get(shader)
             .unwrap_or_else(|| panic!("Drawobject '{}' not found", shader))
-            .draw(indices_start_offset, indices_count);
+            .draw(indices_start_offset, indices_count, depth_write_enabled);
 
         if ENABLE_LOGS {
             log::trace!(
@@ -1464,7 +1469,7 @@ impl Renderer {
                 ct_lib_core::transmute_slice_to_byte_slice(&vertices),
                 ct_lib_core::transmute_slice_to_byte_slice(&indices),
             );
-            drawobject_blit.draw(0, 6);
+            drawobject_blit.draw(0, 6, false);
         }
 
         unsafe {
@@ -1620,7 +1625,7 @@ impl Renderer {
                 ct_lib_core::transmute_slice_to_byte_slice(&vertices),
                 ct_lib_core::transmute_slice_to_byte_slice(&indices),
             );
-            drawobject_blit.draw(0, 6);
+            drawobject_blit.draw(0, 6, false);
         }
         unsafe {
             let gl = &self.gl;
