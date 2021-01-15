@@ -192,7 +192,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                     window_screen_width(),
                     window_screen_height(),
                 );
-                draw.set_shaderparams_simple(
+                draw.set_shaderparams_default(
                     Color::white(),
                     Mat4::ortho_origin_left_top(
                         window_config.canvas_width as f32,
@@ -404,7 +404,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 game_handle_mouse_camera_zooming_panning();
                 get_camera().update(time_deltatime());
 
-                draw.set_shaderparams_simple(
+                draw.set_shaderparams_default(
                     Color::white(),
                     get_camera().proj_view_matrix(),
                     Mat4::ortho_origin_left_top(

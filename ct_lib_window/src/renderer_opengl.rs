@@ -880,9 +880,9 @@ impl DrawObject {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Shader Simple
+// Shader Default
 
-const VERTEX_SHADER_SOURCE_SIMPLE: &str = r#"
+const VERTEX_SHADER_SOURCE_DEFAULT: &str = r#"
 attribute vec3 a_pos;
 attribute vec2 a_uv;
 attribute vec4 a_color;
@@ -903,7 +903,7 @@ void main()
 }
 "#;
 
-const FRAGMENT_SHADER_SOURCE_SIMPLE: &str = r#"
+const FRAGMENT_SHADER_SOURCE_DEFAULT: &str = r#"
 precision mediump float;
 
 varying vec4 v_color;
@@ -1001,13 +1001,13 @@ impl Renderer {
             gl.depth_func(glow::GEQUAL);
         }
 
-        let shader_simple = Shader::new(
+        let shader_default = Shader::new(
             gl.clone(),
-            "simple".to_owned(),
-            VERTEX_SHADER_SOURCE_SIMPLE,
-            FRAGMENT_SHADER_SOURCE_SIMPLE,
+            "default".to_owned(),
+            VERTEX_SHADER_SOURCE_DEFAULT,
+            FRAGMENT_SHADER_SOURCE_DEFAULT,
         )
-        .expect("Could not compile simple shader");
+        .expect("Could not compile default shader");
         let shader_blit = Shader::new(
             gl.clone(),
             "blit".to_owned(),
@@ -1016,15 +1016,15 @@ impl Renderer {
         )
         .expect("Could not compile blit shader");
 
-        let drawobject_simple = DrawObject::new_from_shader(gl.clone(), &shader_simple);
+        let drawobject_default = DrawObject::new_from_shader(gl.clone(), &shader_default);
         let drawobject_blit = DrawObject::new_from_shader(gl.clone(), &shader_blit);
 
         let mut drawobjects = HashMap::new();
-        drawobjects.insert("simple".to_owned(), drawobject_simple);
+        drawobjects.insert("default".to_owned(), drawobject_default);
         drawobjects.insert("blit".to_owned(), drawobject_blit);
 
         let mut shaders = HashMap::new();
-        shaders.insert("simple".to_owned(), shader_simple);
+        shaders.insert("default".to_owned(), shader_default);
         shaders.insert("blit".to_owned(), shader_blit);
 
         gl_check_state_ok(&gl).expect("Something went wrong while creating renderer");

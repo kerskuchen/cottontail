@@ -34,13 +34,13 @@ trait Vertex: Sized + Copy + Clone + Default {
 
 #[derive(Default, Clone, Copy, Debug)]
 #[repr(C)]
-struct VertexSimple {
+struct VertexDefault {
     pub pos: Vec3,
     pub uv: Vec2,
     pub color: Color,
     pub additivity: Additivity,
 }
-impl Vertex for VertexSimple {}
+impl Vertex for VertexDefault {}
 
 #[derive(Default, Clone, Copy, Debug)]
 #[repr(C)]
@@ -78,7 +78,7 @@ enum Geometry {
         indices: Vec<VertexIndex>,
     },
     LineMesh {
-        vertices: Vec<VertexSimple>,
+        vertices: Vec<VertexDefault>,
         indices: Vec<VertexIndex>,
     },
 }
@@ -133,7 +133,7 @@ impl Drawable {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Vertexbuffers
 
-type VertexbufferSimple = Vertexbuffer<VertexSimple>;
+type VertexbufferDefault = Vertexbuffer<VertexDefault>;
 
 // NOTE: We don't want to make the vertexbuffer dependent on a specific vertex type via <..>
 //       generics because then it is harder to code share between drawstate and the renderer
@@ -161,7 +161,7 @@ impl<VertexType: Vertex> Vertexbuffer<VertexType> {
     }
 }
 
-impl VertexbufferSimple {
+impl VertexbufferDefault {
     /// Returns index count of pushed object
     pub fn push_drawable(&mut self, drawable: Drawable) -> usize {
         let depth = drawable.drawparams.depth;
@@ -184,28 +184,28 @@ impl VertexbufferSimple {
                 self.indices.push(indices_start_offset + 3); // left top
 
                 // right top
-                self.vertices.push(VertexSimple {
+                self.vertices.push(VertexDefault {
                     pos: Vec3::from_vec2(quad.vert_right_top, depth),
                     uv: Vec2::new(uvs.right, uvs.top),
                     color,
                     additivity,
                 });
                 // right bottom
-                self.vertices.push(VertexSimple {
+                self.vertices.push(VertexDefault {
                     pos: Vec3::from_vec2(quad.vert_right_bottom, depth),
                     uv: Vec2::new(uvs.right, uvs.bottom),
                     color,
                     additivity,
                 });
                 // left bottom
-                self.vertices.push(VertexSimple {
+                self.vertices.push(VertexDefault {
                     pos: Vec3::from_vec2(quad.vert_left_bottom, depth),
                     uv: Vec2::new(uvs.left, uvs.bottom),
                     color,
                     additivity,
                 });
                 // left top
-                self.vertices.push(VertexSimple {
+                self.vertices.push(VertexDefault {
                     pos: Vec3::from_vec2(quad.vert_left_top, depth),
                     uv: Vec2::new(uvs.left, uvs.top),
                     color,
@@ -225,7 +225,7 @@ impl VertexbufferSimple {
                     self.indices.push(indices_start_offset + index);
                 }
                 for (pos, uv) in vertices.iter().zip(uvs.iter()) {
-                    self.vertices.push(VertexSimple {
+                    self.vertices.push(VertexDefault {
                         pos: Vec3::from_vec2(*pos, depth),
                         uv: *uv,
                         color,
@@ -259,11 +259,11 @@ trait UniformBlock: Sized {
 }
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
-struct ShaderParamsSimple {
+struct ShaderParamsDefault {
     pub transform: Mat4,
     pub texture_color_modulate: Color,
 }
-impl UniformBlock for ShaderParamsSimple {}
+impl UniformBlock for ShaderParamsDefault {}
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -409,15 +409,15 @@ pub struct Drawstate {
     current_clear_color: Color,
     current_clear_depth: Depth,
 
-    simple_drawables: Vec<Drawable>,
-    simple_shaderparams_world: ShaderParamsSimple,
-    simple_shaderparams_canvas: ShaderParamsSimple,
-    simple_shaderparams_screen: ShaderParamsSimple,
-    simple_batches_world: Vec<DrawBatch>,
-    simple_batches_canvas: Vec<DrawBatch>,
-    simple_batches_screen: Vec<DrawBatch>,
-    simple_vertexbuffer: VertexbufferSimple,
-    simple_vertexbuffer_dirty: bool,
+    default_drawables: Vec<Drawable>,
+    default_shaderparams_world: ShaderParamsDefault,
+    default_shaderparams_canvas: ShaderParamsDefault,
+    default_shaderparams_screen: ShaderParamsDefault,
+    default_batches_world: Vec<DrawBatch>,
+    default_batches_canvas: Vec<DrawBatch>,
+    default_batches_screen: Vec<DrawBatch>,
+    default_vertexbuffer: VertexbufferDefault,
+    default_vertexbuffer_dirty: bool,
 
     canvas_framebuffer: Option<FramebufferInfo>,
 
@@ -466,15 +466,15 @@ impl Drawstate {
             current_clear_color: Color::black(),
             current_clear_depth: DEPTH_CLEAR,
 
-            simple_drawables: Vec::new(),
-            simple_shaderparams_world: ShaderParamsSimple::default(),
-            simple_shaderparams_canvas: ShaderParamsSimple::default(),
-            simple_shaderparams_screen: ShaderParamsSimple::default(),
-            simple_batches_world: Vec::new(),
-            simple_batches_canvas: Vec::new(),
-            simple_batches_screen: Vec::new(),
-            simple_vertexbuffer: VertexbufferSimple::new(),
-            simple_vertexbuffer_dirty: true,
+            default_drawables: Vec::new(),
+            default_shaderparams_world: ShaderParamsDefault::default(),
+            default_shaderparams_canvas: ShaderParamsDefault::default(),
+            default_shaderparams_screen: ShaderParamsDefault::default(),
+            default_batches_world: Vec::new(),
+            default_batches_canvas: Vec::new(),
+            default_batches_screen: Vec::new(),
+            default_vertexbuffer: VertexbufferDefault::new(),
+            default_vertexbuffer_dirty: true,
 
             canvas_framebuffer: None,
 
@@ -523,21 +523,21 @@ impl Drawstate {
         )
     }
 
-    pub fn set_shaderparams_simple(
+    pub fn set_shaderparams_default(
         &mut self,
         color_modulate: Color,
         transform_world: Mat4,
         transform_canvas: Mat4,
         transform_screen: Mat4,
     ) {
-        self.simple_shaderparams_world.texture_color_modulate = color_modulate;
-        self.simple_shaderparams_world.transform = transform_world;
+        self.default_shaderparams_world.texture_color_modulate = color_modulate;
+        self.default_shaderparams_world.transform = transform_world;
 
-        self.simple_shaderparams_canvas.texture_color_modulate = color_modulate;
-        self.simple_shaderparams_canvas.transform = transform_canvas;
+        self.default_shaderparams_canvas.texture_color_modulate = color_modulate;
+        self.default_shaderparams_canvas.transform = transform_canvas;
 
-        self.simple_shaderparams_screen.texture_color_modulate = color_modulate;
-        self.simple_shaderparams_screen.transform = transform_screen;
+        self.default_shaderparams_screen.texture_color_modulate = color_modulate;
+        self.default_shaderparams_screen.transform = transform_screen;
     }
 
     pub fn set_letterbox_color(&mut self, color: Color) {
@@ -575,55 +575,55 @@ impl Drawstate {
     // Beginning and ending frames
 
     pub fn begin_frame(&mut self) {
-        self.simple_drawables.clear();
+        self.default_drawables.clear();
         self.debug_log_offset = Vec2::zero();
     }
 
     pub fn finish_frame(&mut self) {
-        self.simple_batches_world.clear();
-        self.simple_batches_canvas.clear();
-        self.simple_batches_screen.clear();
+        self.default_batches_world.clear();
+        self.default_batches_canvas.clear();
+        self.default_batches_screen.clear();
 
-        if self.simple_drawables.is_empty() {
+        if self.default_drawables.is_empty() {
             return;
         }
-        self.simple_drawables.sort_by(Drawable::compare);
+        self.default_drawables.sort_by(Drawable::compare);
 
         // Collect draw batches
         let mut current_batch = DrawBatch {
-            drawspace: self.simple_drawables[0].drawparams.drawspace,
-            texture_index: self.simple_drawables[0].texture_index,
+            drawspace: self.default_drawables[0].drawparams.drawspace,
+            texture_index: self.default_drawables[0].texture_index,
             indices_start_offset: 0,
             indices_count: 0,
         };
 
-        self.simple_vertexbuffer.clear();
-        self.simple_vertexbuffer_dirty = true;
-        for drawable in self.simple_drawables.drain(..) {
+        self.default_vertexbuffer.clear();
+        self.default_vertexbuffer_dirty = true;
+        for drawable in self.default_drawables.drain(..) {
             if drawable.texture_index != current_batch.texture_index
                 || drawable.drawparams.drawspace != current_batch.drawspace
             {
                 match current_batch.drawspace {
-                    Drawspace::World => self.simple_batches_world.push(current_batch),
-                    Drawspace::Canvas => self.simple_batches_canvas.push(current_batch),
-                    Drawspace::Screen => self.simple_batches_screen.push(current_batch),
+                    Drawspace::World => self.default_batches_world.push(current_batch),
+                    Drawspace::Canvas => self.default_batches_canvas.push(current_batch),
+                    Drawspace::Screen => self.default_batches_screen.push(current_batch),
                 }
                 current_batch = DrawBatch {
                     drawspace: drawable.drawparams.drawspace,
                     texture_index: drawable.texture_index,
-                    indices_start_offset: self.simple_vertexbuffer.current_offset(),
+                    indices_start_offset: self.default_vertexbuffer.current_offset(),
                     indices_count: 0,
                 };
             }
 
-            let indices_count = self.simple_vertexbuffer.push_drawable(drawable);
+            let indices_count = self.default_vertexbuffer.push_drawable(drawable);
             current_batch.indices_count += indices_count;
         }
 
         match current_batch.drawspace {
-            Drawspace::World => self.simple_batches_world.push(current_batch),
-            Drawspace::Canvas => self.simple_batches_canvas.push(current_batch),
-            Drawspace::Screen => self.simple_batches_screen.push(current_batch),
+            Drawspace::World => self.default_batches_world.push(current_batch),
+            Drawspace::Canvas => self.default_batches_canvas.push(current_batch),
+            Drawspace::Screen => self.default_batches_screen.push(current_batch),
         }
     }
 
@@ -672,22 +672,22 @@ impl Drawstate {
         };
 
         // Upload vertexbuffers
-        if self.simple_vertexbuffer_dirty {
+        if self.default_vertexbuffer_dirty {
             unsafe {
                 renderer.assign_buffers(
-                    "simple",
-                    &transmute_slice_to_byte_slice(&self.simple_vertexbuffer.vertices),
-                    &transmute_slice_to_byte_slice(&self.simple_vertexbuffer.indices),
+                    "default",
+                    &transmute_slice_to_byte_slice(&self.default_vertexbuffer.vertices),
+                    &transmute_slice_to_byte_slice(&self.default_vertexbuffer.indices),
                 );
             }
-            self.simple_vertexbuffer_dirty = false;
+            self.default_vertexbuffer_dirty = false;
         }
 
         // Draw world- and canvas-space batches
-        for world_batch in &self.simple_batches_world {
+        for world_batch in &self.default_batches_world {
             renderer.draw(
-                "simple",
-                &self.simple_shaderparams_world.as_slice(),
+                "default",
+                &self.default_shaderparams_world.as_slice(),
                 &draw_framebuffer_name,
                 &Drawstate::texturename_for_atlaspage(
                     self.textures_size,
@@ -697,10 +697,10 @@ impl Drawstate {
                 world_batch.indices_count,
             );
         }
-        for canvas_batch in &self.simple_batches_canvas {
+        for canvas_batch in &self.default_batches_canvas {
             renderer.draw(
-                "simple",
-                &self.simple_shaderparams_canvas.as_slice(),
+                "default",
+                &self.default_shaderparams_canvas.as_slice(),
                 &draw_framebuffer_name,
                 &Drawstate::texturename_for_atlaspage(
                     self.textures_size,
@@ -737,10 +737,10 @@ impl Drawstate {
         }
 
         // Draw screenspace batches last so they won't get overdrawn by framebuffer blits
-        for screen_batch in &self.simple_batches_screen {
+        for screen_batch in &self.default_batches_screen {
             renderer.draw(
-                "simple",
-                &self.simple_shaderparams_screen.as_slice(),
+                "default",
+                &self.default_shaderparams_screen.as_slice(),
                 "screen",
                 &Drawstate::texturename_for_atlaspage(
                     self.textures_size,
@@ -765,7 +765,7 @@ impl Drawstate {
         drawparams: Drawparams,
     ) {
         if !self.debug_use_flat_color_mode {
-            self.simple_drawables.push(Drawable {
+            self.default_drawables.push(Drawable {
                 texture_index,
                 uv_region_contains_translucency,
                 drawparams,
@@ -781,7 +781,7 @@ impl Drawstate {
                 bottom: coords_vertical,
             };
 
-            self.simple_drawables.push(Drawable {
+            self.default_drawables.push(Drawable {
                 texture_index,
                 uv_region_contains_translucency,
                 drawparams,
@@ -1020,7 +1020,7 @@ impl Drawstate {
             vertices.len()
         ];
 
-        self.simple_drawables.push(Drawable {
+        self.default_drawables.push(Drawable {
             texture_index: self.untextured_uv_center_atlas_page,
             uv_region_contains_translucency: false,
             drawparams,
@@ -1079,7 +1079,7 @@ impl Drawstate {
             vertices.len()
         ];
 
-        self.simple_drawables.push(Drawable {
+        self.default_drawables.push(Drawable {
             texture_index: self.untextured_uv_center_atlas_page,
             uv_region_contains_translucency: false,
             drawparams,
@@ -1322,28 +1322,28 @@ impl Drawstate {
         // Right quad
 
         // right top
-        vertices.push(VertexSimple {
+        vertices.push(VertexDefault {
             pos: Vec3::from_vec2(quad_right.vert_right_top, depth),
             uv,
             color: color_edges,
             additivity,
         });
         // right bottom
-        vertices.push(VertexSimple {
+        vertices.push(VertexDefault {
             pos: Vec3::from_vec2(quad_right.vert_right_bottom, depth),
             uv,
             color: color_edges,
             additivity,
         });
         // left bottom
-        vertices.push(VertexSimple {
+        vertices.push(VertexDefault {
             pos: Vec3::from_vec2(quad_right.vert_left_bottom, depth),
             uv,
             color,
             additivity,
         });
         // left top
-        vertices.push(VertexSimple {
+        vertices.push(VertexDefault {
             pos: Vec3::from_vec2(quad_right.vert_left_top, depth),
             uv,
             color,
@@ -1364,28 +1364,28 @@ impl Drawstate {
         // Left quad
 
         // right top
-        vertices.push(VertexSimple {
+        vertices.push(VertexDefault {
             pos: Vec3::from_vec2(quad_left.vert_right_top, depth),
             uv,
             color,
             additivity,
         });
         // right bottom
-        vertices.push(VertexSimple {
+        vertices.push(VertexDefault {
             pos: Vec3::from_vec2(quad_left.vert_right_bottom, depth),
             uv,
             color,
             additivity,
         });
         // left bottom
-        vertices.push(VertexSimple {
+        vertices.push(VertexDefault {
             pos: Vec3::from_vec2(quad_left.vert_left_bottom, depth),
             uv,
             color: color_edges,
             additivity,
         });
         // left top
-        vertices.push(VertexSimple {
+        vertices.push(VertexDefault {
             pos: Vec3::from_vec2(quad_left.vert_left_top, depth),
             uv,
             color: color_edges,
@@ -1402,7 +1402,7 @@ impl Drawstate {
         indices.push(4 + 1); // right bottom
         indices.push(4 + 3); // left top
 
-        self.simple_drawables.push(Drawable {
+        self.default_drawables.push(Drawable {
             texture_index: self.untextured_uv_center_atlas_page,
             uv_region_contains_translucency: true,
             drawparams: Drawparams {
@@ -1622,7 +1622,7 @@ impl Drawstate {
             vertices.len()
         ];
 
-        self.simple_drawables.push(Drawable {
+        self.default_drawables.push(Drawable {
             texture_index: self.untextured_uv_center_atlas_page,
             uv_region_contains_translucency: false,
             drawparams,

@@ -13,6 +13,15 @@
 
 # NEXT:
 
+- To correctly draw translucent object we need to do the following in drawstate:
+  for shader
+    for uniform 
+      for texture 
+        draw opaque drawobject
+  for tranclucent drawobject (ordered back to front with disabled depth write)
+    set shader, set uniform, set texture if necessary
+      draw drawobject
+
 
 ## writing games easier
 - Easier text drawing api
