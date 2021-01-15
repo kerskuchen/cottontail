@@ -14,6 +14,10 @@
 
 
 ## writing games easier
+- sort this list
+- look at more dynamic game/engines as to how we can make our api more easy to use
+  https://github.com/a327ex/JUGGLRX-prototype
+  https://www.raylib.com/cheatsheet/cheatsheet.html
 - Easier text drawing api
   - one that is simple without much parameters
   - one that just centers text in rect
@@ -24,11 +28,20 @@
   - enable debug draw logging
 - Ability to draw debug graphs to i.e. try out attenuation for audio distance
   - We need to add a debug layer to the drawstate with its own drawqueue
+- find out how we can use actual coroutines like here 
+  https://not-fl3.github.io/platformer-book/world/player-state-machine.html
+- make our gui more fully featured and usable
+  https://sol.gfxile.net/imgui/index.html
+  https://github.com/emilk/hobogo
+  https://github.com/emilk/egui/blob/master/egui/src/widgets/button.rs
+  https://ourmachinery.com/post/keyboard-focus-and-event-trickling-in-immediate-mode-guis/
+  https://ourmachinery.com/post/implementing-drag-and-drop-in-an-imgui/
 - add unified/virtual gamecursor input to gamecursors struct (uses mouse or first touchfinger)
 - simplify touch input query (especially within the appcursors context)
 - Change linestrip drawing api to take a `loop` parameter so we can get rid of 5 vertex 
   sized rectangle drawing and the `skip_last_vertex` 
 - Fix Vec2 to work with flipped_y only and remove special suffixes?
+- add springs like in https://github.com/a327ex/blog/issues/60
 - Add modulators like in https://www.youtube.com/watch?v=n-txrCMvdms especially shift register 
   modulator and newtonian following modulator
 - replace math::Interval by Rust range with trait methods
@@ -42,6 +55,7 @@
   - https://bfnightly.bracketproductions.com/rustbook/chapter_0.html
 
 ## better platform layer
+- sort this list
 - implement appcommands in wasm
 - make screen orientation settable
 - rename things that are not necessarily game related to app
@@ -54,7 +68,10 @@
   statusbar would be. if we pull down the status bar the canvas grows to full size.
 - Allow app to save files locally in wasm (browserdb?)
   - get rid of savegame folder on windows and just use appdata
-- gamepad support for wasm
+- gamepad support for wasm 
+  https://github.com/luser/gamepadtest/blob/master/gamepadtest.js
+  https://rustwasm.github.io/docs/wasm-bindgen/introduction.html
+  https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API/Using_the_Gamepad_API
 - Find out why gamepad shoulder trigger axes does not work. Directly accessing the state 
   with `Gamepad::axis_or_btn_name()` or iterating axis does not let us find any state. We know that 
   it should work because it does so in the MSWindows control panel
@@ -64,6 +81,7 @@
 - make textinput on sdl2 working again
 
 ## better project structure and generator
+- sort this list
 - we can put example scenes into ct_lib_game or its own crate?
 - look for ways to simplify project creation and building
 - assess which thirdpary tools we use for building/asset packing and document them and how to get them
@@ -88,6 +106,10 @@
   https://social.technet.microsoft.com/wiki/contents/articles/38117.microsoft-trusted-root-certificate-program-participants-as-of-june-27-2017.aspx#C
 
 # user experience
+- sort this list
+- finish wasm layer
+  https://www.rossis.red/wasm.html
+  view-source:https://www.funkykarts.rocks/demo.html
 - find ways to make our wasm file smaller
 - look at how godot does load progress spinner in html export
 - make app pause on onfocus/lost events more robust
@@ -108,6 +130,7 @@
     - Splashscreen
 
 ## wasm performance
+- sort this list
 - Find more ways to make wasm perform better
 - current hotspots are:
   - sorting drawables (they are pretty big to sort, maybe we can use references as payload?)
@@ -117,6 +140,7 @@
 - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)
 
 ## Drawstate / Renderer
+- sort this list
 - evaluate what to do with DEFAULT_WORLD_ZNEAR and DEFAULT_WORLD_ZFAR constants that are duplicated
   in renderer and drawstate
 - can we make the sorting faster? alternatively can we get rid of sorting for non-translucent 
@@ -131,12 +155,20 @@
         set shader, set uniform, set texture if necessary
           draw drawobject
 - add ability to add new shaders from drawstate
+- implement shadow and lighting with signed-distance-fields/raymarching the help of these links
+  - https://www.rykap.com/2020/09/23/distance-fields/
+  - https://www.shadertoy.com/view/4dfXDn
+  - https://www.iquilezles.org/www/articles/rmshadows/rmshadows.htm
+  - https://www.shadertoy.com/view/lsKcDD
+  - https://www.ronja-tutorials.com/2018/11/10/2d-sdf-basics.html#rectangle
 
 ## Asset baker
+- sort this list
 - find out why our ogg decoder decodes more frames than exist in ogg file
 - try another texture packer that is more efficient (maybe https://github.com/ChevyRay/crunch-rs
   or https://github.com/chinedufn/rectangle-pack)
   we must refactor our bitmapatlas packer pretty hard for this though as other packers assume 
+- replace rusttype with fontdue (https://crates.io/crates/fontdue)
 
 ## apps
 * Repeaty:
