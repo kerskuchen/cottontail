@@ -428,6 +428,91 @@ impl Choreographer {
     }
 }
 
+/*
+// ALTERNATIVE CHOREOGRAPHER EXPERIMENT
+let mut choreo_test = ChoreographerTest::new();
+choreo_test
+    .update(time_deltatime())
+    .then_tween(1.0, &mut |tween_percent| {
+        self.circle_radius = lerp(20.0, 50.0, easing::cubic_inout(tween_percent))
+    })
+    .then_wait(1.0)
+    .then_subroutine(&mut |choreo| {
+        choreo
+            .then_start_repeat(5)
+            .then_tween(1.0, &mut |tween_percent| {
+                self.circle_radius = lerp(20.0, 50.0, easing::cubic_inout(tween_percent))
+            })
+            .then_wait(1.0)
+            .then_stop_repeat();
+    })
+    .then_tween(1.0, &mut |tween_percent| {
+        self.circle_radius = lerp(50.0, 20.0, easing::cubic_inout(tween_percent));
+    })
+    .then_restart();
+
+#[derive(Debug, Clone)]
+pub struct ChoreographerTest {
+    current_stage: usize,
+    stages: Vec<Timer>,
+    specials: HashMap<String, usize>,
+    pub time_accumulator: f32,
+}
+
+impl ChoreographerTest {
+    pub fn new() -> ChoreographerTest {
+        ChoreographerTest {
+            current_stage: 0,
+            stages: Vec::new(),
+            specials: HashMap::new(),
+            time_accumulator: 0.0,
+        }
+    }
+
+    pub fn update(&mut self, deltatime: f32) -> &mut Self {
+        self.current_stage = 0;
+        self.time_accumulator += deltatime;
+        self
+    }
+
+    pub fn then_restart(&mut self) {
+        self.current_stage = 0;
+        self.stages.clear();
+        self.time_accumulator = 0.0;
+    }
+
+    pub fn then_wait(&mut self, time: f32) -> &mut Self {
+        todo!();
+        self
+    }
+
+    pub fn then_subroutine(
+        &mut self,
+        function: &mut impl FnMut(&mut ChoreographerTest),
+    ) -> &mut Self {
+        function(self);
+        todo!();
+        self
+    }
+
+    pub fn then_tween(&mut self, time: f32, function: &mut impl FnMut(f32)) -> &mut Self {
+        let percent = time;
+        function(percent);
+        todo!();
+        self
+    }
+
+    pub fn then_start_repeat(&mut self, repeatcount: usize) -> &mut Self {
+        todo!();
+        self
+    }
+    pub fn then_stop_repeat(&mut self) -> &mut Self {
+        todo!();
+        self
+    }
+}
+*/
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Fader
 

@@ -56,6 +56,8 @@
 
 ## better platform layer
 - sort this list
+- we apparently can combine our mouse/touch/keyboard events respectively into only one callback
+  https://sdfgeoff.github.io/wasm_minigames/binding_events/index.html
 - implement appcommands in wasm
 - make screen orientation settable
 - rename things that are not necessarily game related to app
@@ -112,6 +114,8 @@
   view-source:https://www.funkykarts.rocks/demo.html
 - find ways to make our wasm file smaller
 - look at how godot does load progress spinner in html export
+  https://sdfgeoff.github.io/wasm_minigames/cancel_load_animation/index.html
+  https://github.com/sdfgeoff/wasm_minigames/blob/master/example.css
 - make app pause on onfocus/lost events more robust
   - show focus lost overlay "press here to continue"
   - give appcode a hint and some time to wind down and save state etc. on focus lost
