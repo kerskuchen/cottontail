@@ -1,3 +1,5 @@
+use std::io::Read;
+
 use super::*;
 
 use fixed::{types, FixedU32};
@@ -186,8 +188,20 @@ pub fn run() -> Result<(), String> {
                     Some(Chunk::Layer(layer))
                 }
                 ChunkType::Cel => {
-                    // TODO
-                    None
+                    let remaining_chunk_size_bytes = chunk_size_bytes
+                        - std::mem::size_of::<DWORD>()
+                        - std::mem::size_of::<WORD>();
+                    let cel = ChunkCel::from_deserializer(
+                        &mut chunk_deserializer,
+                        remaining_chunk_size_bytes,
+                    )
+                    .map_err(|error| {
+                        format!(
+                            "Failed to read cel chunk {} ({:?}) in frame {}: {}",
+                            chunk_index, chunk_type, frame_index, error
+                        )
+                    })?;
+                    Some(Chunk::Cel(cel))
                 }
                 ChunkType::ColorProfile => {
                     let color_profile = ChunkColorProfile::from_deserializer(
@@ -239,6 +253,112 @@ enum Chunk {
     Tags(ChunkTags),
     Layer(ChunkLayer),
     ColorProfile(ChunkColorProfile),
+    Cel(ChunkCel),
+}
+
+//--------------------------------------------------------------------------------------------------
+// CEL CHUNK
+
+#[derive(Debug)]
+enum Cel {
+    Linked {
+        frame_index_to_link_with: usize,
+    },
+    Image {
+        width: usize,
+        height: usize,
+        pixeldata: Vec<u8>,
+    },
+}
+#[derive(Debug)]
+struct ChunkCel {
+    layer_index: usize,
+    opacity: u8,
+    pos_x: i32,
+    pos_y: i32,
+    cel: Cel,
+}
+
+impl ChunkCel {
+    fn from_deserializer(
+        deserializer: &mut Deserializer,
+        chunk_size_bytes: usize,
+    ) -> Result<ChunkCel, String> {
+        let deserializer_start_size = deserializer.get_remaining_data().len();
+        let layer_index = deserializer.deserialize::<WORD>()? as usize;
+        let pos_x = deserializer.deserialize::<SHORT>()? as i32;
+        let pos_y = deserializer.deserialize::<SHORT>()? as i32;
+        let opacity = deserializer.deserialize::<BYTE>()? as u8;
+        let cel = deserializer.deserialize::<WORD>()? as u8;
+        let _ignore_reserved = deserializer.skip_bytes(7)?;
+
+        let cel = match cel {
+            0 => {
+                // Raw cell
+                let width = deserializer.deserialize::<WORD>()? as usize;
+                let height = deserializer.deserialize::<WORD>()? as usize;
+                let TODO = " This is wrong for greyscale and indexed";
+                let pixeldata_bytecount = 4 * width * height;
+
+                let pixeldata = deserializer.get_remaining_data()[..pixeldata_bytecount].to_vec();
+                Cel::Image {
+                    width,
+                    height,
+                    pixeldata,
+                }
+            }
+            1 => {
+                // linked cel
+                let frame_index_to_link_with = deserializer.deserialize::<WORD>()? as usize;
+                Cel::Linked {
+                    frame_index_to_link_with,
+                }
+            }
+            2 => {
+                // compresed image
+                let width = deserializer.deserialize::<WORD>()? as usize;
+                let height = deserializer.deserialize::<WORD>()? as usize;
+                let TODO = " This is wrong for greyscale and indexed";
+                let pixeldata_bytecount = 4 * width * height;
+
+                let TODO = "Make deserializer only contain chunk buffer (what is needed)";
+                let deserializer_current_size = deserializer.get_remaining_data().len();
+                let remaining_chunk_size =
+                    chunk_size_bytes - (deserializer_start_size - deserializer_current_size);
+
+                let mut zlib_decoder = libflate::zlib::Decoder::new(
+                    &deserializer.get_remaining_data()[..remaining_chunk_size],
+                )
+                .map_err(|error| {
+                    format!("Could not prepare pixel data for decompression: {}", error)
+                })?;
+                let mut pixeldata = Vec::new();
+                let decompressed_bytecount = zlib_decoder
+                    .read_to_end(&mut pixeldata)
+                    .map_err(|error| format!("Could not decompress pixel data: {}", error))?;
+                if decompressed_bytecount == 0 {
+                    return Err(format!(
+                        "Decompressed {} bytes pixel data - expected {}",
+                        decompressed_bytecount, pixeldata_bytecount
+                    ));
+                }
+                Cel::Image {
+                    width,
+                    height,
+                    pixeldata,
+                }
+            }
+            _ => return Err(format!("Unknown cel type {:X}", cel)),
+        };
+
+        Ok(ChunkCel {
+            layer_index,
+            opacity,
+            pos_x,
+            pos_y,
+            cel,
+        })
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
