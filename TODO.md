@@ -28,8 +28,6 @@
   - enable debug draw logging
 - Ability to draw debug graphs to i.e. try out attenuation for audio distance
   - We need to add a debug layer to the drawstate with its own drawqueue
-- find out how we can use actual coroutines like here 
-  https://not-fl3.github.io/platformer-book/world/player-state-machine.html
 - make our gui more fully featured and usable
   https://sol.gfxile.net/imgui/index.html
   https://github.com/emilk/hobogo
@@ -53,6 +51,18 @@
   - https://gamedev.stackexchange.com/a/945
   - https://www.gamedev.net/articles/programming/general-and-gameplay-programming/your-first-step-to-game-development-starts-here-r2976
   - https://bfnightly.bracketproductions.com/rustbook/chapter_0.html
+- find out how we can use actual coroutines like here 
+  https://not-fl3.github.io/platformer-book/world/player-state-machine.html
+  https://github.com/not-fl3/macroquad/blob/master/src/experimental/coroutines.rs
+  maybe we need to wait (a lot) longer for something as usable as unity coroutines or cute 
+  coroutines. some links for later reference:
+
+  https://github.com/ejmahler/unity_coroutines
+  https://doc.rust-lang.org/std/ops/trait.Generator.html
+  https://blog.aloni.org/posts/a-stack-less-rust-coroutine-100-loc/
+  https://github.com/RandyGaul/cute_headers/blob/master/cute_coroutine.h
+  https://github.com/a327ex/blog/issues/16
+  https://crates.io/crates/next-gen
 
 ## better platform layer
 - sort this list
