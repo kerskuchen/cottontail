@@ -1,5 +1,6 @@
 use super::*;
 
+use fixed::{types, FixedU32};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
@@ -8,7 +9,6 @@ type WORD = u16;
 type SHORT = i16;
 type DWORD = u32;
 type LONG = i32;
-// type FIXED = TODO;
 
 // https://github.com/aseprite/aseprite/blob/master/docs/ase-file-specs.md
 const FILE_HEADER_MAGIC_NUMBER: WORD = 0xA5E0;
@@ -189,13 +189,17 @@ pub fn run() -> Result<(), String> {
                     // TODO
                     None
                 }
-                ChunkType::CelExtra => {
-                    // TODO
-                    None
-                }
                 ChunkType::ColorProfile => {
-                    // TODO
-                    None
+                    let color_profile = ChunkColorProfile::from_deserializer(
+                        &mut chunk_deserializer,
+                    )
+                    .map_err(|error| {
+                        format!(
+                            "Failed to read color profile chunk {} ({:?}) in frame {}: {}",
+                            chunk_index, chunk_type, frame_index, error
+                        )
+                    })?;
+                    Some(Chunk::ColorProfile(color_profile))
                 }
                 ChunkType::Tags => {
                     let tags =
@@ -209,7 +213,10 @@ pub fn run() -> Result<(), String> {
                 }
                 _ => {
                     // Not supported
-                    print!("Chunk with type {:?} not supported", chunk_type);
+                    print!(
+                        "Chunk with type {:?} is not supported and will be ignored",
+                        chunk_type
+                    );
                     None
                 }
             };
@@ -231,6 +238,65 @@ pub fn run() -> Result<(), String> {
 enum Chunk {
     Tags(ChunkTags),
     Layer(ChunkLayer),
+    ColorProfile(ChunkColorProfile),
+}
+
+//--------------------------------------------------------------------------------------------------
+// COLOR PROFILE CHUNK
+
+#[derive(Debug, FromPrimitive, PartialEq, Eq)]
+enum ColorProfileType {
+    NoColorProfile = 0,
+    UseSRGB = 1,
+    UseEmbeddedICC = 2,
+}
+impl ColorProfileType {
+    fn from_word(word: WORD) -> Result<ColorProfileType, String> {
+        FromPrimitive::from_u16(word)
+            .ok_or_else(|| format!("Unknown color profile type {:X}", word))
+    }
+}
+
+#[derive(Debug)]
+struct ChunkColorProfile {
+    profile_type: ColorProfileType,
+    gamma: Option<f32>,
+    icc_data: Option<Vec<u8>>,
+}
+
+impl ChunkColorProfile {
+    fn from_deserializer(deserializer: &mut Deserializer) -> Result<ChunkColorProfile, String> {
+        let profile_type = ColorProfileType::from_word(deserializer.deserialize::<WORD>()?)?;
+        let flags = deserializer.deserialize::<WORD>()?;
+        let gamma = deserialize_aseprite_fixed_point_number(deserializer)?;
+        let _ignored_reserved = deserializer.skip_bytes(8)?;
+        let icc_data = if profile_type == ColorProfileType::UseEmbeddedICC {
+            let icc_data_size_bytes = deserializer.deserialize::<DWORD>()? as usize;
+            if deserializer.get_remaining_data().len() < icc_data_size_bytes {
+                return Err(format!(
+                    "Expected ICC profile size was {} bytes - got {} bytes",
+                    icc_data_size_bytes,
+                    deserializer.get_remaining_data().len()
+                ));
+            }
+            Some(deserializer.get_remaining_data()[..icc_data_size_bytes].to_vec())
+        } else {
+            None
+        };
+
+        let flag_use_fixed_gamma = (flags & 1) == 1;
+        let gamma = if flag_use_fixed_gamma {
+            Some(gamma)
+        } else {
+            None
+        };
+
+        Ok(ChunkColorProfile {
+            profile_type,
+            gamma,
+            icc_data,
+        })
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -482,4 +548,9 @@ fn deserialize_aseprite_string(deserializer: &mut Deserializer) -> Result<String
     };
     deserializer.skip_bytes(string_length_bytes)?;
     result
+}
+
+fn deserialize_aseprite_fixed_point_number(deserializer: &mut Deserializer) -> Result<f32, String> {
+    let fixed_uint = deserializer.deserialize::<u32>()?;
+    Ok(FixedU32::<types::extra::U16>::from_bits(fixed_uint).to_num::<f32>())
 }
