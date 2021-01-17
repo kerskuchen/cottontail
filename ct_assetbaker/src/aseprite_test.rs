@@ -1,5 +1,8 @@
 use super::*;
 
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
+
 type BYTE = u8;
 type WORD = u16;
 type SHORT = i16;
@@ -11,18 +14,27 @@ type LONG = i32;
 const FILE_HEADER_MAGIC_NUMBER: WORD = 0xA5E0;
 const FRAME_HEADER_MAGIC_NUMBER: WORD = 0xF1FA;
 
-const CHUNK_TYPE_OLD_PALETTE_1: WORD = 0x0004; // DEPRECATED
-const CHUNK_TYPE_OLD_PALETTE_2: WORD = 0x00011; // DEPRECATED
-const CHUNK_TYPE_LAYER: WORD = 0x2004;
-const CHUNK_TYPE_CEL: WORD = 0x2005;
-const CHUNK_TYPE_EXTRA_CEL: WORD = 0x2006;
-const CHUNK_TYPE_COLOR_PROFILE: WORD = 0x2007;
-const CHUNK_TYPE_MASK: WORD = 0x2016; // DEPRECATED
-const CHUNK_TYPE_PATH: WORD = 0x2017; // NEVER USED
-const CHUNK_TYPE_TAGS: WORD = 0x2018;
-const CHUNK_TYPE_PALETTE: WORD = 0x2019;
-const CHUNK_TYPE_USER_DATA: WORD = 0x2020;
-const CHUNK_TYPE_SLICE: WORD = 0x2022;
+#[derive(Debug, FromPrimitive)]
+enum ChunkType {
+    PaletteOld1 = 0x0004,  // DEPRECATED
+    PaletteOld2 = 0x00011, // DEPRECATED
+    Layer = 0x2004,
+    Cel = 0x2005,
+    CelExtra = 0x2006,
+    ColorProfile = 0x2007,
+    Mask = 0x2016, // DEPRECATED
+    Path = 0x2017, // NEVER USED
+    Tags = 0x2018,
+    Palette = 0x2019,
+    UserData = 0x2020,
+    Slice = 0x2022,
+}
+
+impl ChunkType {
+    fn from_word(word: WORD) -> Result<ChunkType, String> {
+        FromPrimitive::from_u16(word).ok_or_else(|| format!("Unknown chunk type {:X}", word))
+    }
+}
 
 #[repr(packed)]
 #[derive(Debug, Serialize, Deserialize)]
@@ -69,8 +81,9 @@ struct FileHeaderRaw {
 }
 
 impl FileHeaderRaw {
-    fn from_bytes(bytes: &[u8]) -> Result<FileHeaderRaw, String> {
-        let header = deserialize_from_binary::<FileHeaderRaw>(bytes);
+    fn from_deserializer(deserializer: &mut Deserializer) -> Result<FileHeaderRaw, String> {
+        let filesize = deserializer.get_remaining_data().len();
+        let header: FileHeaderRaw = deserializer.deserialize()?;
         if header.magic_number != FILE_HEADER_MAGIC_NUMBER {
             return Err(format!(
                 "Invalid file header format: Expected magic number 0x{:X} - got 0x{:X}",
@@ -82,11 +95,10 @@ impl FileHeaderRaw {
                 "Invalid file header format - Expected bytes 20 to 28 to be zero",
             ));
         }
-        if header.file_size_bytes != bytes.len() as u32 {
+        if header.file_size_bytes != filesize as u32 {
             return Err(format!(
                 "Filesize in file header ({}) does not match bytecount of data ({})",
-                header.file_size_bytes,
-                bytes.len()
+                header.file_size_bytes, filesize
             ));
         }
 
@@ -113,8 +125,8 @@ struct FrameHeaderRaw {
 }
 
 impl FrameHeaderRaw {
-    fn from_bytes(bytes: &[u8]) -> Result<FrameHeaderRaw, String> {
-        let header = deserialize_from_binary::<FrameHeaderRaw>(bytes);
+    fn from_deserializer(deserializer: &mut Deserializer) -> Result<FrameHeaderRaw, String> {
+        let header: FrameHeaderRaw = deserializer.deserialize()?;
         if header.magic_number != FRAME_HEADER_MAGIC_NUMBER {
             return Err(format!(
                 "Invalid frame header format: Expected magic number 0x{:X} - got 0x{:X}",
@@ -140,67 +152,189 @@ impl FrameHeaderRaw {
     }
 }
 
-#[repr(packed)]
-#[derive(Debug, Serialize, Deserialize)]
-struct ChunkHeaderRaw {
-    chunk_size_bytes: DWORD,
-    chunk_type: WORD,
-}
-
-impl ChunkHeaderRaw {
-    fn chunk_size_bytes(&self) -> usize {
-        self.chunk_size_bytes as usize
-    }
-}
-
 pub fn run() -> Result<(), String> {
-    let data = read_file_whole("assets/example/sprites/sorcy.ase").unwrap();
-    let fileheader_slice = &data[..];
-    let fileheader = FileHeaderRaw::from_bytes(&fileheader_slice).unwrap();
-    dbg!(&fileheader);
+    let data = read_file_whole("assets/example/sprites/sorcy.ase")?;
+    let mut file_deserializer = Deserializer::new(&data);
+    let fileheader = FileHeaderRaw::from_deserializer(&mut file_deserializer)?;
+    println!("header {:?}", &fileheader);
 
-    let mut frames_slice = &fileheader_slice[std::mem::size_of::<FileHeaderRaw>()..];
     for frame_index in 0..fileheader.frame_count() {
-        let frameheader = FrameHeaderRaw::from_bytes(&frames_slice).unwrap();
+        let mut frame_deserializer = file_deserializer.clone();
+        let frameheader = FrameHeaderRaw::from_deserializer(&mut frame_deserializer)?;
         println!("frame {}: {:?}", frame_index, &frameheader);
 
-        let mut chunks_slice = &frames_slice[std::mem::size_of::<FrameHeaderRaw>()..];
         for chunk_index in 0..frameheader.chunk_count() {
-            let chunkheader = deserialize_from_binary::<ChunkHeaderRaw>(chunks_slice);
+            let mut chunk_deserializer = frame_deserializer.clone();
+            let chunk_size_bytes = chunk_deserializer.deserialize::<DWORD>()? as usize;
+            let chunk_type = ChunkType::from_word(chunk_deserializer.deserialize::<WORD>()?)?;
 
             println!(
-                "frame {} chunk {}: size: {}, type: {:X?}",
-                frame_index,
-                chunk_index,
-                chunkheader.chunk_size_bytes(),
-                chunkheader.chunk_type
+                "frame {} chunk {}: size: {}, type: {:?}",
+                frame_index, chunk_index, chunk_size_bytes, chunk_type
             );
 
-            {
-                let chunkdata_slice = &chunks_slice[std::mem::size_of::<ChunkHeaderRaw>()..];
-                if chunkheader.chunk_type == CHUNK_TYPE_TAGS {
-                    let tags = ChunkTags::from_bytes(chunkdata_slice).map_err(|error| {
-                        format!(
-                            "Failed to read chunk {} (type: {:X}) in frame {}: {}",
-                            chunk_index, chunkheader.chunk_type, frame_index, error
-                        )
-                    })?;
-                    dbg!(tags);
+            let chunk = match chunk_type {
+                ChunkType::Layer => {
+                    let layer = ChunkLayer::from_deserializer(&mut chunk_deserializer).map_err(
+                        |error| {
+                            format!(
+                                "Failed to read layer chunk {} ({:?}) in frame {}: {}",
+                                chunk_index, chunk_type, frame_index, error
+                            )
+                        },
+                    )?;
+                    Some(Chunk::Layer(layer))
                 }
-            }
+                ChunkType::Cel => {
+                    // TODO
+                    None
+                }
+                ChunkType::CelExtra => {
+                    // TODO
+                    None
+                }
+                ChunkType::ColorProfile => {
+                    // TODO
+                    None
+                }
+                ChunkType::Tags => {
+                    let tags =
+                        ChunkTags::from_deserializer(&mut chunk_deserializer).map_err(|error| {
+                            format!(
+                                "Failed to read tag chunk {} ({:?}) in frame {}: {}",
+                                chunk_index, chunk_type, frame_index, error
+                            )
+                        })?;
+                    Some(Chunk::Tags(tags))
+                }
+                _ => {
+                    // Not supported
+                    print!("Chunk with type {:?} not supported", chunk_type);
+                    None
+                }
+            };
+            dbg!(&chunk);
 
-            // skip chunk
-            chunks_slice = &chunks_slice[chunkheader.chunk_size_bytes()..];
+            frame_deserializer.skip_bytes(chunk_size_bytes)?;
         }
 
-        frames_slice = &frames_slice[frameheader.frame_size_bytes as usize..];
+        file_deserializer.skip_bytes(frameheader.frame_size_bytes as usize)?;
     }
 
     Ok(())
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// TAGS
+// CHUNKS
+
+#[derive(Debug)]
+enum Chunk {
+    Tags(ChunkTags),
+    Layer(ChunkLayer),
+}
+
+//--------------------------------------------------------------------------------------------------
+// LAYER CHUNK
+
+#[derive(Debug, FromPrimitive)]
+enum LayerType {
+    Normal = 0,
+    Group = 1,
+}
+impl LayerType {
+    fn from_word(word: WORD) -> Result<LayerType, String> {
+        FromPrimitive::from_u16(word).ok_or_else(|| format!("Unknown layer type {:X}", word))
+    }
+}
+
+#[derive(Debug, FromPrimitive)]
+enum LayerBlendMode {
+    Normal = 0,
+    Multiply = 1,
+    Screen = 2,
+    Overlay = 3,
+    Darken = 4,
+    Lighten = 5,
+    ColorDodge = 6,
+    ColorBurn = 7,
+    HardLight = 8,
+    SoftLight = 9,
+    Difference = 10,
+    Exclusion = 11,
+    Hue = 12,
+    Saturation = 13,
+    Color = 14,
+    Luminosity = 15,
+    Addition = 16,
+    Subtract = 17,
+    Divide = 18,
+}
+impl LayerBlendMode {
+    fn from_word(word: WORD) -> Result<LayerBlendMode, String> {
+        FromPrimitive::from_u16(word).ok_or_else(|| format!("Unknown layer blend mode {:X}", word))
+    }
+}
+
+#[derive(Debug)]
+struct ChunkLayer {
+    name: String,
+
+    flag_visible: bool,
+    flag_editable: bool,
+    flag_lock_movement: bool,
+    flag_background: bool,
+    flag_prefer_linked_cels: bool,
+    flag_layer_group_should_be_displayed_collapsed: bool,
+    flag_layer_is_reference_layer: bool,
+
+    layer_type: LayerType,
+    layer_child_level: usize,
+    blend_mode: LayerBlendMode,
+
+    opacity: u8,
+}
+
+impl ChunkLayer {
+    fn from_deserializer(deserializer: &mut Deserializer) -> Result<ChunkLayer, String> {
+        // Deserialization
+        let flags = deserializer.deserialize::<WORD>()?;
+        let layer_type = deserializer.deserialize::<WORD>()?;
+        let layer_child_level = deserializer.deserialize::<WORD>()?;
+        let _ignored_default_layer_width_pixels = deserializer.skip::<WORD>()?;
+        let _ignored_default_layer_height_pixels = deserializer.skip::<WORD>()?;
+        let blend_mode = deserializer.deserialize::<WORD>()?;
+        let opacity = deserializer.deserialize::<BYTE>()?;
+        let _reserved = deserializer.skip_bytes(3)?;
+        let name = deserialize_aseprite_string(deserializer)?;
+
+        // Conversion
+        let flag_visible = (flags & 1) == 1;
+        let flag_editable = (flags & 2) == 2;
+        let flag_lock_movement = (flags & 4) == 4;
+        let flag_background = (flags & 8) == 8;
+        let flag_prefer_linked_cels = (flags & 16) == 16;
+        let flag_layer_group_should_be_displayed_collapsed = (flags & 32) == 32;
+        let flag_layer_is_reference_layer = (flags & 64) == 64;
+
+        Ok(ChunkLayer {
+            name,
+            flag_visible,
+            flag_editable,
+            flag_lock_movement,
+            flag_background,
+            flag_prefer_linked_cels,
+            flag_layer_group_should_be_displayed_collapsed,
+            flag_layer_is_reference_layer,
+            layer_type: LayerType::from_word(layer_type)?,
+            layer_child_level: layer_child_level as usize,
+            blend_mode: LayerBlendMode::from_word(blend_mode)?,
+            opacity: opacity as u8,
+        })
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+// TAGS CHUNK
 
 #[derive(Debug)]
 enum AnimationLoopDirection {
@@ -219,14 +353,14 @@ struct Tag {
 }
 impl Tag {
     fn from_deserializer(deserializer: &mut Deserializer) -> Result<Tag, String> {
-        let frameindex_start = deserializer.deserialize::<WORD>()? as usize;
-        let frameindex_end = deserializer.deserialize::<WORD>()? as usize;
+        let frameindex_start = deserializer.deserialize::<WORD>()?;
+        let frameindex_end = deserializer.deserialize::<WORD>()?;
         let animation_loop_direction_raw = deserializer.deserialize::<BYTE>()?;
-        deserializer.skip_bytes(8)?; // Reserved
+        let _ignored_reserved = deserializer.skip_bytes(8)?;
         let color_r = deserializer.deserialize::<BYTE>()?;
         let color_g = deserializer.deserialize::<BYTE>()?;
         let color_b = deserializer.deserialize::<BYTE>()?;
-        deserializer.skip_bytes(1)?; // Extra byte
+        let _ignored_extra_byte = deserializer.skip::<BYTE>()?;
         let name = deserialize_aseprite_string(deserializer)?;
 
         let animation_loop_direction = match animation_loop_direction_raw {
@@ -243,8 +377,8 @@ impl Tag {
 
         Ok(Tag {
             name,
-            frameindex_start,
-            frameindex_end,
+            frameindex_start: frameindex_start as usize,
+            frameindex_end: frameindex_end as usize,
             animation_loop_direction,
             color: PixelRGBA::new(color_r, color_g, color_b, 255),
         })
@@ -256,14 +390,13 @@ struct ChunkTags {
     tags: Vec<Tag>,
 }
 impl ChunkTags {
-    fn from_bytes(bytes: &[u8]) -> Result<ChunkTags, String> {
-        let mut deserializer = Deserializer::new(bytes);
+    fn from_deserializer(deserializer: &mut Deserializer) -> Result<ChunkTags, String> {
         let tag_count = deserializer.deserialize::<WORD>()? as usize;
-        deserializer.skip_bytes(8)?; // Reserved
+        let _ignore_reserved = deserializer.skip_bytes(8)?;
         let tags = {
             let tags: Result<Vec<Tag>, String> = (0..tag_count)
                 .into_iter()
-                .map(|_tag_index| Tag::from_deserializer(&mut deserializer))
+                .map(|_tag_index| Tag::from_deserializer(deserializer))
                 .collect();
             tags?
         };
@@ -274,6 +407,7 @@ impl ChunkTags {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // DESERIALIZER
 
+#[derive(Clone)]
 struct Deserializer<'a> {
     data: &'a [u8],
 }
@@ -297,6 +431,14 @@ impl Deserializer<'_> {
         }
         self.data = &self.data[byte_count..];
         Ok(())
+    }
+
+    pub fn skip<T>(&mut self) -> Result<(), String>
+    where
+        for<'de> T: serde::Deserialize<'de>,
+    {
+        let size = std::mem::size_of::<T>();
+        self.skip_bytes(size)
     }
 
     pub fn deserialize<T>(&mut self) -> Result<T, String>

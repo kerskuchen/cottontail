@@ -19,3 +19,6 @@ ct_lib_math = { path = "../ct_lib_math" }
 rayon = "1.5.0"
 ico = "0.1.0"
 serde = "1.0.118"
+
+num-traits = "0.2"
+num-derive = "0.3"
