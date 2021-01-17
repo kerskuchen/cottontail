@@ -1460,17 +1460,15 @@ impl Renderer {
             (vertices, indices)
         };
 
-        unsafe {
-            let drawobject_blit = self
-                .drawobjects
-                .get("blit")
-                .expect("Blit drawobject not found for shader");
-            drawobject_blit.assign_buffers(
-                ct_lib_core::transmute_slice_to_byte_slice(&vertices),
-                ct_lib_core::transmute_slice_to_byte_slice(&indices),
-            );
-            drawobject_blit.draw(0, 6, false);
-        }
+        let drawobject_blit = self
+            .drawobjects
+            .get("blit")
+            .expect("Blit drawobject not found for shader");
+        drawobject_blit.assign_buffers(
+            ct_lib_core::transmute_slice_to_byte_slice(&vertices),
+            ct_lib_core::transmute_slice_to_byte_slice(&indices),
+        );
+        drawobject_blit.draw(0, 6, false);
 
         unsafe {
             let gl = &self.gl;
@@ -1543,16 +1541,14 @@ impl Renderer {
         };
 
         // Upload depth pixel to texture
-        unsafe {
-            let depthbuffer_pixels_raw =
-                ct_lib_core::transmute_slice_to_byte_slice(&depthbuffer_pixels[..]);
-            self.texture_create_or_update_whole(
-                "debug_depth",
-                framebuffer_width,
-                framebuffer_height,
-                &depthbuffer_pixels_raw,
-            );
-        }
+        let depthbuffer_pixels_raw =
+            ct_lib_core::transmute_slice_to_byte_slice(&depthbuffer_pixels[..]);
+        self.texture_create_or_update_whole(
+            "debug_depth",
+            framebuffer_width,
+            framebuffer_height,
+            &depthbuffer_pixels_raw,
+        );
 
         // Draw texture back to framebuffer
         let transform = Mat4::ortho_origin_left_bottom(
@@ -1616,17 +1612,16 @@ impl Renderer {
             (vertices, indices)
         };
 
-        unsafe {
-            let drawobject_blit = self
-                .drawobjects
-                .get("blit")
-                .expect("Blit drawobject not found for shader");
-            drawobject_blit.assign_buffers(
-                ct_lib_core::transmute_slice_to_byte_slice(&vertices),
-                ct_lib_core::transmute_slice_to_byte_slice(&indices),
-            );
-            drawobject_blit.draw(0, 6, false);
-        }
+        let drawobject_blit = self
+            .drawobjects
+            .get("blit")
+            .expect("Blit drawobject not found for shader");
+        drawobject_blit.assign_buffers(
+            ct_lib_core::transmute_slice_to_byte_slice(&vertices),
+            ct_lib_core::transmute_slice_to_byte_slice(&indices),
+        );
+        drawobject_blit.draw(0, 6, false);
+
         unsafe {
             let gl = &self.gl;
             gl.enable(glow::BLEND);

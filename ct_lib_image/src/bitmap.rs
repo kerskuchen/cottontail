@@ -14,7 +14,7 @@ pub type Bitmap = super::grid::Grid<PixelRGBA>;
 
 impl Bitmap {
     pub fn as_bytes(&self) -> &[u8] {
-        unsafe { transmute_slice_to_byte_slice(&self.data) }
+        transmute_slice_to_byte_slice(&self.data)
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -90,7 +90,7 @@ impl Bitmap {
         let mut buffer =
             vec![PixelRGBA::transparent(); size_bytes / std::mem::size_of::<PixelRGBA>()];
         {
-            let buffer_raw = unsafe { super::core::transmute_slice_to_byte_slice_mut(&mut buffer) };
+            let buffer_raw = super::core::transmute_slice_to_byte_slice_mut(&mut buffer);
             png_reader
                 .next_frame(buffer_raw)
                 .map_err(|error| format!("Could not decode png data: {}", error))?;

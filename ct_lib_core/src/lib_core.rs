@@ -53,6 +53,7 @@ impl TimerScoped {
         }
     }
 }
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Convenience Serialization / Deserialization
 
@@ -190,56 +191,80 @@ pub fn panic_set_hook_wait_for_keypress() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Transmutation
+// Transmutation convenience functions
 
-pub unsafe fn transmute_to_byte_slice<S>(from: &S) -> &[u8] {
-    std::slice::from_raw_parts((from as *const S) as *const u8, std::mem::size_of::<S>())
+/// Helper function for when we need a additional reference of an object
+/// IMPORTANT: This can be highly unsafe! So use sparingly!
+pub fn transmute_to_additional_ref<Typename>(obj: &Typename) -> &'static Typename {
+    unsafe { std::mem::transmute::<&Typename, &'static Typename>(obj) }
 }
 
-pub unsafe fn transmute_to_byte_slice_mut<S>(from: &mut S) -> &mut [u8] {
-    std::slice::from_raw_parts_mut((from as *mut S) as *mut u8, std::mem::size_of::<S>())
+/// Helper function for when we need a additional mutable reference of an object
+/// IMPORTANT: This can be highly unsafe! So use sparingly!
+pub fn transmute_to_additional_ref_mut<Typename>(obj: &mut Typename) -> &'static mut Typename {
+    unsafe { std::mem::transmute::<&mut Typename, &'static mut Typename>(obj) }
 }
 
-pub unsafe fn transmute_to_slice<S, D>(from: &S) -> &[D] {
-    std::slice::from_raw_parts(
-        (from as *const S) as *const D,
-        std::mem::size_of::<S>() / std::mem::size_of::<D>(),
-    )
+pub fn transmute_to_byte_slice<S>(from: &S) -> &[u8] {
+    unsafe { std::slice::from_raw_parts((from as *const S) as *const u8, std::mem::size_of::<S>()) }
 }
 
-pub unsafe fn transmute_to_slice_mut<S, D>(from: &mut S) -> &mut [D] {
-    std::slice::from_raw_parts_mut(
-        (from as *mut S) as *mut D,
-        std::mem::size_of::<S>() / std::mem::size_of::<D>(),
-    )
+pub fn transmute_to_byte_slice_mut<S>(from: &mut S) -> &mut [u8] {
+    unsafe { std::slice::from_raw_parts_mut((from as *mut S) as *mut u8, std::mem::size_of::<S>()) }
 }
 
-pub unsafe fn transmute_slice_to_byte_slice<S>(from: &[S]) -> &[u8] {
-    std::slice::from_raw_parts(
-        from.as_ptr() as *const u8,
-        from.len() * std::mem::size_of::<S>(),
-    )
+pub fn transmute_to_slice<S, D>(from: &S) -> &[D] {
+    unsafe {
+        std::slice::from_raw_parts(
+            (from as *const S) as *const D,
+            std::mem::size_of::<S>() / std::mem::size_of::<D>(),
+        )
+    }
 }
 
-pub unsafe fn transmute_slice_to_byte_slice_mut<S>(from: &mut [S]) -> &mut [u8] {
-    std::slice::from_raw_parts_mut(
-        from.as_mut_ptr() as *mut u8,
-        from.len() * std::mem::size_of::<S>(),
-    )
+pub fn transmute_to_slice_mut<S, D>(from: &mut S) -> &mut [D] {
+    unsafe {
+        std::slice::from_raw_parts_mut(
+            (from as *mut S) as *mut D,
+            std::mem::size_of::<S>() / std::mem::size_of::<D>(),
+        )
+    }
 }
 
-pub unsafe fn transmute_slices<S, D>(from: &[S]) -> &[D] {
-    std::slice::from_raw_parts(
-        from.as_ptr() as *const D,
-        from.len() * std::mem::size_of::<S>() / std::mem::size_of::<D>(),
-    )
+pub fn transmute_slice_to_byte_slice<S>(from: &[S]) -> &[u8] {
+    unsafe {
+        std::slice::from_raw_parts(
+            from.as_ptr() as *const u8,
+            from.len() * std::mem::size_of::<S>(),
+        )
+    }
 }
 
-pub unsafe fn transmute_slices_mut<S, D>(from: &mut [S]) -> &mut [D] {
-    std::slice::from_raw_parts_mut(
-        from.as_mut_ptr() as *mut D,
-        from.len() * std::mem::size_of::<S>() / std::mem::size_of::<D>(),
-    )
+pub fn transmute_slice_to_byte_slice_mut<S>(from: &mut [S]) -> &mut [u8] {
+    unsafe {
+        std::slice::from_raw_parts_mut(
+            from.as_mut_ptr() as *mut u8,
+            from.len() * std::mem::size_of::<S>(),
+        )
+    }
+}
+
+pub fn transmute_slices<S, D>(from: &[S]) -> &[D] {
+    unsafe {
+        std::slice::from_raw_parts(
+            from.as_ptr() as *const D,
+            from.len() * std::mem::size_of::<S>() / std::mem::size_of::<D>(),
+        )
+    }
+}
+
+pub fn transmute_slices_mut<S, D>(from: &mut [S]) -> &mut [D] {
+    unsafe {
+        std::slice::from_raw_parts_mut(
+            from.as_mut_ptr() as *mut D,
+            from.len() * std::mem::size_of::<S>() / std::mem::size_of::<D>(),
+        )
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

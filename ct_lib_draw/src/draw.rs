@@ -28,7 +28,7 @@ pub const ADDITIVITY_MAX: Additivity = 1.0;
 trait Vertex: Sized + Copy + Clone + Default {
     const FLOAT_COMPONENT_COUNT: usize = std::mem::size_of::<Self>() / std::mem::size_of::<f32>();
     fn as_floats(&self) -> &[f32] {
-        unsafe { super::core::transmute_to_slice(self) }
+        super::core::transmute_to_slice(self)
     }
 }
 
@@ -254,7 +254,7 @@ impl VertexbufferDefault {
 
 trait UniformBlock: Sized {
     fn as_slice(&self) -> &[f32] {
-        unsafe { transmute_to_slice(self) }
+        transmute_to_slice(self)
     }
 }
 #[repr(C)]
@@ -672,13 +672,11 @@ impl Drawstate {
 
         // Upload vertexbuffers
         if self.default_vertexbuffer_dirty {
-            unsafe {
-                renderer.assign_buffers(
-                    "default",
-                    &transmute_slice_to_byte_slice(&self.default_vertexbuffer.vertices),
-                    &transmute_slice_to_byte_slice(&self.default_vertexbuffer.indices),
-                );
-            }
+            renderer.assign_buffers(
+                "default",
+                &transmute_slice_to_byte_slice(&self.default_vertexbuffer.vertices),
+                &transmute_slice_to_byte_slice(&self.default_vertexbuffer.indices),
+            );
             self.default_vertexbuffer_dirty = false;
         }
 

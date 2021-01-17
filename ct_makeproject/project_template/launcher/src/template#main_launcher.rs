@@ -6,25 +6,9 @@ pub const LAUNCHER_SAVE_FOLDER_NAME: &str = "{{windows_appdata_dir}}";
 pub const LAUNCHER_COMPANY_NAME: &str = "{{project_company_name}}";
 
 mod game;
-use game::GameState;
-
-impl GameState {
-    /// Helper function for when we need a additional reference of ourselves
-    /// IMPORTANT: This can be highly unsafe! So use sparingly!
-    #[allow(dead_code)]
-    fn get_additional_self(&self) -> &'static GameState {
-        unsafe { std::mem::transmute::<&GameState, &'static GameState>(self) }
-    }
-    /// Helper function for when we need a additional mutable reference of ourselves
-    /// IMPORTANT: This can be highly unsafe! So use sparingly!
-    #[allow(dead_code)]
-    fn get_additional_self_mut(&mut self) -> &'static mut GameState {
-        unsafe { std::mem::transmute::<&mut GameState, &'static mut GameState>(self) }
-    }
-}
 
 fn main() {
-    cottontail::game::start_mainloop::<GameState>();
+    cottontail::game::start_mainloop::<game::GameState>();
 }
 
 #[cfg(target_arch = "wasm32")]
