@@ -86,7 +86,8 @@ impl Bitmap {
             .read_info()
             .map_err(|error| format!("Could not read png data info: {}", error))?;
 
-        let size_bytes = png_info.buffer_size();
+        // NOTE: Because we use `png::Transformations::EXPAND` we are expecting 4 channels per pixel
+        let size_bytes = 4 * png_info.width as usize * png_info.height as usize;
         let mut buffer =
             vec![PixelRGBA::transparent(); size_bytes / std::mem::size_of::<PixelRGBA>()];
         {
