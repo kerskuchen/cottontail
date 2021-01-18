@@ -86,8 +86,14 @@ impl Bitmap {
             .read_info()
             .map_err(|error| format!("Could not read png data info: {}", error))?;
 
-        // NOTE: Because we use `png::Transformations::EXPAND` we are expecting 4 channels per pixel
-        let size_bytes = 4 * png_info.width as usize * png_info.height as usize;
+        let size_bytes = if png_info.color_type == png::ColorType::RGBA {
+            4 * png_info.width as usize * png_info.height as usize
+        } else {
+            return Err(format!(
+                "Currently only RGBA png data is supported - got color type '{:?}'",
+                png_info.color_type
+            ));
+        };
         let mut buffer =
             vec![PixelRGBA::transparent(); size_bytes / std::mem::size_of::<PixelRGBA>()];
         {
