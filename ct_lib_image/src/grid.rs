@@ -1,6 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Grid
 
+use std::cell::Cell;
+
+use ct_lib_core::transmute_slices;
+
+use crate::PixelRGBA;
+
 use super::core::serde_derive::{Deserialize, Serialize};
 use super::math::*;
 
@@ -73,6 +79,18 @@ where
         let cellcount = (width * height) as usize;
         let data = vec![filltype; cellcount];
         Grid::new_from_buffer(width, height, data)
+    }
+
+    #[inline]
+    pub fn new_from_bytes(width: u32, height: u32, bytes: &[u8]) -> Grid<CellType> {
+        debug_assert!(width > 0 && height > 0);
+        assert!((std::mem::size_of::<CellType>() * (width * height) as usize) == bytes.len());
+        let buffer = transmute_slices::<u8, CellType>(bytes);
+        Grid {
+            width: width as i32,
+            height: height as i32,
+            data: buffer.to_vec(),
+        }
     }
 
     #[inline]

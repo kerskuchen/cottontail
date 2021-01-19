@@ -29,6 +29,13 @@ macro_rules! dformat {
     };
 }
 
+#[macro_export]
+macro_rules! dformat_pretty {
+    ($x:expr) => {
+        format!("{} = {:#?}", stringify!($x), $x)
+    };
+}
+
 pub struct TimerScoped {
     log_message: String,
     creation_time: f64,
@@ -159,6 +166,68 @@ where
             filepath, error
         )
     })
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// DESERIALIZER
+
+#[derive(Clone)]
+pub struct Deserializer<'a> {
+    data: &'a [u8],
+}
+
+impl Deserializer<'_> {
+    pub fn new(data: &[u8]) -> Deserializer {
+        Deserializer { data }
+    }
+
+    pub fn get_remaining_data(&self) -> &[u8] {
+        self.data
+    }
+
+    pub fn skip_bytes(&mut self, byte_count: usize) -> Result<(), String> {
+        if byte_count > self.data.len() {
+            return Err(format!(
+                "Cannot not skip {} bytes, internal buffer has only {} bytes left",
+                byte_count,
+                self.data.len()
+            ));
+        }
+        self.data = &self.data[byte_count..];
+        Ok(())
+    }
+
+    pub fn skip<T>(&mut self) -> Result<(), String>
+    where
+        for<'de> T: serde::Deserialize<'de>,
+    {
+        let size = std::mem::size_of::<T>();
+        self.skip_bytes(size)
+    }
+
+    pub fn deserialize<T>(&mut self) -> Result<T, String>
+    where
+        for<'de> T: serde::Deserialize<'de>,
+    {
+        let size = std::mem::size_of::<T>();
+        if size > self.data.len() {
+            return Err(format!(
+                "Cannot not deserialize {} which required {} bytes, but internal buffer has only {} bytes left",
+                std::any::type_name::<T>(),
+                size,
+                self.data.len()
+            ));
+        }
+        let result = bincode::deserialize::<T>(self.data).map_err(|error| {
+            format!(
+                "Could not deserialize {}: {}",
+                std::any::type_name::<T>(),
+                error
+            )
+        })?;
+        self.data = &self.data[size..];
+        Ok(result)
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

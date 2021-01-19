@@ -22,5 +22,4 @@ serde = "1.0.118"
 
 num-traits = "0.2"
 num-derive = "0.3"
-fixed = "1.5.0"
 libflate = "1.0.3"
