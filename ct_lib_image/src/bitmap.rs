@@ -12,6 +12,12 @@ use rect_packer;
 
 pub type Bitmap = super::grid::Grid<PixelRGBA>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AlphaBlendMode {
+    Normal,
+    Multiply,
+}
+
 impl Bitmap {
     pub fn as_bytes(&self) -> &[u8] {
         transmute_slice_to_byte_slice(&self.data)
@@ -22,15 +28,13 @@ impl Bitmap {
     }
 
     pub fn premultiply_alpha(&mut self) {
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let mut color = self.get(x, y);
-                let alpha = color.a as f32 / 255.0;
-                color.r = math::roundi(color.r as f32 * alpha) as u8;
-                color.g = math::roundi(color.g as f32 * alpha) as u8;
-                color.b = math::roundi(color.b as f32 * alpha) as u8;
-                self.set(x, y, color);
-            }
+        for pixel in self.data.iter_mut() {
+            let mut color = *pixel;
+            let alpha = color.a as f32 / 255.0;
+            color.r = math::roundi(color.r as f32 * alpha) as u8;
+            color.g = math::roundi(color.g as f32 * alpha) as u8;
+            color.b = math::roundi(color.b as f32 * alpha) as u8;
+            *pixel = color;
         }
     }
 
@@ -42,17 +46,15 @@ impl Bitmap {
     }
 
     pub fn unpremultiply_alpha(&mut self) {
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let mut color = self.get(x, y);
-                if color.a > 0 {
-                    let alpha = color.a as f32 / 255.0;
-                    color.r = i32::min(math::roundi(color.r as f32 / alpha), 255) as u8;
-                    color.g = i32::min(math::roundi(color.g as f32 / alpha), 255) as u8;
-                    color.b = i32::min(math::roundi(color.b as f32 / alpha), 255) as u8;
-                }
-                self.set(x, y, color);
+        for pixel in self.data.iter_mut() {
+            let mut color = *pixel;
+            if color.a > 0 {
+                let alpha = color.a as f32 / 255.0;
+                color.r = i32::min(math::roundi(color.r as f32 / alpha), 255) as u8;
+                color.g = i32::min(math::roundi(color.g as f32 / alpha), 255) as u8;
+                color.b = i32::min(math::roundi(color.b as f32 / alpha), 255) as u8;
             }
+            *pixel = color;
         }
     }
 
@@ -63,12 +65,12 @@ impl Bitmap {
         result
     }
 
-    pub fn scale(&mut self, new_width: u32, new_height: u32) {
-        *self = self.scaled_to_sample_nearest_neighbor(new_width, new_height);
+    pub fn scale_sample_nearest_neighbor(&mut self, new_width: u32, new_height: u32) {
+        *self = self.scaled_sample_nearest_neighbor(new_width, new_height);
     }
 
     #[must_use]
-    pub fn scaled_to_sample_nearest_neighbor(&self, new_width: u32, new_height: u32) -> Bitmap {
+    pub fn scaled_sample_nearest_neighbor(&self, new_width: u32, new_height: u32) -> Bitmap {
         assert!(new_width > 0);
         assert!(new_height > 0);
 
@@ -77,6 +79,43 @@ impl Bitmap {
         Bitmap::copy_region_sample_nearest_neighbor(self, self.rect(), &mut result, result_rect);
 
         result
+    }
+
+    /// NOTE: This assumes that `self` and `other` are both premultiplied alpha
+    pub fn premultiplied_blit_to_alpha_blended(
+        &self,
+        other: &mut Bitmap,
+        pos: Vec2i,
+        allow_partial_blit: bool,
+        blend_mode: AlphaBlendMode,
+    ) {
+        match blend_mode {
+            AlphaBlendMode::Normal => self.blit_to_with_function(
+                other,
+                pos,
+                allow_partial_blit,
+                |pixel_source, pixel_dest| {
+                    let color_source = pixel_source.to_color();
+                    let color_dest = pixel_dest.to_color();
+                    let color_result = color_source + (color_dest * (1.0 - color_source.a));
+                    *pixel_dest = color_result.to_pixelrgba();
+                },
+            ),
+            AlphaBlendMode::Multiply => self.blit_to_with_function(
+                other,
+                pos,
+                allow_partial_blit,
+                |pixel_source, pixel_dest| {
+                    let color_source = pixel_source.to_color();
+                    let color_dest = pixel_dest.to_color();
+                    // TODO: This is still wrong
+                    let color_result =
+                        color_dest + color_source * (color_dest * (1.0 - color_source.a));
+                    *pixel_dest = color_result.to_pixelrgba();
+                    todo!("Multiply is not correct yet")
+                },
+            ),
+        }
     }
 
     pub fn from_png_data(png_data: &[u8]) -> Result<Bitmap, String> {
@@ -198,9 +237,10 @@ impl Bitmap {
             origin_is_baseline,
             &mut |glyph, draw_pos, _codepoint| {
                 if let Some(glyph_bitmap) = &glyph.bitmap {
-                    glyph_bitmap.blit_to(
+                    glyph_bitmap.blit_to_masked(
                         self,
                         draw_pos + glyph.offset,
+                        true,
                         Some(PixelRGBA::transparent()),
                     );
                 }
@@ -225,9 +265,10 @@ impl Bitmap {
             alignment,
             &mut |glyph, draw_pos, _codepoint| {
                 if let Some(glyph_bitmap) = &glyph.bitmap {
-                    glyph_bitmap.blit_to(
+                    glyph_bitmap.blit_to_masked(
                         self,
                         draw_pos + glyph.offset,
+                        true,
                         Some(PixelRGBA::transparent()),
                     );
                 }
@@ -276,7 +317,7 @@ impl BitmapAtlas {
     pub fn pack_bitmap(&mut self, name: &str, image: &Bitmap) -> Option<Vec2i> {
         if let Some(rect) = self.rect_packer.pack(image.width, image.height, false) {
             let position = Vec2i::new(rect.x, rect.y);
-            image.blit_to(&mut self.atlas_texture, position, None);
+            image.blit_to(&mut self.atlas_texture, position, false);
             self.sprite_positions.insert(name.to_owned(), position);
             Some(position)
         } else {

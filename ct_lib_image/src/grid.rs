@@ -1,11 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Grid
 
-use std::cell::Cell;
-
 use ct_lib_core::transmute_slices;
-
-use crate::PixelRGBA;
 
 use super::core::serde_derive::{Deserialize, Serialize};
 use super::math::*;
@@ -52,7 +48,7 @@ where
     CellType: Default + Clone + Copy + PartialEq,
 {
     fn default() -> Self {
-        Grid::empty()
+        Grid::new_empty()
     }
 }
 
@@ -61,7 +57,7 @@ where
     CellType: Default + Clone + Copy + PartialEq,
 {
     #[inline]
-    pub fn empty() -> Grid<CellType> {
+    pub fn new_empty() -> Grid<CellType> {
         Grid {
             width: 0,
             height: 0,
@@ -139,8 +135,22 @@ where
     }
 
     #[inline]
+    pub unsafe fn get_unchecked(&self, x: i32, y: i32) -> CellType {
+        *self.data.get_unchecked((x + y * self.width) as usize)
+    }
+    #[inline]
+    pub unsafe fn get_unchecked_mut(&mut self, x: i32, y: i32) -> &mut CellType {
+        self.data.get_unchecked_mut((x + y * self.width) as usize)
+    }
+
+    #[inline]
     pub fn set(&mut self, x: i32, y: i32, value: CellType) {
         self.data[(x + y * self.width) as usize] = value
+    }
+    #[inline]
+    pub unsafe fn set_unchecked(&mut self, x: i32, y: i32, value: CellType) {
+        let cell = self.data.get_unchecked_mut((x + y * self.width) as usize);
+        *cell = value;
     }
     #[inline]
     pub fn set_safely(&mut self, x: i32, y: i32, value: CellType) {
@@ -201,12 +211,13 @@ where
         self.get_cell_rect_virtual(x, y, cell_size)
     }
 
-    pub fn copy_region(
+    #[inline]
+    pub fn copy_region_with_function<F: Fn(CellType, &mut CellType)>(
         source_grid: &Grid<CellType>,
         source_rect: Recti,
         dest_grid: &mut Grid<CellType>,
         dest_rect: Recti,
-        mask_value: Option<CellType>,
+        copy_function: F,
     ) {
         assert!(source_rect.dim == dest_rect.dim);
 
@@ -220,31 +231,135 @@ where
         assert!(dest_rect.right() <= dest_grid.width);
         assert!(dest_rect.bottom() <= dest_grid.height);
 
-        if let Some(mask_color) = mask_value {
-            for y in 0..source_rect.height() {
-                for x in 0..source_rect.width() {
+        for y in 0..source_rect.height() {
+            for x in 0..source_rect.width() {
+                // SAFETY: We checked all bounds above
+                unsafe {
                     let source_value =
-                        source_grid.get(source_rect.pos.x + x, source_rect.pos.y + y);
-                    if source_value != mask_color {
-                        dest_grid.set(dest_rect.pos.x + x, dest_rect.pos.y + y, source_value);
-                    }
-                }
-            }
-        } else {
-            for y in 0..source_rect.height() {
-                for x in 0..source_rect.width() {
-                    let source_value =
-                        source_grid.get(source_rect.pos.x + x, source_rect.pos.y + y);
-                    dest_grid.set(dest_rect.pos.x + x, dest_rect.pos.y + y, source_value);
+                        source_grid.get_unchecked(source_rect.pos.x + x, source_rect.pos.y + y);
+                    let dest_value =
+                        dest_grid.get_unchecked_mut(dest_rect.pos.x + x, dest_rect.pos.y + y);
+                    copy_function(source_value, dest_value);
                 }
             }
         }
     }
 
-    pub fn blit_to(&self, other: &mut Grid<CellType>, pos: Vec2i, mask_value: Option<CellType>) {
-        let rect_source = self.rect();
-        let rect_dest = rect_source.translated_by(pos);
-        Grid::<CellType>::copy_region(self, rect_source, other, rect_dest, mask_value);
+    #[inline]
+    pub fn copy_region(
+        source_grid: &Grid<CellType>,
+        source_rect: Recti,
+        dest_grid: &mut Grid<CellType>,
+        dest_rect: Recti,
+    ) {
+        Grid::copy_region_with_function(
+            source_grid,
+            source_rect,
+            dest_grid,
+            dest_rect,
+            |source_value, dest_value| {
+                *dest_value = source_value;
+            },
+        );
+    }
+
+    #[inline]
+    pub fn copy_region_masked(
+        source_grid: &Grid<CellType>,
+        source_rect: Recti,
+        dest_grid: &mut Grid<CellType>,
+        dest_rect: Recti,
+        mask_value: Option<CellType>,
+    ) {
+        if let Some(mask_value) = mask_value {
+            Grid::copy_region_with_function(
+                source_grid,
+                source_rect,
+                dest_grid,
+                dest_rect,
+                |source_value, dest_value| {
+                    if source_value != mask_value {
+                        *dest_value = source_value;
+                    }
+                },
+            );
+        } else {
+            Grid::copy_region(source_grid, source_rect, dest_grid, dest_rect);
+        }
+    }
+
+    #[inline]
+    pub fn blit_to_with_function<F: Fn(CellType, &mut CellType)>(
+        &self,
+        other: &mut Grid<CellType>,
+        pos: Vec2i,
+        allow_partial_blit: bool,
+        blit_function: F,
+    ) {
+        if let Some(rect_dest) = self.rect().translated_by(pos).clipped_by(other.rect()) {
+            if !allow_partial_blit {
+                assert!(
+                    self.rect().dim == rect_dest.dim,
+                    "Destination blitting rect is smaller than source rect"
+                );
+            }
+
+            let rect_source = rect_dest.translated_by(-pos);
+            Grid::<CellType>::copy_region_with_function(
+                self,
+                rect_source,
+                other,
+                rect_dest,
+                blit_function,
+            );
+        } else {
+            if !allow_partial_blit {
+                panic!("Blitting rect is empty");
+            }
+        }
+    }
+
+    #[inline]
+    pub fn blit_to_masked(
+        &self,
+        other: &mut Grid<CellType>,
+        pos: Vec2i,
+        allow_partial_blit: bool,
+        mask_value: Option<CellType>,
+    ) {
+        if let Some(mask_value) = mask_value {
+            self.blit_to_with_function(
+                other,
+                pos,
+                allow_partial_blit,
+                |source_value, dest_value| {
+                    if source_value != mask_value {
+                        *dest_value = source_value;
+                    }
+                },
+            );
+        } else {
+            self.blit_to_with_function(
+                other,
+                pos,
+                allow_partial_blit,
+                |source_value, dest_value| {
+                    *dest_value = source_value;
+                },
+            );
+        }
+    }
+
+    #[inline]
+    pub fn blit_to(&self, other: &mut Grid<CellType>, pos: Vec2i, allow_partial_blit: bool) {
+        self.blit_to_with_function(
+            other,
+            pos,
+            allow_partial_blit,
+            |source_value, dest_value| {
+                *dest_value = source_value;
+            },
+        );
     }
 
     /// Searches grid from given search direction until given condition is met.
@@ -365,26 +480,14 @@ where
 
     #[must_use]
     pub fn cropped_by_rect(&self, crop_rect: Recti) -> Grid<CellType> {
-        if let Some(crop_rect) =
-            crop_rect.clipped_by(Recti::from_width_height(self.width, self.height))
-        {
+        if let Some(crop_rect) = self.rect().clipped_by(crop_rect) {
             let mut result = Grid::new(crop_rect.width() as u32, crop_rect.height() as u32);
-            Grid::copy_region(
-                &self,
-                Recti::from_xy_width_height(
-                    crop_rect.left(),
-                    crop_rect.top(),
-                    crop_rect.width(),
-                    crop_rect.height(),
-                ),
-                &mut result,
-                Recti::from_width_height(crop_rect.width(), crop_rect.height()),
-                None,
-            );
+            let dest_rect = result.rect();
+            Grid::copy_region(&self, crop_rect, &mut result, dest_rect);
 
             result
         } else {
-            Grid::empty()
+            Grid::new_empty()
         }
     }
 
@@ -417,7 +520,7 @@ where
         ) {
             self.cropped_by_rect(trimmed_rect)
         } else {
-            Grid::empty()
+            Grid::new_empty()
         }
     }
 
@@ -430,13 +533,13 @@ where
         let new_width = self.width - left - right;
         let new_height = self.height - top - bottom;
         if new_width <= 0 || new_height <= 0 {
-            return Grid::empty();
+            return Grid::new_empty();
         }
 
         let mut result = Grid::new(new_width as u32, new_height as u32);
         let crop_rect = Recti::from_xy_width_height(left, right, new_width, new_height);
         let result_rect = result.rect();
-        Grid::copy_region(self, crop_rect, &mut result, result_rect, None);
+        Grid::copy_region(self, crop_rect, &mut result, result_rect);
 
         result
     }
@@ -594,7 +697,7 @@ where
             (self.height + top + bottom) as u32,
             padding_value,
         );
-        self.blit_to(&mut result, Vec2i::new(left, top), None);
+        self.blit_to(&mut result, Vec2i::new(left, top), false);
         result
     }
 
@@ -606,7 +709,7 @@ where
         padding_extra: i32,
         padding_color: CellType,
     ) -> Grid<CellType> {
-        grids.iter().fold(Grid::empty(), |acc, grid| {
+        grids.iter().fold(Grid::new_empty(), |acc, grid| {
             Grid::glue_a_to_b(grid, &acc, glue_position, padding_extra, padding_color)
         })
     }
@@ -619,7 +722,7 @@ where
         padding_extra: i32,
         padding_color: CellType,
     ) -> Grid<CellType> {
-        grids.iter().fold(Grid::empty(), |acc, grid| {
+        grids.iter().fold(Grid::new_empty(), |acc, grid| {
             Grid::glue_a_to_b(grid, &acc, glue_position, padding_extra, padding_color)
         })
     }
@@ -660,7 +763,7 @@ where
                         0,
                         block_aligned_in_block(a.height, b.height, Alignment::Begin),
                     );
-                    a.blit_to(&mut result, blit_pos, None);
+                    a.blit_to(&mut result, blit_pos, false);
                     result
                 }
             }
@@ -677,7 +780,7 @@ where
                 } else {
                     let mut result = b.extended(a.width + padding_extra, 0, 0, 0, padding_color);
                     let blit_pos = Vec2i::new(0, block_centered_in_block(a.height, b.height));
-                    a.blit_to(&mut result, blit_pos, None);
+                    a.blit_to(&mut result, blit_pos, false);
                     result
                 }
             }
@@ -697,7 +800,7 @@ where
                         0,
                         block_aligned_in_block(a.height, b.height, Alignment::End),
                     );
-                    a.blit_to(&mut result, blit_pos, None);
+                    a.blit_to(&mut result, blit_pos, false);
                     result
                 }
             }
@@ -711,7 +814,7 @@ where
                         block_aligned_in_block(a.width, b.width, Alignment::Begin),
                         0,
                     );
-                    a.blit_to(&mut result, blit_pos, None);
+                    a.blit_to(&mut result, blit_pos, false);
                     result
                 }
             }
@@ -728,7 +831,7 @@ where
                 } else {
                     let mut result = b.extended(0, a.height + padding_extra, 0, 0, padding_color);
                     let blit_pos = Vec2i::new(block_centered_in_block(a.width, b.width), 0);
-                    a.blit_to(&mut result, blit_pos, None);
+                    a.blit_to(&mut result, blit_pos, false);
                     result
                 }
             }
@@ -746,7 +849,7 @@ where
                     let mut result = b.extended(0, a.height + padding_extra, 0, 0, padding_color);
                     let blit_pos =
                         Vec2i::new(block_aligned_in_block(a.width, b.width, Alignment::End), 0);
-                    a.blit_to(&mut result, blit_pos, None);
+                    a.blit_to(&mut result, blit_pos, false);
                     result
                 }
             }
@@ -760,7 +863,7 @@ where
                         b.width + padding_extra,
                         block_aligned_in_block(a.height, b.height, Alignment::Begin),
                     );
-                    a.blit_to(&mut result, blit_pos, None);
+                    a.blit_to(&mut result, blit_pos, false);
                     result
                 }
             }
@@ -774,7 +877,7 @@ where
                         b.width + padding_extra,
                         block_centered_in_block(a.height, b.height),
                     );
-                    a.blit_to(&mut result, blit_pos, None);
+                    a.blit_to(&mut result, blit_pos, false);
                     result
                 }
             }
@@ -788,7 +891,7 @@ where
                         b.width + padding_extra,
                         block_aligned_in_block(a.height, b.height, Alignment::End),
                     );
-                    a.blit_to(&mut result, blit_pos, None);
+                    a.blit_to(&mut result, blit_pos, false);
                     result
                 }
             }
@@ -802,7 +905,7 @@ where
                         block_aligned_in_block(a.width, b.width, Alignment::Begin),
                         b.height + padding_extra,
                     );
-                    a.blit_to(&mut result, blit_pos, None);
+                    a.blit_to(&mut result, blit_pos, false);
                     result
                 }
             }
@@ -816,7 +919,7 @@ where
                         block_centered_in_block(a.width, b.width),
                         b.height + padding_extra,
                     );
-                    a.blit_to(&mut result, blit_pos, None);
+                    a.blit_to(&mut result, blit_pos, false);
                     result
                 }
             }
@@ -830,7 +933,7 @@ where
                         block_aligned_in_block(a.width, b.width, Alignment::End),
                         b.height + padding_extra,
                     );
-                    a.blit_to(&mut result, blit_pos, None);
+                    a.blit_to(&mut result, blit_pos, false);
                     result
                 }
             }
@@ -869,21 +972,6 @@ where
         }
     }
 
-    /// NOTE: This may return a smaller grid than given in the rect if the rect is partly outside
-    ///       the grid
-    pub fn to_subgrid(&self, rect: Recti) -> Option<Grid<CellType>> {
-        if let Some(intersection) = self.rect().clipped_by(rect) {
-            let mut result =
-                Grid::<CellType>::new(intersection.width() as u32, intersection.height() as u32);
-            let dest_rect = result.rect();
-            Grid::copy_region(&self, intersection, &mut result, dest_rect, None);
-
-            Some(result)
-        } else {
-            None
-        }
-    }
-
     pub fn to_segments(
         &self,
         segment_width: i32,
@@ -910,14 +998,18 @@ where
         for y in 0..segment_count_y {
             for x in 0..segment_count_x {
                 let pos = Vec2i::new(x, y);
-                let subgrid = self
-                    .to_subgrid(Recti::from_xy_width_height(
-                        x * segment_width,
-                        y * segment_height,
-                        segment_width,
-                        segment_height,
-                    ))
-                    .unwrap_or_else(|| panic!("Segment ({},{}) was empty", x, y));
+                let subgrid = self.cropped_by_rect(Recti::from_xy_width_height(
+                    x * segment_width,
+                    y * segment_height,
+                    segment_width,
+                    segment_height,
+                ));
+                assert!(
+                    subgrid.width == 0 || subgrid.height == 0,
+                    "Segment ({},{}) was empty",
+                    x,
+                    y
+                );
                 segment_images.push(subgrid);
                 segment_coordinates.push(pos);
             }

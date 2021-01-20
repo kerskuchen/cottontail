@@ -22,13 +22,7 @@ pub fn debug_get_bitmap_for_sprite(assets: &GameAssets, sprite_name: &str) -> Bi
     let mut result_bitmap = Bitmap::new(dim.x as u32, dim.y as u32);
     let result_rect = result_bitmap.rect();
 
-    Bitmap::copy_region(
-        source_bitmap,
-        source_rect,
-        &mut result_bitmap,
-        result_rect,
-        None,
-    );
+    Bitmap::copy_region(source_bitmap, source_rect, &mut result_bitmap, result_rect);
 
     result_bitmap
 }

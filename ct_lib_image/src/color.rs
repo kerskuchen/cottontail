@@ -124,6 +124,11 @@ impl PixelRGBA {
     }
 
     #[inline]
+    pub fn to_color(self) -> Color {
+        Color::from_pixelrgba(self)
+    }
+
+    #[inline]
     pub const fn from_hex_rgba(hex_rgba: u32) -> PixelRGBA {
         const RGBA_MASK_R: u32 = 0xff000000;
         const RGBA_MASK_G: u32 = 0x00ff0000;
@@ -223,6 +228,11 @@ impl Color {
             b: input.b as f32 / 255.0,
             a: input.a as f32 / 255.0,
         }
+    }
+
+    #[inline]
+    pub fn to_pixelrgba(self) -> PixelRGBA {
+        PixelRGBA::from_color(self)
     }
 
     #[inline]
