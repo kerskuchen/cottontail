@@ -84,6 +84,7 @@ pub fn draw_debug_grid(world_grid_size: f32, line_thickness: i32, color: Color, 
     }
 }
 
+#[inline]
 pub fn draw_debug_crosshair(pos_world: Vec2, line_thickness: f32, color: Color, depth: f32) {
     let frustum = get_camera().bounds_pixelsnapped();
 
@@ -106,4 +107,145 @@ pub fn draw_debug_crosshair(pos_world: Vec2, line_thickness: f32, color: Color, 
         true,
         Drawparams::new(depth, color, ADDITIVITY_NONE, Drawspace::Screen),
     );
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// DEBUG DRAW LOGGING
+
+pub struct DebugDrawLogState {
+    font_name: String,
+    font_scale: f32,
+    draw_origin: Vec2,
+    draw_offset: Vec2,
+    draw_depth: Depth,
+}
+
+impl DebugDrawLogState {
+    #[inline]
+    pub fn new() -> DebugDrawLogState {
+        let font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
+        DebugDrawLogState {
+            font_name,
+            font_scale: 2.0,
+            draw_origin: Vec2::new(5.0, 5.0),
+            draw_offset: Vec2::zero(),
+            draw_depth: DEPTH_MAX,
+        }
+    }
+
+    #[inline]
+    pub fn begin_frame(&mut self) {
+        self.draw_offset = Vec2::zero();
+    }
+
+    #[inline]
+    pub fn log(&mut self, text: impl Into<String>) {
+        self.log_color(text, Color::white())
+    }
+
+    #[inline]
+    pub fn log_color(&mut self, text: impl Into<String>, color: Color) {
+        let origin = self.draw_origin.pixel_snapped();
+        let font = get_assets().get_font(&self.font_name);
+        self.draw_offset = draw_text(
+            &text.into(),
+            font,
+            self.font_scale,
+            origin,
+            self.draw_offset,
+            None,
+            None,
+            Drawparams::new(self.draw_depth, color, ADDITIVITY_NONE, Drawspace::Screen),
+        );
+
+        // Add final '\n'
+        self.draw_offset.x = 0.0;
+        self.draw_offset.y += self.font_scale * font.vertical_advance as f32;
+    }
+
+    #[inline]
+    pub fn log_visualize_value_percent(
+        &mut self,
+        label: impl Into<String>,
+        color: Color,
+        value_percent: f32,
+    ) {
+        self.log_visualize_value(label, color, value_percent, 0.0, 1.0)
+    }
+
+    #[inline]
+    pub fn log_visualize_value(
+        &mut self,
+        label: impl Into<String>,
+        color: Color,
+        value: f32,
+        value_min: f32,
+        value_max: f32,
+    ) {
+        let origin = self.draw_origin.pixel_snapped();
+        let font = get_assets().get_font(&self.font_name);
+        self.draw_offset = draw_text(
+            &label.into(),
+            font,
+            self.font_scale,
+            origin,
+            self.draw_offset,
+            None,
+            None,
+            Drawparams::new(self.draw_depth, color, ADDITIVITY_NONE, Drawspace::Screen),
+        );
+
+        assert!(value_max > value_min);
+        let percentage = (value - value_min) / (value_max - value_min);
+
+        let offset = origin + self.draw_offset + Vec2::filled_x(font.horizontal_advance_max as f32);
+        let rect_width = 10.0 * self.font_scale * font.vertical_advance as f32;
+        let rect_height = self.font_scale * font.vertical_advance as f32;
+
+        let rect_outline = Rect::from_width_height(rect_width, rect_height).translated_by(offset);
+
+        let rect_fill = if percentage < 0.0 {
+            Rect::from_width_height(rect_width, rect_height)
+                .scaled_from_origin(Vec2::new(percentage, 1.0))
+                .mirrored_horizontally_on_axis(0.0)
+                .translated_by(offset)
+        } else {
+            Rect::from_width_height(rect_width, rect_height)
+                .scaled_from_origin(Vec2::new(percentage, 1.0))
+                .translated_by(offset)
+        };
+
+        draw_rect(
+            rect_fill,
+            true,
+            Drawparams::new(self.draw_depth, color, ADDITIVITY_NONE, Drawspace::Screen),
+        );
+        draw_rect(
+            rect_outline,
+            false,
+            Drawparams::new(
+                self.draw_depth,
+                color.with_color_multiplied_by(0.5),
+                ADDITIVITY_NONE,
+                Drawspace::Screen,
+            ),
+        );
+
+        self.draw_offset.x += 11.0 * self.font_scale * font.vertical_advance as f32;
+
+        self.draw_offset = draw_text(
+            &format!("{}", value),
+            font,
+            self.font_scale,
+            origin,
+            self.draw_offset,
+            None,
+            None,
+            Drawparams::new(self.draw_depth, color, ADDITIVITY_NONE, Drawspace::Screen),
+        );
+
+        // Add final '\n'
+        self.draw_offset.x = 0.0;
+        self.draw_offset.y += self.font_scale * font.vertical_advance as f32;
+    }
 }

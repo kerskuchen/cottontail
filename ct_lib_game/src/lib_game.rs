@@ -31,7 +31,10 @@ use ct_lib_math::*;
 use ct_lib_window::input::*;
 use ct_lib_window::*;
 
-use std::collections::{HashMap, VecDeque};
+use std::{
+    collections::{HashMap, VecDeque},
+    fmt::Debug,
+};
 
 pub const DEPTH_DEBUG: Depth = 90.0;
 pub const DEPTH_DEVELOP_OVERLAY: Depth = 80.0;
@@ -79,9 +82,14 @@ const SPLASHSCREEN_FADEOUT_TIME: f32 = 0.5;
 struct AppResources {
     pub assets: GameAssets,
     pub input: InputState,
+    /// NOTE: This depends on drawstate to be available
     pub gui: GuiState,
+    /// NOTE: This depends on drawstate to be available
+    pub debug_draw_logger: DebugDrawLogState,
 
+    /// NOTE: This depends on graphics assets to be available
     pub draw: Option<Drawstate>,
+    /// NOTE: This depends on audio assets to be available
     pub audio: Option<Audiostate>,
     pub globals: Option<Globals>,
 }
@@ -98,6 +106,7 @@ fn get_resources() -> &'static mut AppResources {
                     assets: GameAssets::new("resources"),
                     input: InputState::new(),
                     gui: GuiState::new(),
+                    debug_draw_logger: DebugDrawLogState::new(),
 
                     draw: None,
                     audio: None,
@@ -133,6 +142,10 @@ fn get_draw() -> &'static mut Drawstate {
 #[inline(always)]
 fn get_audio() -> &'static mut Audiostate {
     get_resources().audio.as_mut().unwrap()
+}
+#[inline(always)]
+fn get_debug_draw_logger() -> &'static mut DebugDrawLogState {
+    &mut get_resources().debug_draw_logger
 }
 
 pub struct AppTicker<AppStateType: AppStateInterface> {
@@ -198,17 +211,16 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 assert!(get_resources().draw.is_none());
                 let textures_splash = get_assets().get_atlas_textures().clone();
                 let untextured_sprite = get_assets().get_sprite("untextured").clone();
-                let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-                let debug_log_font = get_assets().get_font(&debug_log_font_name).clone();
-                let mut draw = Drawstate::new(textures_splash, untextured_sprite, debug_log_font);
+                get_resources().draw = Some(Drawstate::new(textures_splash, untextured_sprite));
+
                 let window_preferences = GameStateType::get_window_preferences();
                 game_setup_window(
-                    &mut draw,
+                    get_draw(),
                     &window_preferences,
                     window_screen_width(),
                     window_screen_height(),
                 );
-                draw.set_shaderparams_default(
+                get_draw().set_shaderparams_default(
                     Color::white(),
                     Mat4::ortho_origin_left_top(
                         window_preferences.canvas_width as f32,
@@ -229,7 +241,6 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                         DEFAULT_WORLD_ZFAR,
                     ),
                 );
-                get_resources().draw = Some(draw);
 
                 self.loadingscreen.start_fading_in();
             }
@@ -248,17 +259,18 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                     assert!(get_resources().draw.is_some());
                     let textures = get_assets().get_atlas_textures().clone();
                     let untextured_sprite = get_assets().get_sprite("untextured").clone();
-                    let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-                    let debug_log_font = get_assets().get_font(&debug_log_font_name).clone();
-                    get_draw().assign_textures(textures, untextured_sprite, debug_log_font);
+                    get_draw().assign_textures(textures, untextured_sprite);
                 }
+
+                let (canvas_width, canvas_height) = get_draw()
+                    .get_canvas_dimensions()
+                    .expect("No canvas dimensions found");
 
                 {
                     assert!(get_resources().audio.is_none());
-                    let window_config = GameStateType::get_window_preferences();
                     let mut audio = Audiostate::new(
                         get_assets().get_audio_resources_sample_rate_hz(),
-                        window_config.canvas_width as f32 / 2.0,
+                        canvas_width as f32 / 2.0,
                         10_000.0,
                     );
                     let audio_recordings = get_assets().get_audiorecordings().clone();
@@ -268,14 +280,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
                 {
                     assert!(get_resources().globals.is_none());
-                    let window_preferences = GameStateType::get_window_preferences();
                     let random = Random::new_from_seed((time_since_startup * 1000000000.0) as u64);
-                    let camera = GameCamera::new(
-                        Vec2::zero(),
-                        window_preferences.canvas_width,
-                        window_preferences.canvas_height,
-                        false,
-                    );
+                    let camera = GameCamera::new(Vec2::zero(), canvas_width, canvas_height, false);
                     let cursors = {
                         let input = get_input();
                         Cursors::new(
@@ -298,8 +304,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                         time_since_startup,
 
                         is_paused: false,
-                        canvas_width: window_preferences.canvas_width as f32,
-                        canvas_height: window_preferences.canvas_height as f32,
+                        canvas_width: canvas_width as f32,
+                        canvas_height: canvas_height as f32,
                     });
                 }
 
@@ -316,9 +322,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
             let draw = get_draw();
             let textures = get_assets().get_atlas_textures().clone();
             let untextured_sprite = get_assets().get_sprite("untextured").clone();
-            let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
-            let debug_log_font = get_assets().get_font(&debug_log_font_name).clone();
-            draw.assign_textures(textures, untextured_sprite, debug_log_font);
+            draw.assign_textures(textures, untextured_sprite);
 
             let audio = get_audio();
             let audio_recordings = get_assets().get_audiorecordings().clone();
@@ -329,6 +333,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
         if window_has_focus() || !self.loadingscreen.is_faded_out() {
             get_draw().begin_frame();
+            get_debug_draw_logger().begin_frame();
 
             // Draw loadscreen if necessary
             if !self.loadingscreen.is_faded_out() {
@@ -390,20 +395,20 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                     globals.time_since_startup = time_since_startup;
 
                     if !is_effectively_zero(globals.deltatime_speed_factor_debug - 1.0) {
-                        get_draw().debug_log(format!(
+                        draw_debug_log(format!(
                             "Timefactor: {:.3}",
                             globals.deltatime_speed_factor_user
                         ));
-                        get_draw().debug_log(format!(
+                        draw_debug_log(format!(
                             "Debug Timefactor: {:.1}",
                             globals.deltatime_speed_factor_debug
                         ));
-                        get_draw().debug_log(format!(
+                        draw_debug_log(format!(
                             "Cumulative timefactor: {:.1}",
                             deltatime_speed_factor
                         ));
                     }
-                    get_draw().debug_log(format!("Deltatime: {:.6}", globals.deltatime));
+                    draw_debug_log(format!("Deltatime: {:.6}", globals.deltatime));
                 }
 
                 get_audio().set_global_playback_speed_factor(time_deltatime_speed_factor_total());

@@ -390,11 +390,6 @@ struct DrawBatch {
     pub indices_count: usize,
 }
 
-// NOTE: We need this static because if we put this in drawstate, then the borrowchecker won't let
-//       us borrow glyphs from it when drawing logs. We can only copy glyphs (which is too expensive
-//       on mobile)
-// TODO: Maybe we can get rid of this when Rust updates its borrowchecker someday
-static mut DRAWSTATE_DEBUG_LOG_FONT: Option<SpriteFont> = None;
 #[derive(Clone)]
 pub struct Drawstate {
     textures: Vec<Rc<RefCell<Bitmap>>>,
@@ -422,21 +417,13 @@ pub struct Drawstate {
 
     debug_use_flat_color_mode: bool,
     debug_draw_depth: bool,
-    debug_log_font_scale: f32,
-    debug_log_origin: Vec2,
-    debug_log_offset: Vec2,
-    debug_log_depth: Depth,
 }
 
 //--------------------------------------------------------------------------------------------------
 // Creation and configuration
 
 impl Drawstate {
-    pub fn new(
-        textures: Vec<Rc<RefCell<Bitmap>>>,
-        untextured_sprite: Sprite,
-        debug_log_font: SpriteFont,
-    ) -> Drawstate {
+    pub fn new(textures: Vec<Rc<RefCell<Bitmap>>>, untextured_sprite: Sprite) -> Drawstate {
         let textures_size = textures
             .first()
             .expect("Drawstate: No Textures given")
@@ -448,10 +435,6 @@ impl Drawstate {
         // Reserves a white pixel for special usage on the first page
         let untextured_uv_center_coord = untextured_sprite.trimmed_uvs;
         let untextured_uv_center_atlas_page = untextured_sprite.atlas_texture_index;
-
-        unsafe {
-            DRAWSTATE_DEBUG_LOG_FONT = Some(debug_log_font);
-        }
 
         Drawstate {
             textures,
@@ -479,10 +462,6 @@ impl Drawstate {
 
             debug_use_flat_color_mode: false,
             debug_draw_depth: false,
-            debug_log_font_scale: 2.0,
-            debug_log_origin: Vec2::new(5.0, 5.0),
-            debug_log_offset: Vec2::zero(),
-            debug_log_depth: DEPTH_MAX,
         }
     }
 
@@ -490,7 +469,6 @@ impl Drawstate {
         &mut self,
         textures: Vec<Rc<RefCell<Bitmap>>>,
         untextured_sprite: Sprite,
-        debug_log_font: SpriteFont,
     ) {
         let textures_size = textures
             .first()
@@ -503,10 +481,6 @@ impl Drawstate {
         // Reserves a white pixel for special usage on the first page
         let untextured_uv_center_coord = untextured_sprite.trimmed_uvs;
         let untextured_uv_center_atlas_page = untextured_sprite.atlas_texture_index;
-
-        unsafe {
-            DRAWSTATE_DEBUG_LOG_FONT = Some(debug_log_font);
-        }
 
         self.textures = textures;
         self.textures_size = textures_size;
@@ -575,7 +549,6 @@ impl Drawstate {
 
     pub fn begin_frame(&mut self) {
         self.default_drawables.clear();
-        self.debug_log_offset = Vec2::zero();
     }
 
     pub fn finish_frame(&mut self) {
@@ -1632,151 +1605,5 @@ impl Drawstate {
                 indices,
             },
         });
-    }
-
-    #[inline]
-    pub fn debug_log(&mut self, text: impl Into<String>) {
-        self.debug_log_color(text, Color::white())
-    }
-
-    #[inline]
-    pub fn debug_log_color(&mut self, text: impl Into<String>, color: Color) {
-        let debug_font = unsafe {
-            // NOTE: See documentation of `DRAWSTATE_DEBUG_LOG_FONT` for explanation on why we
-            //       need this static
-            DRAWSTATE_DEBUG_LOG_FONT
-                .as_ref()
-                .expect("Debug logging font not initialized")
-        };
-        let origin = self.debug_log_origin.pixel_snapped();
-        self.debug_log_offset = self.draw_text(
-            &text.into(),
-            debug_font,
-            self.debug_log_font_scale,
-            origin,
-            self.debug_log_offset,
-            None,
-            None,
-            Drawparams::new(
-                self.debug_log_depth,
-                color,
-                ADDITIVITY_NONE,
-                Drawspace::Screen,
-            ),
-        );
-
-        // Add final '\n'
-        self.debug_log_offset.x = 0.0;
-        self.debug_log_offset.y += self.debug_log_font_scale * debug_font.vertical_advance as f32;
-    }
-
-    #[inline]
-    pub fn debug_log_visualize_value_percent(
-        &mut self,
-        label: impl Into<String>,
-        color: Color,
-        value_percent: f32,
-    ) {
-        self.debug_log_visualize_value(label, color, value_percent, 0.0, 1.0)
-    }
-
-    #[inline]
-    pub fn debug_log_visualize_value(
-        &mut self,
-        label: impl Into<String>,
-        color: Color,
-        value: f32,
-        value_min: f32,
-        value_max: f32,
-    ) {
-        let debug_font = unsafe {
-            // NOTE: See documentation of `DRAWSTATE_DEBUG_LOG_FONT` for explanation on why we
-            //       need this static
-            DRAWSTATE_DEBUG_LOG_FONT
-                .as_ref()
-                .expect("Debug logging font not initialized")
-        };
-        let origin = self.debug_log_origin.pixel_snapped();
-        self.debug_log_offset = self.draw_text(
-            &label.into(),
-            debug_font,
-            self.debug_log_font_scale,
-            origin,
-            self.debug_log_offset,
-            None,
-            None,
-            Drawparams::new(
-                self.debug_log_depth,
-                color,
-                ADDITIVITY_NONE,
-                Drawspace::Screen,
-            ),
-        );
-
-        assert!(value_max > value_min);
-        let percentage = (value - value_min) / (value_max - value_min);
-
-        let offset = origin
-            + self.debug_log_offset
-            + Vec2::filled_x(debug_font.horizontal_advance_max as f32);
-        let rect_width = 10.0 * self.debug_log_font_scale * debug_font.vertical_advance as f32;
-        let rect_height = self.debug_log_font_scale * debug_font.vertical_advance as f32;
-
-        let rect_outline = Rect::from_width_height(rect_width, rect_height).translated_by(offset);
-
-        let rect_fill = if percentage < 0.0 {
-            Rect::from_width_height(rect_width, rect_height)
-                .scaled_from_origin(Vec2::new(percentage, 1.0))
-                .mirrored_horizontally_on_axis(0.0)
-                .translated_by(offset)
-        } else {
-            Rect::from_width_height(rect_width, rect_height)
-                .scaled_from_origin(Vec2::new(percentage, 1.0))
-                .translated_by(offset)
-        };
-
-        self.draw_rect(
-            rect_fill,
-            true,
-            Drawparams::new(
-                self.debug_log_depth,
-                color,
-                ADDITIVITY_NONE,
-                Drawspace::Screen,
-            ),
-        );
-        self.draw_rect(
-            rect_outline,
-            false,
-            Drawparams::new(
-                self.debug_log_depth,
-                color.with_color_multiplied_by(0.5),
-                ADDITIVITY_NONE,
-                Drawspace::Screen,
-            ),
-        );
-
-        self.debug_log_offset.x +=
-            11.0 * self.debug_log_font_scale * debug_font.vertical_advance as f32;
-
-        self.debug_log_offset = self.draw_text(
-            &format!("{}", value),
-            debug_font,
-            self.debug_log_font_scale,
-            origin,
-            self.debug_log_offset,
-            None,
-            None,
-            Drawparams::new(
-                self.debug_log_depth,
-                color,
-                ADDITIVITY_NONE,
-                Drawspace::Screen,
-            ),
-        );
-
-        // Add final '\n'
-        self.debug_log_offset.x = 0.0;
-        self.debug_log_offset.y += self.debug_log_font_scale * debug_font.vertical_advance as f32;
     }
 }

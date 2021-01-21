@@ -902,12 +902,12 @@ pub fn draw_debug_triangle(point_a: Vec2, point_b: Vec2, point_c: Vec2, drawpara
 
 #[inline]
 pub fn draw_debug_log(text: impl Into<String>) {
-    get_draw().debug_log(text)
+    get_debug_draw_logger().log(text)
 }
 
 #[inline]
 pub fn draw_debug_log_color(text: impl Into<String>, color: Color) {
-    get_draw().debug_log_color(text, color)
+    get_debug_draw_logger().log_color(text, color)
 }
 
 #[inline]
@@ -916,7 +916,7 @@ pub fn draw_debug_log_visualize_value_percent(
     color: Color,
     value_percent: f32,
 ) {
-    get_draw().debug_log_visualize_value_percent(label, color, value_percent)
+    get_debug_draw_logger().log_visualize_value_percent(label, color, value_percent)
 }
 
 #[inline]
@@ -927,7 +927,7 @@ pub fn draw_debug_log_visualize_value(
     value_min: f32,
     value_max: f32,
 ) {
-    get_draw().debug_log_visualize_value(label, color, value, value_min, value_max)
+    get_debug_draw_logger().log_visualize_value(label, color, value, value_min, value_max)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
