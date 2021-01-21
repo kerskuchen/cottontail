@@ -23,9 +23,6 @@
   - one that just centers text in rect
   - macro based debug log with format strings?
   - other ideas?
-- create a internal mode feature flag and
-  - to use local folder for logging
-  - enable debug draw logging
 - Ability to draw debug graphs to i.e. try out attenuation for audio distance
   - We need to add a debug layer to the drawstate with its own drawqueue
 - make our gui more fully featured and usable
@@ -56,6 +53,10 @@
   https://github.com/not-fl3/macroquad/blob/master/src/experimental/coroutines.rs
   maybe we need to wait (a lot) longer for something as usable as unity coroutines or cute 
   coroutines. some links for later reference:
+- create a internal mode feature flag and 
+  - THIS IS ONLY POSSIBLE ONCE RUST WORKSPACES CAN USE FEATURES SANELY
+  - to use local folder for logging
+  - enable debug draw logging
 
   https://github.com/ejmahler/unity_coroutines
   https://doc.rust-lang.org/std/ops/trait.Generator.html

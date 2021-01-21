@@ -68,7 +68,7 @@ pub struct GameInfo {
 
 pub trait AppStateInterface: Clone {
     fn get_game_info() -> GameInfo;
-    fn get_window_config() -> WindowConfig;
+    fn get_window_preferences() -> WindowPreferences;
     fn new() -> Self;
     fn update(&mut self);
 }
@@ -77,65 +77,74 @@ const SPLASHSCREEN_FADEIN_TIME: f32 = 0.3;
 const SPLASHSCREEN_FADEOUT_TIME: f32 = 0.5;
 
 struct AppResources {
-    pub assets: Option<GameAssets>,
+    pub assets: GameAssets,
+    pub input: InputState,
+    pub gui: GuiState,
+
     pub draw: Option<Drawstate>,
     pub audio: Option<Audiostate>,
     pub globals: Option<Globals>,
-    pub input: Option<InputState>,
-    pub gui: Option<GuiState>,
 }
 
-static mut APP_RESOURCES: AppResources = AppResources {
-    assets: None,
-    draw: None,
-    audio: None,
-    globals: None,
-    input: None,
-    gui: None,
-};
+static mut APP_RESOURCES: Option<AppResources> = None;
 
 #[inline(always)]
 fn get_resources() -> &'static mut AppResources {
-    unsafe { &mut APP_RESOURCES }
+    unsafe {
+        match APP_RESOURCES.as_mut() {
+            Some(resources) => resources,
+            None => {
+                APP_RESOURCES = Some(AppResources {
+                    assets: GameAssets::new("resources"),
+                    input: InputState::new(),
+                    gui: GuiState::new(),
+
+                    draw: None,
+                    audio: None,
+                    globals: None,
+                });
+
+                APP_RESOURCES.as_mut().unwrap()
+            }
+        }
+    }
 }
+
 #[inline(always)]
-fn get_globals() -> &'static mut Globals {
-    unsafe { APP_RESOURCES.globals.as_mut().unwrap() }
+fn get_assets() -> &'static mut GameAssets {
+    &mut get_resources().assets
 }
 #[inline(always)]
 fn get_input() -> &'static mut InputState {
-    unsafe { APP_RESOURCES.input.as_mut().unwrap() }
-}
-#[inline(always)]
-fn get_draw() -> &'static mut Drawstate {
-    unsafe { APP_RESOURCES.draw.as_mut().unwrap() }
-}
-#[inline(always)]
-fn get_audio() -> &'static mut Audiostate {
-    unsafe { APP_RESOURCES.audio.as_mut().unwrap() }
-}
-#[inline(always)]
-fn get_assets() -> &'static mut GameAssets {
-    unsafe { APP_RESOURCES.assets.as_mut().unwrap() }
+    &mut get_resources().input
 }
 #[inline(always)]
 fn get_gui() -> &'static mut GuiState {
-    unsafe { APP_RESOURCES.gui.as_mut().unwrap() }
+    &mut get_resources().gui
+}
+#[inline(always)]
+fn get_globals() -> &'static mut Globals {
+    get_resources().globals.as_mut().unwrap()
+}
+#[inline(always)]
+fn get_draw() -> &'static mut Drawstate {
+    get_resources().draw.as_mut().unwrap()
+}
+#[inline(always)]
+fn get_audio() -> &'static mut Audiostate {
+    get_resources().audio.as_mut().unwrap()
 }
 
 pub struct AppTicker<AppStateType: AppStateInterface> {
     game: Option<AppStateType>,
     loadingscreen: LoadingScreen,
     audio_chunk_timer: f32,
-    input_recorder: Option<InputRecorder<AppStateType>>,
+    debug_input_recorder: InputRecorder<AppStateType>,
 }
 
 impl<AppStateType: AppStateInterface> AppTicker<AppStateType> {
     fn new() -> Self {
-        let window_config = AppStateType::get_window_config();
-        get_resources().assets = Some(GameAssets::new("resources"));
-        get_resources().input = Some(InputState::new());
-        get_resources().gui = Some(GuiState::new());
+        let window_config = AppStateType::get_window_preferences();
         AppTicker {
             loadingscreen: LoadingScreen::new(
                 SPLASHSCREEN_FADEIN_TIME,
@@ -144,7 +153,7 @@ impl<AppStateType: AppStateInterface> AppTicker<AppStateType> {
             ),
             game: None,
             audio_chunk_timer: 0.0,
-            input_recorder: Some(InputRecorder::new()),
+            debug_input_recorder: InputRecorder::new(),
         }
     }
 }
@@ -179,7 +188,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
         );
 
         if let Some(game) = self.game.as_mut() {
-            self.input_recorder.as_mut().unwrap().tick(game);
+            self.debug_input_recorder.tick(game);
         }
 
         match get_assets().update() {
@@ -191,25 +200,25 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 let untextured_sprite = get_assets().get_sprite("untextured").clone();
                 let debug_log_font_name = FONT_DEFAULT_TINY_NAME.to_owned() + "_bordered";
                 let debug_log_font = get_assets().get_font(&debug_log_font_name).clone();
-                let window_config = GameStateType::get_window_config();
                 let mut draw = Drawstate::new(textures_splash, untextured_sprite, debug_log_font);
+                let window_preferences = GameStateType::get_window_preferences();
                 game_setup_window(
                     &mut draw,
-                    &window_config,
+                    &window_preferences,
                     window_screen_width(),
                     window_screen_height(),
                 );
                 draw.set_shaderparams_default(
                     Color::white(),
                     Mat4::ortho_origin_left_top(
-                        window_config.canvas_width as f32,
-                        window_config.canvas_height as f32,
+                        window_preferences.canvas_width as f32,
+                        window_preferences.canvas_height as f32,
                         DEFAULT_WORLD_ZNEAR,
                         DEFAULT_WORLD_ZFAR,
                     ),
                     Mat4::ortho_origin_left_top(
-                        window_config.canvas_width as f32,
-                        window_config.canvas_height as f32,
+                        window_preferences.canvas_width as f32,
+                        window_preferences.canvas_height as f32,
                         DEFAULT_WORLD_ZNEAR,
                         DEFAULT_WORLD_ZFAR,
                     ),
@@ -246,7 +255,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
                 {
                     assert!(get_resources().audio.is_none());
-                    let window_config = GameStateType::get_window_config();
+                    let window_config = GameStateType::get_window_preferences();
                     let mut audio = Audiostate::new(
                         get_assets().get_audio_resources_sample_rate_hz(),
                         window_config.canvas_width as f32 / 2.0,
@@ -259,12 +268,12 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
                 {
                     assert!(get_resources().globals.is_none());
-                    let window_config = GameStateType::get_window_config();
+                    let window_preferences = GameStateType::get_window_preferences();
                     let random = Random::new_from_seed((time_since_startup * 1000000000.0) as u64);
                     let camera = GameCamera::new(
                         Vec2::zero(),
-                        window_config.canvas_width,
-                        window_config.canvas_height,
+                        window_preferences.canvas_width,
+                        window_preferences.canvas_height,
                         false,
                     );
                     let cursors = {
@@ -289,8 +298,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                         time_since_startup,
 
                         is_paused: false,
-                        canvas_width: window_config.canvas_width as f32,
-                        canvas_height: window_config.canvas_height as f32,
+                        canvas_width: window_preferences.canvas_width as f32,
+                        canvas_height: window_preferences.canvas_height as f32,
                     });
                 }
 
@@ -637,7 +646,7 @@ pub fn game_handle_mouse_camera_zooming_panning() {
 }
 
 #[derive(Clone, Copy)]
-pub struct WindowConfig {
+pub struct WindowPreferences {
     pub has_canvas: bool,
     pub canvas_width: u32,
     pub canvas_height: u32,
@@ -654,7 +663,7 @@ pub struct WindowConfig {
 
 pub fn game_setup_window(
     draw: &mut Drawstate,
-    config: &WindowConfig,
+    config: &WindowPreferences,
     screen_resolution_x: u32,
     screen_resolution_y: u32,
 ) {
