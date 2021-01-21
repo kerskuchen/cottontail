@@ -1,13 +1,12 @@
 # DONE:
-  
-- added simple api for drawstate
-- added simple api for audiostate
-- added simple api for assets
-- added simple api for coordinate conversion
-- make draw/audio/other things global for easier use (we run everything on the same thread anyway)
 
+- simplifications of lib_game
+- moves debug draw logging out of drawstate into global state
+- instantiate drawstate without textures and sprites
+  
 # CURRENT
 
+- assure that assetpacker can write "untextured" white pixel into every atlas texture
 - refactor tick function in lib_game into stages and clean it up / make more it sensible / easier to grok
 
 # NEXT:
@@ -387,3 +386,9 @@
 - gamepad input overhaul - now just reading whole button/axis-state instead of events. this will
   make it easier for us to use gamepad web api
 - adds platform windows commands to easy api
+
+- added simple api for drawstate
+- added simple api for audiostate
+- added simple api for assets
+- added simple api for coordinate conversion
+- make draw/audio/other things global for easier use (we run everything on the same thread anyway)

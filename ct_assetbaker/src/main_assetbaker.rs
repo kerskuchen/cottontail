@@ -143,14 +143,6 @@ fn bake_graphics_resources() {
         result_sheet.extend_by(sheet)
     }
 
-    // We need an additional untextured white 1x1 pixel sprite to draw color modulated shapes
-    let untextured_name = "untextured".to_owned();
-    let untextured_path = "target/assets_temp/sprites/untextured_temp.png".to_owned();
-    let untextured = Bitmap::new_filled(1, 1, PixelRGBA::white());
-    untextured.write_to_png_file(&untextured_path);
-    let untextured_sheet = aseprite::create_sheet(&untextured_path, &untextured_name);
-    result_sheet.extend_by(untextured_sheet.clone());
-
     result_sheet.pack_and_serialize("graphics");
 
     // Create minimal prelude graphics sheet that starts up fast and only shows splashscreen
@@ -182,7 +174,6 @@ fn bake_graphics_resources() {
         PixelRGBA::black(),
     );
     prelude_sheet.extend_by(default_font_sheet);
-    prelude_sheet.extend_by(untextured_sheet);
     prelude_sheet.extend_by(splashscreen_sheet);
     prelude_sheet.pack_and_serialize("graphics_splash");
 }
@@ -1167,13 +1158,20 @@ impl GraphicsSheet {
         recreate_directory(&pack_temp_out_dir);
 
         // Pack textures
-        let (textures, sprite_positions) = {
+        let (mut textures, sprite_positions) = {
             let mut packer = BitmapMultiAtlas::new(1024, Some(2048));
             for (image_name, image) in self.images.iter() {
                 packer.pack_bitmap(image_name, image);
             }
             packer.finish()
         };
+
+        // TODO: Make sure that the last pixel is free for us to write by forbidding the atlas packer
+        //       to use the space
+        for texture in &mut textures {
+            assert!(texture.get(texture.width - 1, texture.height - 1) == PixelRGBA::transparent());
+            texture.set(texture.width - 1, texture.height - 1, PixelRGBA::white());
+        }
 
         // Create png files
         let textures_dimensions: Vec<u32> = textures

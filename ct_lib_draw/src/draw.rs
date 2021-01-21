@@ -423,22 +423,25 @@ pub struct Drawstate {
 // Creation and configuration
 
 impl Drawstate {
-    pub fn new(textures: Vec<Rc<RefCell<Bitmap>>>, untextured_sprite: Sprite) -> Drawstate {
-        let textures_size = textures
-            .first()
-            .expect("Drawstate: No Textures given")
-            .borrow()
-            .width as u32;
-
+    pub fn new() -> Drawstate {
+        // Create a dummy texture and reserve a white pixel for special usage
+        let textures = vec![Rc::new(RefCell::new(Bitmap::new_filled(
+            1,
+            1,
+            PixelRGBA::white(),
+        )))];
         let textures_dirty = vec![true; textures.len()];
-
-        // Reserves a white pixel for special usage on the first page
-        let untextured_uv_center_coord = untextured_sprite.trimmed_uvs;
-        let untextured_uv_center_atlas_page = untextured_sprite.atlas_texture_index;
+        let untextured_uv_center_coord = AAQuad {
+            left: 1.0,
+            top: 1.0,
+            right: 1.0,
+            bottom: 1.0,
+        };
+        let untextured_uv_center_atlas_page = 0;
 
         Drawstate {
             textures,
-            textures_size,
+            textures_size: 1,
             textures_dirty,
 
             untextured_uv_center_coord,
@@ -465,28 +468,27 @@ impl Drawstate {
         }
     }
 
-    pub fn assign_textures(
-        &mut self,
-        textures: Vec<Rc<RefCell<Bitmap>>>,
-        untextured_sprite: Sprite,
-    ) {
+    pub fn assign_textures(&mut self, textures: Vec<Rc<RefCell<Bitmap>>>) {
         let textures_size = textures
             .first()
             .expect("Drawstate: No Textures given")
             .borrow()
             .width as u32;
 
-        let textures_dirty = vec![true; textures.len()];
+        // NOTE: We assume that every texture has a white pixel in its bottom-right corner
+        for texture in &textures {
+            let texture = texture.borrow();
+            assert!(
+                texture.get(texture.width - 1, texture.height - 1) == PixelRGBA::white(),
+                "Last pixel in first texture must be 0xFFFFFFFF"
+            );
+        }
 
-        // Reserves a white pixel for special usage on the first page
-        let untextured_uv_center_coord = untextured_sprite.trimmed_uvs;
-        let untextured_uv_center_atlas_page = untextured_sprite.atlas_texture_index;
+        let textures_dirty = vec![true; textures.len()];
 
         self.textures = textures;
         self.textures_size = textures_size;
         self.textures_dirty = textures_dirty;
-        self.untextured_uv_center_coord = untextured_uv_center_coord;
-        self.untextured_uv_center_atlas_page = untextured_uv_center_atlas_page;
     }
 
     fn texturename_for_atlaspage(textures_size: u32, page_index: TextureIndex) -> String {

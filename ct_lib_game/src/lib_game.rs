@@ -86,9 +86,9 @@ struct AppResources {
     pub gui: GuiState,
     /// NOTE: This depends on drawstate to be available
     pub debug_draw_logger: DebugDrawLogState,
-
     /// NOTE: This depends on graphics assets to be available
-    pub draw: Option<Drawstate>,
+    pub draw: Drawstate,
+
     /// NOTE: This depends on audio assets to be available
     pub audio: Option<Audiostate>,
     pub globals: Option<Globals>,
@@ -107,8 +107,8 @@ fn get_resources() -> &'static mut AppResources {
                     input: InputState::new(),
                     gui: GuiState::new(),
                     debug_draw_logger: DebugDrawLogState::new(),
+                    draw: Drawstate::new(),
 
-                    draw: None,
                     audio: None,
                     globals: None,
                 });
@@ -137,7 +137,7 @@ fn get_globals() -> &'static mut Globals {
 }
 #[inline(always)]
 fn get_draw() -> &'static mut Drawstate {
-    get_resources().draw.as_mut().unwrap()
+    &mut get_resources().draw
 }
 #[inline(always)]
 fn get_audio() -> &'static mut Audiostate {
@@ -208,10 +208,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
             AssetLoadingStage::SplashStart => return,
             AssetLoadingStage::SplashProgress => return,
             AssetLoadingStage::SplashFinish => {
-                assert!(get_resources().draw.is_none());
                 let textures_splash = get_assets().get_atlas_textures().clone();
-                let untextured_sprite = get_assets().get_sprite("untextured").clone();
-                get_resources().draw = Some(Drawstate::new(textures_splash, untextured_sprite));
+                get_draw().assign_textures(textures_splash);
 
                 let window_preferences = GameStateType::get_window_preferences();
                 game_setup_window(
@@ -255,12 +253,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
             AssetLoadingStage::DecodingStart => {}
             AssetLoadingStage::DecodingProgress => {}
             AssetLoadingStage::DecodingFinish => {
-                {
-                    assert!(get_resources().draw.is_some());
-                    let textures = get_assets().get_atlas_textures().clone();
-                    let untextured_sprite = get_assets().get_sprite("untextured").clone();
-                    get_draw().assign_textures(textures, untextured_sprite);
-                }
+                let textures = get_assets().get_atlas_textures().clone();
+                get_draw().assign_textures(textures);
 
                 let (canvas_width, canvas_height) = get_draw()
                     .get_canvas_dimensions()
@@ -321,8 +315,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
         if get_assets().hotreload_assets() {
             let draw = get_draw();
             let textures = get_assets().get_atlas_textures().clone();
-            let untextured_sprite = get_assets().get_sprite("untextured").clone();
-            draw.assign_textures(textures, untextured_sprite);
+            draw.assign_textures(textures);
 
             let audio = get_audio();
             let audio_recordings = get_assets().get_audiorecordings().clone();
