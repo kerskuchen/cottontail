@@ -3,10 +3,10 @@
 - simplifications of lib_game
 - moves debug draw logging out of drawstate into global state
 - instantiate drawstate without textures and sprites
+- assure that assetpacker can write "untextured" white pixel into every atlas texture
   
 # CURRENT
 
-- assure that assetpacker can write "untextured" white pixel into every atlas texture
 - refactor tick function in lib_game into stages and clean it up / make more it sensible / easier to grok
 
 # NEXT:

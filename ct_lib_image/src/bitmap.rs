@@ -292,21 +292,32 @@ pub struct BitmapAtlas {
     pub atlas_texture_size_max: Option<u32>,
     pub rect_packer: rect_packer::DensePacker,
     pub sprite_positions: IndexMap<String, Vec2i>,
+    pub reserve_last_row: bool,
 }
 
 impl BitmapAtlas {
     pub fn new(
         atlas_texture_size_initial: u32,
         atlas_texture_size_max: Option<u32>,
+        reserve_last_row: bool,
     ) -> BitmapAtlas {
+        let rect_packer = if reserve_last_row {
+            rect_packer::DensePacker::new(
+                atlas_texture_size_initial as i32,
+                atlas_texture_size_initial as i32 - 1,
+            )
+        } else {
+            rect_packer::DensePacker::new(
+                atlas_texture_size_initial as i32,
+                atlas_texture_size_initial as i32,
+            )
+        };
         BitmapAtlas {
             atlas_texture: Bitmap::new(atlas_texture_size_initial, atlas_texture_size_initial),
-            rect_packer: rect_packer::DensePacker::new(
-                atlas_texture_size_initial as i32,
-                atlas_texture_size_initial as i32,
-            ),
+            rect_packer,
             sprite_positions: IndexMap::new(),
             atlas_texture_size_max,
+            reserve_last_row,
         }
     }
 
@@ -341,7 +352,12 @@ impl BitmapAtlas {
 
             self.atlas_texture
                 .extend(0, 0, texture_size, texture_size, PixelRGBA::transparent());
-            self.rect_packer.resize(2 * texture_size, 2 * texture_size);
+            if self.reserve_last_row {
+                self.rect_packer.resize(2 * texture_size, 2 * texture_size);
+            } else {
+                self.rect_packer
+                    .resize(2 * texture_size, 2 * texture_size - 1);
+            }
 
             if let Some(pos) = self.pack_bitmap(name, image) {
                 return Some(pos);
@@ -356,12 +372,14 @@ pub struct BitmapMultiAtlas {
     pub atlas_texture_size_max: Option<u32>,
     pub atlas_packers: Vec<BitmapAtlas>,
     pub sprite_positions: IndexMap<String, BitmapAtlasPosition>,
+    pub reserve_last_row: bool,
 }
 
 impl BitmapMultiAtlas {
     pub fn new(
         atlas_texture_size_initial: u32,
         atlas_texture_size_max: Option<u32>,
+        reserve_last_row: bool,
     ) -> BitmapMultiAtlas {
         BitmapMultiAtlas {
             atlas_texture_size_initial,
@@ -369,8 +387,10 @@ impl BitmapMultiAtlas {
             atlas_packers: vec![BitmapAtlas::new(
                 atlas_texture_size_initial,
                 atlas_texture_size_max,
+                reserve_last_row,
             )],
             sprite_positions: IndexMap::new(),
+            reserve_last_row,
         }
     }
 
@@ -384,6 +404,7 @@ impl BitmapMultiAtlas {
         self.atlas_packers.push(BitmapAtlas::new(
             self.atlas_texture_size_initial,
             self.atlas_texture_size_max,
+            self.reserve_last_row,
         ));
         if let Some(atlas_position) = self.pack_bitmap_internal(sprite_name, image) {
             atlas_position

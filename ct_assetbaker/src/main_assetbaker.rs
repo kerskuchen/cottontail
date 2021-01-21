@@ -1159,15 +1159,17 @@ impl GraphicsSheet {
 
         // Pack textures
         let (mut textures, sprite_positions) = {
-            let mut packer = BitmapMultiAtlas::new(1024, Some(2048));
+            let mut packer = BitmapMultiAtlas::new(1024, Some(2048), true);
             for (image_name, image) in self.images.iter() {
                 packer.pack_bitmap(image_name, image);
             }
             packer.finish()
         };
 
-        // TODO: Make sure that the last pixel is free for us to write by forbidding the atlas packer
-        //       to use the space
+        // NOTE: Drawstate assumes that every texture has a white pixel in its bottom-right corner
+        //       to optimize shape drawing. As we made sure that the last row of every texture is
+        //       reserved by passing a true to the `BitmapMultiAtlas` above, we just draw the
+        //       white pixel into the bottom right corner
         for texture in &mut textures {
             assert!(texture.get(texture.width - 1, texture.height - 1) == PixelRGBA::transparent());
             texture.set(texture.width - 1, texture.height - 1, PixelRGBA::white());
