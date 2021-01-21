@@ -1,4 +1,6 @@
 mod aseprite;
+mod aseprite_reader;
+mod aseprite_test;
 
 use audio::write_audio_samples_to_wav_file;
 use ct_lib_audio as audio;
@@ -980,6 +982,9 @@ fn recreate_directory(path: &str) {
 }
 
 fn main() {
+    aseprite_test::run().expect("Failed to run");
+    return;
+
     let start_time = std::time::Instant::now();
 
     init_logging("target/assetbaker_log.txt", log::Level::Trace).expect("Unable to init logging");

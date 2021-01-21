@@ -90,16 +90,19 @@ impl Aseprite {
         }
 
         if let Some(cel) = self.get_cel(frame_index, layer_index) {
-            if cel.opacity != 0 {
-                let opacity = (cel.opacity as f32 / 255.0) * (layer.opacity as f32 / 255.0);
-                let mut cel_bitmap = cel.get_bitmap().to_premultiplied_alpha();
-                for pixel in cel_bitmap.data.iter_mut() {
-                    let mut color = pixel.to_color();
-                    color *= opacity;
-                    *pixel = color.to_pixelrgba();
-                }
-                cel_bitmap.blit_to(&mut result, Vec2i::new(cel.pos_x, cel.pos_y), true);
+            if cel.opacity == 0 {
+                // Nothing is visible
+                return result;
             }
+
+            let opacity = (cel.opacity as f32 / 255.0) * (layer.opacity as f32 / 255.0);
+            let mut cel_bitmap = cel.get_bitmap().to_premultiplied_alpha();
+            for pixel in cel_bitmap.data.iter_mut() {
+                let mut color = pixel.to_color();
+                color *= opacity;
+                *pixel = color.to_pixelrgba();
+            }
+            cel_bitmap.blit_to(&mut result, Vec2i::new(cel.pos_x, cel.pos_y), true);
         }
 
         result
