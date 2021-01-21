@@ -8,6 +8,40 @@
 # CURRENT
 
 - refactor tick function in lib_game into stages and clean it up / make more it sensible / easier to grok
+- make unique sources of truths for
+  - canvas dimension
+  - screen dimensions
+  - cursor positions
+  - deltatime (regular and speed modified)
+  - examples: 
+    Drawstate
+      canvas dimensions
+    Camera:
+      canvas dimensions
+    Input:
+      pub has_focus_event: bool,
+      pub has_focus: bool,
+      pub has_foreground_event: bool,
+
+      pub screen_is_fullscreen: bool,
+      pub screen_framebuffer_width: u32,
+      pub screen_framebuffer_height: u32,
+      pub screen_framebuffer_dimensions_changed: bool,
+
+      pub deltatime: f32,
+      pub time_since_startup: f64,
+    Globals
+      pub deltatime: f32,
+      pub deltatime_without_speedup: f32,
+
+      pub deltatime_speed_factor_user: f32,
+      pub deltatime_speed_factor_debug: f32,
+
+      pub time_since_startup: f64,
+      pub is_paused: bool,
+
+      pub canvas_width: f32,
+      pub canvas_height: f32,
 
 # NEXT:
 
