@@ -427,16 +427,42 @@ pub fn common_resolutions(resolutions: &[(u32, u32)]) -> Vec<(u32, u32)> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Snippets
-
-/*
-
 // Min/Max/Sort floats
 
-let val_min = v.iter().fold(std::f32::MAX, |acc, val| f32::min(acc, *val));
-let val_max = v.iter().fold(std::f32::MIN, |acc, val| f32::max(acc, *val));
+pub fn min_in_list_f32(values: &[f32]) -> f32 {
+    values
+        .iter()
+        .fold(std::f32::MAX, |acc, val| f32::min(acc, *val))
+}
 
-v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-v.sort_by(|a, b| a.partial_cmp(b).unwrap())
+pub fn max_in_list_f32(values: &[f32]) -> f32 {
+    values
+        .iter()
+        .fold(std::f32::MIN, |acc, val| f32::max(acc, *val))
+}
 
-*/
+pub fn min_in_list_f64(values: &[f64]) -> f64 {
+    values
+        .iter()
+        .fold(std::f64::MAX, |acc, val| f64::min(acc, *val))
+}
+
+pub fn max_in_list_f64(values: &[f64]) -> f64 {
+    values
+        .iter()
+        .fold(std::f64::MIN, |acc, val| f64::max(acc, *val))
+}
+
+pub fn sort_list_f32(values: &mut [f32]) {
+    values.sort_by(|a, b| {
+        a.partial_cmp(b)
+            .unwrap_or_else(|| std::cmp::Ordering::Equal)
+    })
+}
+
+pub fn sort_list_f64(values: &mut [f64]) {
+    values.sort_by(|a, b| {
+        a.partial_cmp(b)
+            .unwrap_or_else(|| std::cmp::Ordering::Equal)
+    })
+}
