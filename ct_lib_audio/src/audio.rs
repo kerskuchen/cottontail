@@ -4,7 +4,7 @@ use lewton::inside_ogg::OggStreamReader;
 use super::math::*;
 
 use core::panic;
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, mem::take, rc::Rc};
 use std::{
     collections::{HashMap, HashSet},
     io::Cursor,
@@ -1122,16 +1122,6 @@ impl MonoToStereoAdapter {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Audiostreams
 
-#[derive(Clone, Copy)]
-struct AudioRenderParams {
-    listener_pos: Vec2,
-    listener_vel: Vec2,
-    doppler_effect_medium_velocity_abs_max: f32,
-    /// Tells how much units to the left/right an audio source position needs to be away from the
-    /// listener_pos to max out the pan to -1.0/1.0
-    distance_for_max_pan: f32,
-}
-
 #[derive(Clone)]
 struct AudioStream {
     name: String,
@@ -1157,7 +1147,7 @@ struct AudioStream {
     chunk_internal: AudioChunk,
     chunk_output: AudioChunk,
 
-    spatial_params: Option<AudioSpatialParams>,
+    spatial_params: Option<AudioStreamSpatialParams>,
 }
 
 impl AudioStream {
@@ -1169,7 +1159,7 @@ impl AudioStream {
         playback_speed_percent: f32,
         volume: f32,
         pan: f32,
-        spatial_params: Option<AudioSpatialParams>,
+        spatial_params: Option<AudioStreamSpatialParams>,
     ) -> AudioStream {
         let chunk_internal = match source.channels() {
             AudioChannels::Mono => AudioChunk::new_mono(),
@@ -1199,7 +1189,7 @@ impl AudioStream {
         }
     }
 
-    fn skip_ouput_chunk(&mut self, output_params: AudioRenderParams) {
+    fn skip_ouput_chunk(&mut self, output_params: AudioGlobalSpatialParams) {
         // Mute volume for output chunks
         self.chunk_internal.volume = 0.0;
         self.chunk_output.volume = 0.0;
@@ -1264,7 +1254,7 @@ impl AudioStream {
         }
     }
 
-    fn produce_output_chunk(&mut self, output_params: AudioRenderParams) {
+    fn produce_output_chunk(&mut self, output_params: AudioGlobalSpatialParams) {
         // Fastpath - we are muted and already had time to wind-down
         if self.muted_volume == 0.0 && self.volume_adapter.volume_current == 0.0 {
             self.skip_ouput_chunk(output_params);
@@ -1469,7 +1459,7 @@ impl AudioFalloffType {
 }
 
 #[derive(Copy, Clone)]
-pub struct AudioSpatialParams {
+pub struct AudioStreamSpatialParams {
     pub pos: Vec2,
     pub vel: Vec2,
     pub doppler_effect_strength: f32,
@@ -1478,7 +1468,7 @@ pub struct AudioSpatialParams {
     pub falloff_distance_end: f32,
 }
 
-impl AudioSpatialParams {
+impl AudioStreamSpatialParams {
     pub fn new(
         pos: Vec2,
         vel: Vec2,
@@ -1486,8 +1476,8 @@ impl AudioSpatialParams {
         falloff_type: AudioFalloffType,
         falloff_distance_start: f32,
         falloff_distance_end: f32,
-    ) -> AudioSpatialParams {
-        AudioSpatialParams {
+    ) -> AudioStreamSpatialParams {
+        AudioStreamSpatialParams {
             pos,
             vel,
             doppler_effect_strength,
@@ -1499,28 +1489,29 @@ impl AudioSpatialParams {
 
     fn calculate_volume_pan_playback_speed(
         &self,
-        output_params: &AudioRenderParams,
+        output_params: &AudioGlobalSpatialParams,
     ) -> (f32, f32, f32) {
-        let volume_factor = AudioSpatialParams::calculate_spatial_volume_factor(
+        let volume_factor = AudioStreamSpatialParams::calculate_spatial_volume_factor(
             self.pos,
             output_params.listener_pos,
             self.falloff_type,
             self.falloff_distance_start,
             self.falloff_distance_end,
         );
-        let pan = AudioSpatialParams::calculate_spatial_pan(
+        let pan = AudioStreamSpatialParams::calculate_spatial_pan(
             self.pos,
             output_params.listener_pos,
             output_params.distance_for_max_pan,
         );
-        let playback_speed_factor = AudioSpatialParams::calculate_spatial_playback_speed_factor(
-            self.pos,
-            self.vel,
-            output_params.listener_pos,
-            output_params.listener_vel,
-            self.doppler_effect_strength,
-            output_params.doppler_effect_medium_velocity_abs_max,
-        );
+        let playback_speed_factor =
+            AudioStreamSpatialParams::calculate_spatial_playback_speed_factor(
+                self.pos,
+                self.vel,
+                output_params.listener_pos,
+                output_params.listener_vel,
+                self.doppler_effect_strength,
+                output_params.doppler_effect_medium_velocity_abs_max,
+            );
         (volume_factor, pan, playback_speed_factor)
     }
 
@@ -1576,21 +1567,7 @@ impl AudioSpatialParams {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Audiostate
-
-/// NOTE: This can never be zero for a valid stream
-pub type AudioStreamId = u64;
-pub type AudioGroupId = u32;
-
-#[derive(Clone)]
-struct AudioGroup {
-    is_muted: bool,
-}
-impl Default for AudioGroup {
-    fn default() -> Self {
-        AudioGroup { is_muted: false }
-    }
-}
+// Resampler
 
 #[derive(Clone)]
 struct OutputResampler {
@@ -1751,6 +1728,45 @@ impl OutputResampler {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Audiostate
+
+/// NOTE: This can never be zero for a valid stream
+pub type AudioStreamId = u64;
+pub type AudioGroupId = u32;
+
+#[derive(Clone, Copy)]
+pub struct AudioGlobalSpatialParams {
+    pub listener_pos: Vec2,
+    pub listener_vel: Vec2,
+    /// At which velocity the doppler effect is 100% strong
+    pub doppler_effect_medium_velocity_abs_max: f32,
+    /// Tells how much units to the left/right an audio source position needs to be away from the
+    /// listener_pos to max out the pan to -1.0/1.0
+    pub distance_for_max_pan: f32,
+}
+
+impl Default for AudioGlobalSpatialParams {
+    fn default() -> Self {
+        AudioGlobalSpatialParams {
+            listener_pos: Vec2::zero(),
+            listener_vel: Vec2::zero(),
+            distance_for_max_pan: 10_000.0,
+            doppler_effect_medium_velocity_abs_max: 320.0,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct AudioGroup {
+    is_muted: bool,
+}
+impl Default for AudioGroup {
+    fn default() -> Self {
+        AudioGroup { is_muted: false }
+    }
+}
+
 #[derive(Clone)]
 pub struct Audiostate {
     next_frame_index_to_output: AudioFrameIndex,
@@ -1762,8 +1778,7 @@ pub struct Audiostate {
     internal_sample_rate_hz: usize,
     global_playback_speed_factor: f32,
     global_volume_factor: f32,
-
-    render_params: AudioRenderParams,
+    global_spatial_params: AudioGlobalSpatialParams,
 
     /// This can never be zero when used with `get_next_stream_id` method
     next_stream_id: AudioStreamId,
@@ -1780,25 +1795,16 @@ pub struct Audiostate {
 }
 
 impl Audiostate {
-    pub fn new(
-        internal_sample_rate_hz: usize,
-        distance_for_max_pan: f32,
-        doppler_effect_medium_velocity_abs_max: f32,
-    ) -> Audiostate {
+    pub fn new() -> Audiostate {
         Audiostate {
             next_frame_index_to_output: 0,
             audio_time: 0.0,
             audio_time_smoothed: 0.0,
 
-            internal_sample_rate_hz,
+            internal_sample_rate_hz: 44100,
             global_playback_speed_factor: 1.0,
             global_volume_factor: 1.0,
-            render_params: AudioRenderParams {
-                listener_pos: Vec2::zero(),
-                listener_vel: Vec2::zero(),
-                doppler_effect_medium_velocity_abs_max,
-                distance_for_max_pan,
-            },
+            global_spatial_params: AudioGlobalSpatialParams::default(),
 
             next_stream_id: 0,
             streams: HashMap::new(),
@@ -1813,12 +1819,10 @@ impl Audiostate {
 
     #[inline]
     pub fn reset(&mut self) {
-        let mut new_audiostate = Audiostate::new(
-            self.internal_sample_rate_hz,
-            self.render_params.distance_for_max_pan,
-            self.render_params.doppler_effect_medium_velocity_abs_max,
-        );
-        new_audiostate.audio_recordings = self.audio_recordings.drain().collect();
+        let mut new_audiostate = Audiostate::new();
+
+        let audio_recordings = std::mem::take(&mut self.audio_recordings);
+        new_audiostate.assign_audio_recordings(audio_recordings);
         *self = new_audiostate;
     }
 
@@ -1829,13 +1833,17 @@ impl Audiostate {
     ) {
         for (name, recording) in audio_recordings.iter() {
             let recording = recording.borrow();
-            assert!(
-                recording.sample_rate_hz == self.internal_sample_rate_hz,
-                "Resource '{}' has sample_rate {}Hz - expected {}Hz",
-                name,
-                recording.sample_rate_hz,
-                self.internal_sample_rate_hz
-            );
+            if self.internal_sample_rate_hz == 0 {
+                self.internal_sample_rate_hz = recording.sample_rate_hz;
+            } else {
+                assert!(
+                    recording.sample_rate_hz == self.internal_sample_rate_hz,
+                    "Resource '{}' has sample_rate {}Hz - expected {}Hz",
+                    name,
+                    recording.sample_rate_hz,
+                    self.internal_sample_rate_hz
+                );
+            }
         }
         self.audio_recordings = audio_recordings;
     }
@@ -1862,13 +1870,8 @@ impl Audiostate {
     }
 
     #[inline]
-    pub fn set_global_listener_pos(&mut self, listener_pos: Vec2) {
-        self.render_params.listener_pos = listener_pos;
-    }
-
-    #[inline]
-    pub fn set_global_listener_vel(&mut self, listener_vel: Vec2) {
-        self.render_params.listener_vel = listener_vel;
+    pub fn set_global_spatial_params(&mut self, spatial_params: AudioGlobalSpatialParams) {
+        self.global_spatial_params = spatial_params;
     }
 
     /// NOTE: If spatial_params is Some(..) then pan will be ignored
@@ -1883,7 +1886,7 @@ impl Audiostate {
         volume: f32,
         playback_speed: f32,
         pan: f32,
-        spatial_params: Option<AudioSpatialParams>,
+        spatial_params: Option<AudioStreamSpatialParams>,
     ) -> AudioStreamId {
         let id = self.create_next_stream_id();
         let start_delay_framecount = self.start_time_to_delay_framecount(schedule_time_seconds);
@@ -1904,10 +1907,10 @@ impl Audiostate {
                     "Cannot play stereo recording '{}' spatially",
                     recording_name
                 );
-                AudioSpatialParams::calculate_spatial_pan(
+                AudioStreamSpatialParams::calculate_spatial_pan(
                     params.pos,
-                    self.render_params.listener_pos,
-                    self.render_params.distance_for_max_pan,
+                    self.global_spatial_params.listener_pos,
+                    self.global_spatial_params.distance_for_max_pan,
                 )
             } else {
                 pan
@@ -1938,7 +1941,7 @@ impl Audiostate {
         volume: f32,
         playback_speed: f32,
         pan: f32,
-        spatial_params: Option<AudioSpatialParams>,
+        spatial_params: Option<AudioStreamSpatialParams>,
     ) {
         let id = self.play(
             recording_name,
@@ -2070,9 +2073,9 @@ impl Audiostate {
         for stream in self.streams.values_mut() {
             let group_is_muted = self.groups.entry(stream.group_id).or_default().is_muted;
             if group_is_muted {
-                stream.skip_ouput_chunk(self.render_params);
+                stream.skip_ouput_chunk(self.global_spatial_params);
             } else {
-                stream.produce_output_chunk(self.render_params);
+                stream.produce_output_chunk(self.global_spatial_params);
             }
             let mut rendered_chunk = stream.get_output_chunk_mut();
             rendered_chunk.volume *= self.global_volume_factor;

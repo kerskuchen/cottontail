@@ -202,6 +202,9 @@ pub struct GameCamera {
     pub pos_target: Vec2,
     pub use_pixel_perfect_smoothing: bool,
 
+    pub pos_previous: Vec2,
+    pub vel: Vec2,
+
     pub drag_margin_left: f32,
     pub drag_margin_top: f32,
     pub drag_margin_right: f32,
@@ -226,15 +229,18 @@ impl GameCamera {
         GameCamera {
             cam,
             pos,
-            screenshake_offset: Vec2::zero(),
-            screenshakers: Vec::new(),
             pos_target: pos,
             use_pixel_perfect_smoothing: false,
+
+            pos_previous: pos,
+            vel: Vec2::zero(),
 
             drag_margin_left: 0.2,
             drag_margin_top: 0.1,
             drag_margin_right: 0.2,
             drag_margin_bottom: 0.1,
+            screenshake_offset: Vec2::zero(),
+            screenshakers: Vec::new(),
         }
     }
 
@@ -284,6 +290,13 @@ impl GameCamera {
         } else {
             Vec2::lerp(self.pos, self.pos_target, 0.05)
         };
+
+        self.vel = (self.pos - self.pos_previous) / deltatime;
+        self.pos_previous = self.pos;
+    }
+
+    pub fn velocity(&self) -> Vec2 {
+        self.vel
     }
 
     pub fn set_pos(&mut self, pos: Vec2) {

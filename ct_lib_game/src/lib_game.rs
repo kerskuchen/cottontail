@@ -262,11 +262,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
                 {
                     assert!(get_resources().audio.is_none());
-                    let mut audio = Audiostate::new(
-                        get_assets().get_audio_resources_sample_rate_hz(),
-                        canvas_width as f32 / 2.0,
-                        10_000.0,
-                    );
+                    let mut audio = Audiostate::new();
                     let audio_recordings = get_assets().get_audiorecordings().clone();
                     audio.assign_audio_recordings(audio_recordings);
                     get_resources().audio = Some(audio);
@@ -414,7 +410,6 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 game_handle_system_keys();
                 game_handle_mouse_camera_zooming_panning();
                 get_camera().update(time_deltatime());
-                get_audio().set_global_listener_pos(get_camera().center());
 
                 get_draw().set_shaderparams_default(
                     Color::white(),
@@ -436,7 +431,12 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
             if let Some(audio) = get_resources().audio.as_mut() {
                 let output_sample_rate_hz = audio_output.get_audio_playback_rate_hz();
-                audio.set_global_listener_pos(get_camera().center());
+                audio.set_global_spatial_params(AudioGlobalSpatialParams {
+                    listener_pos: get_camera().center(),
+                    listener_vel: get_camera().velocity(),
+                    doppler_effect_medium_velocity_abs_max: 10_000.0,
+                    distance_for_max_pan: get_camera().cam.dim_frustum.x / 2.0,
+                });
 
                 self.audio_chunk_timer += get_input().deltatime;
 

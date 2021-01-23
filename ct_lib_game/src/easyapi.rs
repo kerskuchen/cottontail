@@ -1020,7 +1020,7 @@ pub fn audio_play(
     volume: f32,
     playback_speed: f32,
     pan: f32,
-    spatial_params: Option<AudioSpatialParams>,
+    spatial_params: Option<AudioStreamSpatialParams>,
 ) -> AudioStreamId {
     get_audio().play(
         recording_name,
@@ -1043,7 +1043,7 @@ pub fn audio_play_oneshot(
     volume: f32,
     playback_speed: f32,
     pan: f32,
-    spatial_params: Option<AudioSpatialParams>,
+    spatial_params: Option<AudioStreamSpatialParams>,
 ) {
     get_audio().play_oneshot(
         recording_name,

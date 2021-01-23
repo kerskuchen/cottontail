@@ -7,6 +7,9 @@
   
 # CURRENT
 
+- lets try to group global things together by lifetime and code dependecy
+  i.e. a global struct can be intantly used when it is created (it has no Option fields and 
+  implicit dependencies are satisfied (i.e. on drawstate) )
 - refactor tick function in lib_game into stages and clean it up / make more it sensible / easier to grok
 - make unique sources of truths for
   - canvas dimension
