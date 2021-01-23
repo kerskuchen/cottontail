@@ -71,6 +71,14 @@
             "problemMatcher": [
                 "$rustc"
             ]
+        },
+        {
+            "type": "shell",
+            "label": "project refresh",
+            "command": ".\\project_refresh.cmd",
+            "problemMatcher": [
+                "$rustc"
+            ]
         }
     ]
 }
