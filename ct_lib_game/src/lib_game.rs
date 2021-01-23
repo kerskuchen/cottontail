@@ -88,9 +88,9 @@ struct AppResources {
     pub debug_draw_logger: DebugDrawLogState,
     /// NOTE: This depends on graphics assets to be available
     pub draw: Drawstate,
-
     /// NOTE: This depends on audio assets to be available
-    pub audio: Option<Audiostate>,
+    pub audio: Audiostate,
+
     pub globals: Option<Globals>,
 }
 
@@ -108,8 +108,8 @@ fn get_resources() -> &'static mut AppResources {
                     gui: GuiState::new(),
                     debug_draw_logger: DebugDrawLogState::new(),
                     draw: Drawstate::new(),
+                    audio: Audiostate::new(),
 
-                    audio: None,
                     globals: None,
                 });
 
@@ -141,7 +141,7 @@ fn get_draw() -> &'static mut Drawstate {
 }
 #[inline(always)]
 fn get_audio() -> &'static mut Audiostate {
-    get_resources().audio.as_mut().unwrap()
+    &mut get_resources().audio
 }
 #[inline(always)]
 fn get_debug_draw_logger() -> &'static mut DebugDrawLogState {
@@ -256,18 +256,12 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 let textures = get_assets().get_atlas_textures().clone();
                 get_draw().assign_textures(textures);
 
+                let audio_recordings = get_assets().get_audiorecordings().clone();
+                get_audio().assign_audio_recordings(audio_recordings);
+
                 let (canvas_width, canvas_height) = get_draw()
                     .get_canvas_dimensions()
                     .expect("No canvas dimensions found");
-
-                {
-                    assert!(get_resources().audio.is_none());
-                    let mut audio = Audiostate::new();
-                    let audio_recordings = get_assets().get_audiorecordings().clone();
-                    audio.assign_audio_recordings(audio_recordings);
-                    get_resources().audio = Some(audio);
-                }
-
                 {
                     assert!(get_resources().globals.is_none());
                     let random = Random::new_from_seed((time_since_startup * 1000000000.0) as u64);
@@ -429,9 +423,9 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 );
             }
 
-            if let Some(audio) = get_resources().audio.as_mut() {
+            if self.game.is_some() {
                 let output_sample_rate_hz = audio_output.get_audio_playback_rate_hz();
-                audio.set_global_spatial_params(AudioGlobalSpatialParams {
+                get_audio().set_global_spatial_params(AudioGlobalSpatialParams {
                     listener_pos: get_camera().center(),
                     listener_vel: get_camera().velocity(),
                     doppler_effect_medium_velocity_abs_max: 10_000.0,
@@ -454,7 +448,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                         // out of sync with our realtime
                         continue;
                     }
-                    audio.render_audio_chunk(&mut audiochunk, output_sample_rate_hz);
+                    get_audio().render_audio_chunk(&mut audiochunk, output_sample_rate_hz);
                     let (samples_left, samples_right) = audiochunk.get_stereo_samples();
                     audio_output.submit_frames(samples_left, samples_right);
                     audiochunk.reset();
@@ -463,7 +457,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 // We need to always have a full audiobuffer worth of frames queued up.
                 // If our steady submitting of chunks above was not enough we fill up the queue
                 while audio_output.get_num_frames_in_queue() < audio_buffersize_in_frames {
-                    audio.render_audio_chunk(&mut audiochunk, output_sample_rate_hz);
+                    get_audio().render_audio_chunk(&mut audiochunk, output_sample_rate_hz);
                     let (samples_left, samples_right) = audiochunk.get_stereo_samples();
                     audio_output.submit_frames(samples_left, samples_right);
                     audiochunk.reset();
