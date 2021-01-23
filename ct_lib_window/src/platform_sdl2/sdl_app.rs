@@ -6,7 +6,7 @@ pub use sdl_audio as audio;
 use sdl_input::{sdl_keycode_to_our_keycode, sdl_scancode_to_our_scancode};
 
 use crate::{
-    AppEventHandler, FingerPlatformId, GamepadAxis, GamepadPlatformState, MouseButton,
+    AppEventHandler, AppInfo, FingerPlatformId, GamepadAxis, GamepadPlatformState, MouseButton,
     PlatformWindowCommand,
 };
 
@@ -39,18 +39,17 @@ static mut PLATFORM_WINDOW_COMMANDS: Vec<PlatformWindowCommand> = Vec::new();
 
 pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
     mut app: AppEventHandlerType,
+    app_info: AppInfo,
 ) -> Result<(), String> {
     timer_initialize();
-    let app_config = app.get_app_info();
-    let savedata_dir =
-        get_user_savedata_dir(&app_config.company_name, &app_config.save_folder_name)
-            .unwrap_or_else(|error| {
-                sdl_window::Window::show_error_messagebox(&format!(
-                    "Could not get location for saving userdata: {}",
-                    error,
-                ));
-                panic!()
-            });
+    let savedata_dir = get_user_savedata_dir(&app_info.company_name, &app_info.save_folder_name)
+        .unwrap_or_else(|error| {
+            sdl_window::Window::show_error_messagebox(&format!(
+                "Could not get location for saving userdata: {}",
+                error,
+            ));
+            panic!()
+        });
 
     // ---------------------------------------------------------------------------------------------
     // Logging and error handling
@@ -110,7 +109,7 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
     let mut window = sdl_window::Window::new(
         sdl_video.clone(),
         launcher_config.display_index_to_use,
-        &app_config.window_title,
+        &app_info.window_title,
     );
     let mut renderer = window.create_renderer();
 

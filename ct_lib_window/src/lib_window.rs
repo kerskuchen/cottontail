@@ -20,7 +20,6 @@ pub struct AppInfo {
     pub company_name: String,
 }
 pub trait AppEventHandler {
-    fn get_app_info(&self) -> AppInfo;
     fn reset(&mut self);
 
     fn handle_window_resize(&mut self, new_width: u32, new_height: u32, is_fullscreen: bool);
@@ -57,8 +56,11 @@ pub trait AppEventHandler {
     );
 }
 
-pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(app_context: AppEventHandlerType) {
-    platform::run_main(app_context).ok();
+pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
+    app_context: AppEventHandlerType,
+    app_info: AppInfo,
+) {
+    platform::run_main(app_context, app_info).ok();
 }
 
 pub enum PlatformWindowCommand {

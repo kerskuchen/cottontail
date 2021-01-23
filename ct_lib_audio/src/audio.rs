@@ -4,7 +4,7 @@ use lewton::inside_ogg::OggStreamReader;
 use super::math::*;
 
 use core::panic;
-use std::{cell::RefCell, mem::take, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 use std::{
     collections::{HashMap, HashSet},
     io::Cursor,

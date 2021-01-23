@@ -230,6 +230,7 @@ static mut PLATFORM_WINDOW_COMMANDS: Vec<PlatformWindowCommand> = Vec::new();
 
 pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
     appcontext: AppEventHandlerType,
+    _app_info: AppInfo,
 ) -> Result<(), JsValue> {
     init_logging("", log::Level::Trace).unwrap();
     log::info!("Starting up...");

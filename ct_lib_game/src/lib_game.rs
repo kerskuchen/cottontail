@@ -72,7 +72,6 @@ pub struct GameInfo {
 }
 
 pub trait AppStateInterface: Clone {
-    fn get_game_info() -> GameInfo;
     fn get_window_preferences() -> WindowPreferences;
     fn new() -> Self;
     fn update(&mut self);
@@ -174,15 +173,6 @@ impl<AppStateType: AppStateInterface> AppTicker<AppStateType> {
 }
 
 impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateType> {
-    fn get_app_info(&self) -> AppInfo {
-        let config = GameStateType::get_game_info();
-        AppInfo {
-            window_title: config.game_window_title,
-            save_folder_name: config.game_save_folder_name,
-            company_name: config.game_company_name,
-        }
-    }
-
     fn reset(&mut self) {
         if let Some(game) = self.game.as_mut() {
             get_audio().reset();
@@ -614,9 +604,9 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
     }
 }
 
-pub fn start_mainloop<GameStateType: 'static + AppStateInterface>() {
+pub fn start_mainloop<GameStateType: 'static + AppStateInterface>(app_info: AppInfo) {
     let app_context = AppTicker::<GameStateType>::new();
-    run_main(app_context);
+    run_main(app_context, app_info);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
