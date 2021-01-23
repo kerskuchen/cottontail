@@ -7,44 +7,6 @@
   
 # CURRENT
 
-- lets try to group global things together by lifetime and code dependecy
-  i.e. a global struct can be intantly used when it is created (it has no Option fields and 
-  implicit dependencies are satisfied (i.e. on drawstate) )
-- refactor tick function in lib_game into stages and clean it up / make more it sensible / easier to grok
-- make unique sources of truths for
-  - canvas dimension
-  - screen dimensions
-  - cursor positions
-  - deltatime (regular and speed modified)
-  - examples: 
-    Drawstate
-      canvas dimensions
-    Camera:
-      canvas dimensions
-    Input:
-      pub has_focus_event: bool,
-      pub has_focus: bool,
-      pub has_foreground_event: bool,
-
-      pub screen_is_fullscreen: bool,
-      pub screen_framebuffer_width: u32,
-      pub screen_framebuffer_height: u32,
-      pub screen_framebuffer_dimensions_changed: bool,
-
-      pub deltatime: f32,
-      pub time_since_startup: f64,
-    Globals
-      pub deltatime: f32,
-      pub deltatime_without_speedup: f32,
-
-      pub deltatime_speed_factor_user: f32,
-      pub deltatime_speed_factor_debug: f32,
-
-      pub time_since_startup: f64,
-      pub is_paused: bool,
-
-      pub canvas_width: f32,
-      pub canvas_height: f32,
 
 # NEXT:
 
@@ -89,17 +51,49 @@
   https://github.com/not-fl3/macroquad/blob/master/src/experimental/coroutines.rs
   maybe we need to wait (a lot) longer for something as usable as unity coroutines or cute 
   coroutines. some links for later reference:
+    https://github.com/ejmahler/unity_coroutines
+    https://doc.rust-lang.org/std/ops/trait.Generator.html
+    https://blog.aloni.org/posts/a-stack-less-rust-coroutine-100-loc/
+    https://github.com/RandyGaul/cute_headers/blob/master/cute_coroutine.h
+    https://github.com/a327ex/blog/issues/16
+    https://crates.io/crates/next-gen
 - create a internal mode feature flag and 
   - THIS IS ONLY POSSIBLE ONCE RUST WORKSPACES CAN USE FEATURES SANELY
   - to use local folder for logging
   - enable debug draw logging
-
-  https://github.com/ejmahler/unity_coroutines
-  https://doc.rust-lang.org/std/ops/trait.Generator.html
-  https://blog.aloni.org/posts/a-stack-less-rust-coroutine-100-loc/
-  https://github.com/RandyGaul/cute_headers/blob/master/cute_coroutine.h
-  https://github.com/a327ex/blog/issues/16
-  https://crates.io/crates/next-gen
+- lets try to group global things together by lifetime and code dependecy
+  i.e. a global struct can be intantly used when it is created (it has no Option fields and 
+  implicit dependencies are satisfied (i.e. on drawstate) )
+- refactor tick function in lib_game into stages and clean it up / make more it sensible / easier to grok
+- make unique sources of truths for
+  - canvas dimension
+  - screen dimensions
+  - cursor positions
+  - deltatime (regular and speed modified)
+  - examples: 
+    Drawstate
+      canvas dimensions
+    Camera:
+      canvas dimensions
+    Input:
+      pub has_focus_event: bool,
+      pub has_focus: bool,
+      pub has_foreground_event: bool,
+      pub screen_is_fullscreen: bool,
+      pub screen_framebuffer_width: u32,
+      pub screen_framebuffer_height: u32,
+      pub screen_framebuffer_dimensions_changed: bool,
+      pub deltatime: f32,
+      pub time_since_startup: f64,
+    Globals
+      pub deltatime: f32,
+      pub deltatime_without_speedup: f32,
+      pub deltatime_speed_factor_user: f32,
+      pub deltatime_speed_factor_debug: f32,
+      pub time_since_startup: f64,
+      pub is_paused: bool,
+      pub canvas_width: f32,
+      pub canvas_height: f32,
 
 ## better platform layer
 - sort this list
