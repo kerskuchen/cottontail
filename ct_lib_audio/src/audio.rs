@@ -1801,7 +1801,7 @@ impl Audiostate {
             audio_time: 0.0,
             audio_time_smoothed: 0.0,
 
-            internal_sample_rate_hz: 44100,
+            internal_sample_rate_hz: 0,
             global_playback_speed_factor: 1.0,
             global_volume_factor: 1.0,
             global_spatial_params: AudioGlobalSpatialParams::default(),
