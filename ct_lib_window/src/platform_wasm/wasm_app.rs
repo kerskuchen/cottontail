@@ -10,6 +10,7 @@ use super::renderer_opengl::Renderer;
 use ct_lib_core::log;
 use ct_lib_core::*;
 
+use crate::AppInfo;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
