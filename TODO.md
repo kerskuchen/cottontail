@@ -1,6 +1,7 @@
 # DONE:
 
 - moves debug scene into its own module
+- pass app_info directly without callback
 
 
 # CURRENT
