@@ -650,7 +650,7 @@ impl Drop for Framebuffer {
 impl Framebuffer {
     pub fn new_screen(gl: Rc<glow::Context>, width: u32, height: u32) -> Framebuffer {
         Framebuffer {
-            name: "screen".to_owned(),
+            name: "main".to_owned(),
             width,
             height,
             gl,
@@ -1049,25 +1049,25 @@ impl Renderer {
     }
 
     #[inline]
-    pub fn update_screen_dimensions(&mut self, screen_width: u32, screen_height: u32) {
+    pub fn update_main_framebuffer_dimensions(&mut self, screen_width: u32, screen_height: u32) {
         let gl = &self.gl;
-        if !self.framebuffers.contains_key("screen") {
+        if !self.framebuffers.contains_key("main") {
             self.framebuffers.insert(
-                "screen".to_owned(),
+                "main".to_owned(),
                 Framebuffer::new_screen(gl.clone(), screen_width, screen_height),
             );
         }
 
-        let framebuffer = self.framebuffers.get_mut("screen").unwrap();
+        let framebuffer = self.framebuffers.get_mut("main").unwrap();
         framebuffer.width = screen_width;
         framebuffer.height = screen_height;
     }
 
     #[inline]
-    pub fn get_screen_dimensions(&self) -> (u32, u32) {
+    pub fn get_main_framebuffer_dimensions(&self) -> (u32, u32) {
         let screen = self
             .framebuffers
-            .get("screen")
+            .get("main")
             .unwrap_or_else(|| panic!("Screen framebuffer not created"));
         (screen.width, screen.height)
     }
@@ -1082,11 +1082,11 @@ impl Renderer {
         if ENABLE_LOGS {
             log::trace!(
                 "Assigning buffers:
-        shader: '{}'
-        vertices_bytes: '{}'
-        vertices_floatcount: '{}'
-        indices_bytes: {}
-        indices_count: {}",
+                 shader: '{}'
+                 vertices_bytes: '{}'
+                 vertices_floatcount: '{}'
+                 indices_bytes: {}
+                 indices_count: {}",
                 shader,
                 vertices.len(),
                 vertices.len() / std::mem::size_of::<f32>(),
@@ -1247,7 +1247,7 @@ impl Renderer {
     #[inline]
     pub fn framebuffer_create(&mut self, name: String, width: u32, height: u32) {
         assert!(
-            name != "screen",
+            name != "main",
             "Not allowed to create framebuffer with name 'screen'"
         );
         assert!(
@@ -1268,7 +1268,7 @@ impl Renderer {
     #[inline]
     pub fn framebuffer_update(&mut self, framebuffer: &str, width: u32, height: u32) {
         assert!(
-            framebuffer != "screen",
+            framebuffer != "main",
             "Not allowed to update framebuffer with name 'screen'"
         );
         {
@@ -1300,7 +1300,7 @@ impl Renderer {
     #[inline]
     pub fn framebuffer_delete(&mut self, framebuffer: &str) {
         assert!(
-            framebuffer != "screen",
+            framebuffer != "main",
             "Not allowed to delete framebuffer with name 'screen'"
         );
         if ENABLE_LOGS {

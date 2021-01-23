@@ -584,7 +584,7 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
                     is_fullscreen,
                 );
             }
-            renderer.update_screen_dimensions(window_width as u32, window_height as u32);
+            renderer.update_main_framebuffer_dimensions(window_width as u32, window_height as u32);
         }
 
         //--------------------------------------------------------------------------------------
@@ -623,9 +623,6 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
                     PlatformWindowCommand::WindowedModeAllowResizing(_allowed) => {
                         log::trace!("`WindowedModeAllowResizing` Not available on this platform");
                     }
-                    PlatformWindowCommand::WindowedModeAllow(_allowed) => {
-                        log::trace!("`WindowedModeAllow` Not available on this platform");
-                    }
                     PlatformWindowCommand::WindowedModeSetSize {
                         width: _,
                         height: _,
@@ -634,7 +631,7 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
                     } => {
                         log::trace!("`WindowedModeSetSize` Not available on this platform");
                     }
-                    PlatformWindowCommand::ScreenSetGrabInput(_grab_input) => {
+                    PlatformWindowCommand::WindowSetGrabInput(_grab_input) => {
                         todo!()
                     }
                     PlatformWindowCommand::Shutdown => {

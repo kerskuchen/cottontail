@@ -37,8 +37,8 @@ pub fn coordinates_screen_to_canvas(screen_pos: Vec2) -> Vec2 {
     screen_point_to_canvas_point(
         screen_pos.x as i32,
         screen_pos.y as i32,
-        window_screen_width(),
-        window_screen_height(),
+        window_framebuffer_width(),
+        window_framebuffer_height(),
         canvas_width() as u32,
         canvas_height() as u32,
     )
@@ -56,8 +56,8 @@ pub fn coordinates_canvas_to_screen(canvas_pos: Canvaspoint) -> Point {
     canvas_point_to_screen_point(
         canvas_pos.x,
         canvas_pos.y,
-        window_screen_width(),
-        window_screen_height(),
+        window_framebuffer_width(),
+        window_framebuffer_height(),
         canvas_width() as u32,
         canvas_height() as u32,
     )
@@ -84,18 +84,24 @@ pub fn coordinates_world_to_screen(world_pos: Worldpoint) -> Point {
 
 #[inline]
 pub fn canvas_width() -> f32 {
-    get_globals().canvas_width
+    canvas_dimensions().x
 }
 
 #[inline]
 pub fn canvas_height() -> f32 {
-    get_globals().canvas_height
+    canvas_dimensions().y
 }
 
 #[inline]
 pub fn canvas_dimensions() -> Vec2 {
-    let globals = get_globals();
-    Vec2::new(globals.canvas_width, globals.canvas_height)
+    if let Some((canvas_width, canvas_height)) = get_draw().get_canvas_dimensions() {
+        Vec2::new(canvas_width as f32, canvas_height as f32)
+    } else {
+        Vec2::new(
+            get_input().window_framebuffer_width as f32,
+            get_input().window_framebuffer_height as f32,
+        )
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -141,25 +147,25 @@ pub fn window_has_focus() -> bool {
 
 #[inline]
 pub fn window_is_fullscreen() -> bool {
-    get_input().screen_is_fullscreen
+    get_input().window_is_fullscreen
 }
 
 #[inline]
-pub fn window_screen_width() -> u32 {
-    get_input().screen_framebuffer_width
+pub fn window_framebuffer_width() -> u32 {
+    get_input().window_framebuffer_width
 }
 
 #[inline]
-pub fn window_screen_height() -> u32 {
-    get_input().screen_framebuffer_height
+pub fn window_framebuffer_height() -> u32 {
+    get_input().window_framebuffer_height
 }
 
 #[inline]
-pub fn window_screen_dimensions() -> (u32, u32) {
+pub fn window_framebuffer_dimensions() -> (u32, u32) {
     let input = get_input();
     (
-        input.screen_framebuffer_width,
-        input.screen_framebuffer_height,
+        input.window_framebuffer_width,
+        input.window_framebuffer_height,
     )
 }
 
@@ -190,12 +196,7 @@ pub fn platform_window_stop_textinput_mode() {
 
 #[inline]
 pub fn platform_window_set_cursor_grabbing(enable_grab: bool) {
-    add_platform_window_command(PlatformWindowCommand::ScreenSetGrabInput(enable_grab))
-}
-
-#[inline]
-pub fn platform_window_set_allow_windowed_mode(allow: bool) {
-    add_platform_window_command(PlatformWindowCommand::WindowedModeAllow(allow))
+    add_platform_window_command(PlatformWindowCommand::WindowSetGrabInput(enable_grab))
 }
 
 #[inline]
@@ -204,7 +205,7 @@ pub fn platform_window_set_allow_window_resizing_by_user(allow: bool) {
 }
 
 #[inline]
-pub fn platform_window_set_window_size(
+pub fn platform_window_set_windowed_mode_size(
     width: u32,
     height: u32,
     minimum_width: u32,

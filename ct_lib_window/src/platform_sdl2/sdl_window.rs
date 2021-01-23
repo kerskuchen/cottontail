@@ -10,7 +10,6 @@ pub struct Window {
 
     pub fullscreen_active: bool,
 
-    windowed_mode_allowed: bool,
     windowed_mode_resizing_allowed: bool,
 
     windowed_mode_pos_x: Option<i32>,
@@ -68,7 +67,6 @@ impl Window {
             sdl_video,
 
             fullscreen_active: true,
-            windowed_mode_allowed: false,
             windowed_mode_resizing_allowed: false,
 
             windowed_mode_pos_x: None,
@@ -126,7 +124,6 @@ impl Window {
 
     pub fn disable_fullscreen(&mut self) {
         assert!(self.fullscreen_active);
-        assert!(self.windowed_mode_allowed);
 
         self.fullscreen_active = false;
 
@@ -154,10 +151,6 @@ impl Window {
         );
     }
 
-    pub fn set_windowed_mode_allowed(&mut self, allowed: bool) {
-        self.windowed_mode_allowed = allowed;
-    }
-
     pub fn set_input_grabbed(&mut self, grab_input: bool) {
         self.sdl_window.set_grab(grab_input);
     }
@@ -169,13 +162,15 @@ impl Window {
         minimum_width: u32,
         minimum_height: u32,
     ) {
-        assert!(self.windowed_mode_allowed);
-
         let display_info = self.get_display_info_for_current_display();
-        assert!(width > 0 && height > 0);
-        assert!(minimum_width > 0 && minimum_height > 0);
-        assert!(minimum_width <= width && minimum_height <= height);
-        assert!(width < display_info.width && height < display_info.height);
+        assert!(width > 0);
+        assert!(height > 0);
+        assert!(minimum_width > 0);
+        assert!(minimum_height > 0);
+        assert!(minimum_width <= width);
+        assert!(minimum_height <= height);
+        assert!(width < display_info.width);
+        assert!(height < display_info.height);
 
         // Determine the position of the window for the case that it is centered on its display
         let pos_x = display_info.pos_x as u32 + (display_info.width / 2) - (width / 2);
@@ -214,8 +209,6 @@ impl Window {
     }
 
     pub fn windowed_mode_set_resizable(&mut self, resizable: bool) {
-        assert!(self.windowed_mode_allowed);
-
         self.windowed_mode_resizing_allowed = resizable;
         if !self.fullscreen_active {
             self.set_resizable_internal(resizable);

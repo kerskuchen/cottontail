@@ -113,8 +113,8 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
     );
     let mut renderer = window.create_renderer();
 
-    let (mut screen_width, mut screen_height) = window.dimensions();
-    app.handle_window_resize(screen_width, screen_height, false);
+    let (mut window_framebuffer_width, mut window_framebuffer_height) = window.dimensions();
+    app.handle_window_resize(window_framebuffer_width, window_framebuffer_height, false);
 
     // ---------------------------------------------------------------------------------------------
     // Sound
@@ -220,8 +220,8 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
                             height as u32,
                             window.fullscreen_active,
                         );
-                        screen_width = width as u32;
-                        screen_height = height as u32;
+                        window_framebuffer_width = width as u32;
+                        window_framebuffer_height = height as u32;
                     }
                     WindowEvent::FocusGained => {
                         app.handle_window_focus_gained();
@@ -284,22 +284,22 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
                 Event::FingerDown {
                     finger_id, x, y, ..
                 } => {
-                    let pos_x = f32::floor(x * screen_width as f32) as i32;
-                    let pos_y = f32::floor(y * screen_height as f32) as i32;
+                    let pos_x = f32::floor(x * window_framebuffer_width as f32) as i32;
+                    let pos_y = f32::floor(y * window_framebuffer_height as f32) as i32;
                     app.handle_touch_press(finger_id as FingerPlatformId, pos_x, pos_y);
                 }
                 Event::FingerUp {
                     finger_id, x, y, ..
                 } => {
-                    let pos_x = f32::floor(x * screen_width as f32) as i32;
-                    let pos_y = f32::floor(y * screen_height as f32) as i32;
+                    let pos_x = f32::floor(x * window_framebuffer_width as f32) as i32;
+                    let pos_y = f32::floor(y * window_framebuffer_height as f32) as i32;
                     app.handle_touch_release(finger_id as FingerPlatformId, pos_x, pos_y);
                 }
                 Event::FingerMotion {
                     finger_id, x, y, ..
                 } => {
-                    let pos_x = f32::floor(x * screen_width as f32) as i32;
-                    let pos_y = f32::floor(y * screen_height as f32) as i32;
+                    let pos_x = f32::floor(x * window_framebuffer_width as f32) as i32;
+                    let pos_y = f32::floor(y * window_framebuffer_height as f32) as i32;
                     app.handle_touch_move(finger_id as FingerPlatformId, pos_x, pos_y);
                 }
                 //----------------------------------------------------------------------------------
@@ -433,7 +433,10 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
             }
         }
 
-        renderer.update_screen_dimensions(screen_width, screen_height);
+        renderer.update_main_framebuffer_dimensions(
+            window_framebuffer_width,
+            window_framebuffer_height,
+        );
 
         //--------------------------------------------------------------------------------------
         // Tick
@@ -488,9 +491,6 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
                 PlatformWindowCommand::WindowedModeAllowResizing(allowed) => {
                     window.windowed_mode_set_resizable(allowed);
                 }
-                PlatformWindowCommand::WindowedModeAllow(allowed) => {
-                    window.set_windowed_mode_allowed(allowed);
-                }
                 PlatformWindowCommand::WindowedModeSetSize {
                     width,
                     height,
@@ -499,7 +499,7 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
                 } => {
                     window.set_windowed_mode_size(width, height, minimum_width, minimum_height);
                 }
-                PlatformWindowCommand::ScreenSetGrabInput(grab_input) => {
+                PlatformWindowCommand::WindowSetGrabInput(grab_input) => {
                     window.set_input_grabbed(grab_input);
                 }
                 PlatformWindowCommand::Shutdown => {
@@ -509,7 +509,6 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
                 PlatformWindowCommand::Restart => {
                     log::info!("Received restart signal");
                     app.reset();
-                    renderer.reset();
                     audio.reset();
                 }
             }

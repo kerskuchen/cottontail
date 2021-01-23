@@ -212,6 +212,7 @@ impl GameAssets {
                 );
 
                 self.files_loading_stage = AssetLoadingStage::SplashProgress;
+                return AssetLoadingStage::SplashStart;
             }
             AssetLoadingStage::SplashProgress => {
                 let mut finished_loaders = Vec::new();

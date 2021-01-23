@@ -72,9 +72,8 @@ pub enum PlatformWindowCommand {
         inputrect_height: u32,
     },
     TextinputStop,
-    ScreenSetGrabInput(bool),
     WindowedModeAllowResizing(bool),
-    WindowedModeAllow(bool),
+    WindowSetGrabInput(bool),
     WindowedModeSetSize {
         width: u32,
         height: u32,

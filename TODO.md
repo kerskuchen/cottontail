@@ -2,10 +2,14 @@
 
 - moves debug scene into its own module
 - pass app_info directly without callback
+- make some batch files available in vscode tasks.json
+- refactoring window and canvas initialization
 
 
 # CURRENT
 
+- make flexible canvas mode
+- make web build batchfile not pause if called from vscode task
 
 # NEXT:
 
@@ -37,6 +41,40 @@
 - Add modulators like in https://www.youtube.com/watch?v=n-txrCMvdms especially shift register 
   modulator and newtonian following modulator
 - replace math::Interval by Rust range with trait methods
+- refactor tick function in lib_game into stages and clean it up / make more it sensible / 
+  easier to grok
+  - lets try to group global things together by lifetime and code dependecy
+    i.e. a global struct can be intantly used when it is created (it has no Option fields and 
+    implicit dependencies are satisfied (i.e. on drawstate) )
+  - make unique sources of truths for
+    - canvas dimension
+    - screen dimensions
+    - cursor positions
+    - deltatime (regular and speed modified)
+    - examples: 
+      Drawstate
+        canvas dimensions
+      Camera:
+        canvas dimensions
+      Input:
+        pub has_focus_event: bool,
+        pub has_focus: bool,
+        pub has_foreground_event: bool,
+        pub screen_is_fullscreen: bool,
+        pub screen_framebuffer_width: u32,
+        pub screen_framebuffer_height: u32,
+        pub screen_framebuffer_dimensions_changed: bool,
+        pub deltatime: f32,
+        pub time_since_startup: f64,
+      Globals
+        pub deltatime: f32,
+        pub deltatime_without_speedup: f32,
+        pub deltatime_speed_factor_user: f32,
+        pub deltatime_speed_factor_debug: f32,
+        pub time_since_startup: f64,
+        pub is_paused: bool,
+        pub canvas_width: f32,
+        pub canvas_height: f32,
 - Future tutorial games:
   - https://simplegametutorials.github.io/
   - https://github.com/noooway/love2d_arkanoid_tutorial
@@ -60,39 +98,6 @@
   - THIS IS ONLY POSSIBLE ONCE RUST WORKSPACES CAN USE FEATURES SANELY
   - to use local folder for logging
   - enable debug draw logging
-- lets try to group global things together by lifetime and code dependecy
-  i.e. a global struct can be intantly used when it is created (it has no Option fields and 
-  implicit dependencies are satisfied (i.e. on drawstate) )
-- refactor tick function in lib_game into stages and clean it up / make more it sensible / easier to grok
-- make unique sources of truths for
-  - canvas dimension
-  - screen dimensions
-  - cursor positions
-  - deltatime (regular and speed modified)
-  - examples: 
-    Drawstate
-      canvas dimensions
-    Camera:
-      canvas dimensions
-    Input:
-      pub has_focus_event: bool,
-      pub has_focus: bool,
-      pub has_foreground_event: bool,
-      pub screen_is_fullscreen: bool,
-      pub screen_framebuffer_width: u32,
-      pub screen_framebuffer_height: u32,
-      pub screen_framebuffer_dimensions_changed: bool,
-      pub deltatime: f32,
-      pub time_since_startup: f64,
-    Globals
-      pub deltatime: f32,
-      pub deltatime_without_speedup: f32,
-      pub deltatime_speed_factor_user: f32,
-      pub deltatime_speed_factor_debug: f32,
-      pub time_since_startup: f64,
-      pub is_paused: bool,
-      pub canvas_width: f32,
-      pub canvas_height: f32,
 
 ## better platform layer
 - sort this list

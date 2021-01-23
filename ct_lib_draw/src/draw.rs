@@ -532,7 +532,7 @@ impl Drawstate {
         }
     }
 
-    pub fn update_canvas_dimensions(&mut self, width: u32, height: u32) {
+    pub fn set_canvas_dimensions(&mut self, width: u32, height: u32) {
         assert!(width > 0);
         assert!(height > 0);
         self.canvas_framebuffer = Some(FramebufferInfo {
@@ -623,7 +623,7 @@ impl Drawstate {
         // NOTE: Even if we have our own offscreen framebuffer that we want to draw to, we still
         //       need to clear the screen framebuffer
         renderer.framebuffer_clear(
-            "screen",
+            "main",
             Some(self.current_letterbox_color.to_slice()),
             Some(DEPTH_CLEAR),
         );
@@ -642,7 +642,7 @@ impl Drawstate {
             );
             &canvas_framebuffer.name
         } else {
-            "screen"
+            "main"
         };
 
         // Upload vertexbuffers
@@ -691,7 +691,7 @@ impl Drawstate {
                 renderer.debug_draw_depthbuffer(&canvas_framebuffer.name);
             }
 
-            let (screen_width, screen_height) = renderer.get_screen_dimensions();
+            let (screen_width, screen_height) = renderer.get_main_framebuffer_dimensions();
 
             let rect_canvas =
                 BlitRect::new_from_dimensions(canvas_framebuffer.width, canvas_framebuffer.height);
@@ -704,7 +704,7 @@ impl Drawstate {
 
             renderer.framebuffer_blit(
                 &canvas_framebuffer.name,
-                "screen",
+                "main",
                 rect_canvas.to_recti(),
                 rect_screen.to_recti(),
             );
@@ -715,7 +715,7 @@ impl Drawstate {
             renderer.draw(
                 "default",
                 &self.default_shaderparams_screen.as_slice(),
-                "screen",
+                "main",
                 &Drawstate::texturename_for_atlaspage(
                     self.textures_size,
                     screen_batch.texture_index,

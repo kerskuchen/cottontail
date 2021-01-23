@@ -60,9 +60,6 @@ pub struct Globals {
 
     pub time_since_startup: f64,
     pub is_paused: bool,
-
-    pub canvas_width: f32,
-    pub canvas_height: f32,
 }
 
 pub struct GameInfo {
@@ -187,6 +184,13 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
         renderer: &mut Renderer,
         audio_output: &mut AudioOutput,
     ) {
+        game_setup_canvas(
+            get_draw(),
+            &GameStateType::get_window_preferences(),
+            window_framebuffer_width(),
+            window_framebuffer_height(),
+        );
+
         get_input().begin_frame(
             snap_deltatime_to_nearest_common_refresh_rate(time_since_last_frame),
             time_since_startup,
@@ -197,36 +201,35 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
         }
 
         match get_assets().update() {
-            AssetLoadingStage::SplashStart => return,
+            AssetLoadingStage::SplashStart => {
+                game_setup_window(
+                    &GameStateType::get_window_preferences(),
+                    window_framebuffer_width(),
+                    window_framebuffer_height(),
+                );
+                return;
+            }
             AssetLoadingStage::SplashProgress => return,
             AssetLoadingStage::SplashFinish => {
                 let textures_splash = get_assets().get_atlas_textures().clone();
                 get_draw().assign_textures(textures_splash);
-
-                let window_preferences = GameStateType::get_window_preferences();
-                game_setup_window(
-                    get_draw(),
-                    &window_preferences,
-                    window_screen_width(),
-                    window_screen_height(),
-                );
                 get_draw().set_shaderparams_default(
                     Color::white(),
                     Mat4::ortho_origin_left_top(
-                        window_preferences.canvas_width as f32,
-                        window_preferences.canvas_height as f32,
+                        canvas_width(),
+                        canvas_height(),
                         DEFAULT_WORLD_ZNEAR,
                         DEFAULT_WORLD_ZFAR,
                     ),
                     Mat4::ortho_origin_left_top(
-                        window_preferences.canvas_width as f32,
-                        window_preferences.canvas_height as f32,
+                        canvas_width(),
+                        canvas_height(),
                         DEFAULT_WORLD_ZNEAR,
                         DEFAULT_WORLD_ZFAR,
                     ),
                     Mat4::ortho_origin_left_top(
-                        window_screen_width() as f32,
-                        window_screen_height() as f32,
+                        window_framebuffer_width() as f32,
+                        window_framebuffer_height() as f32,
                         DEFAULT_WORLD_ZNEAR,
                         DEFAULT_WORLD_ZFAR,
                     ),
@@ -251,21 +254,23 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                 let audio_recordings = get_assets().get_audiorecordings().clone();
                 get_audio().assign_audio_recordings(audio_recordings);
 
-                let (canvas_width, canvas_height) = get_draw()
-                    .get_canvas_dimensions()
-                    .expect("No canvas dimensions found");
                 {
                     assert!(get_resources().globals.is_none());
                     let random = Random::new_from_seed((time_since_startup * 1000000000.0) as u64);
-                    let camera = GameCamera::new(Vec2::zero(), canvas_width, canvas_height, false);
+                    let camera = GameCamera::new(
+                        Vec2::zero(),
+                        canvas_width() as u32,
+                        canvas_height() as u32,
+                        false,
+                    );
                     let cursors = {
                         let input = get_input();
                         Cursors::new(
                             &camera.cam,
                             &input.mouse,
                             &input.touch,
-                            input.screen_framebuffer_width,
-                            input.screen_framebuffer_height,
+                            input.window_framebuffer_width,
+                            input.window_framebuffer_height,
                         )
                     };
                     get_resources().globals = Some(Globals {
@@ -280,8 +285,6 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                         time_since_startup,
 
                         is_paused: false,
-                        canvas_width: canvas_width as f32,
-                        canvas_height: canvas_height as f32,
                     });
                 }
 
@@ -314,7 +317,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
             if !self.loadingscreen.is_faded_out() {
                 let (canvas_width, canvas_height) = get_draw()
                     .get_canvas_dimensions()
-                    .unwrap_or((window_screen_width(), window_screen_height()));
+                    .unwrap_or((window_framebuffer_width(), window_framebuffer_height()));
                 let splash_sprite = get_assets().get_sprite("splashscreen");
                 self.loadingscreen.update_and_draw(
                     get_input().deltatime,
@@ -331,8 +334,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                         &get_camera().cam,
                         &get_input().mouse,
                         &get_input().touch,
-                        window_screen_width(),
-                        window_screen_height(),
+                        window_framebuffer_width(),
+                        window_framebuffer_height(),
                     )
                 };
 
@@ -407,8 +410,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                         DEFAULT_WORLD_ZFAR,
                     ),
                     Mat4::ortho_origin_left_top(
-                        window_screen_width() as f32,
-                        window_screen_height() as f32,
+                        window_framebuffer_width() as f32,
+                        window_framebuffer_height() as f32,
                         DEFAULT_WORLD_ZNEAR,
                         DEFAULT_WORLD_ZFAR,
                     ),
@@ -467,15 +470,15 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
         let input = get_input();
         log::debug!(
             "Window resized {}x{} -> {}x{}",
-            input.screen_framebuffer_width,
-            input.screen_framebuffer_height,
+            input.window_framebuffer_width,
+            input.window_framebuffer_height,
             new_width,
             new_height
         );
-        input.screen_framebuffer_width = new_width;
-        input.screen_framebuffer_height = new_height;
+        input.window_framebuffer_width = new_width;
+        input.window_framebuffer_height = new_height;
         input.screen_framebuffer_dimensions_changed = true;
-        input.screen_is_fullscreen = is_fullscreen;
+        input.window_is_fullscreen = is_fullscreen;
     }
 
     fn handle_window_focus_gained(&mut self) {
@@ -630,13 +633,25 @@ pub fn game_handle_mouse_camera_zooming_panning() {
 }
 
 #[derive(Clone, Copy)]
-pub struct WindowPreferences {
-    pub has_canvas: bool,
-    pub canvas_width: u32,
-    pub canvas_height: u32,
-    pub canvas_color_letterbox: Color,
+pub enum CanvasMode {
+    UseWindowFramebuffer,
+    ScaledWithFixedAspectRatio {
+        canvas_width: u32,
+        canvas_height: u32,
+        canvas_color_letterbox: Color,
+    },
+    ScaledWithFlexibleAspectRatio {
+        canvas_width_min: u32,
+        canvas_width_max: u32,
+        canvas_height_min: u32,
+        canvas_height_max: u32,
+        canvas_color_letterbox: Color,
+    },
+}
 
-    pub windowed_mode_allow: bool,
+#[derive(Clone, Copy)]
+pub struct WindowPreferences {
+    pub canvas_mode: CanvasMode,
     pub windowed_mode_allow_resizing: bool,
 
     pub grab_input: bool,
@@ -645,49 +660,62 @@ pub struct WindowPreferences {
     pub color_splash_progressbar: Color,
 }
 
-pub fn game_setup_window(
+pub fn game_setup_canvas(
     draw: &mut Drawstate,
-    config: &WindowPreferences,
-    screen_resolution_x: u32,
-    screen_resolution_y: u32,
+    preferences: &WindowPreferences,
+    window_framebuffer_width: u32,
+    window_framebuffer_height: u32,
 ) {
-    draw.set_clear_color_and_depth(config.color_clear, DEPTH_CLEAR);
-
-    if config.has_canvas {
-        draw.update_canvas_dimensions(config.canvas_width, config.canvas_height);
-        draw.set_letterbox_color(config.canvas_color_letterbox);
-
-        platform_window_set_allow_windowed_mode(config.windowed_mode_allow);
-        if config.windowed_mode_allow {
-            platform_window_set_allow_window_resizing_by_user(config.windowed_mode_allow_resizing);
-
-            // NOTE: Pick the biggest window dimension possible which is smaller
-            //       than our monitor resolution
-            let mut window_width = config.canvas_width;
-            let mut window_height = config.canvas_height;
-            for factor in 1..100 {
-                let width = config.canvas_width * factor;
-                let height = config.canvas_height * factor;
-
-                if width >= screen_resolution_x || height >= screen_resolution_y {
-                    break;
-                }
-
-                window_width = width;
-                window_height = height;
-            }
-
-            platform_window_set_window_size(
-                window_width,
-                window_height,
-                config.canvas_width,
-                config.canvas_height,
-            );
+    draw.set_clear_color_and_depth(preferences.color_clear, DEPTH_CLEAR);
+    match preferences.canvas_mode {
+        CanvasMode::UseWindowFramebuffer => {}
+        CanvasMode::ScaledWithFixedAspectRatio {
+            canvas_width,
+            canvas_height,
+            canvas_color_letterbox,
+        } => {
+            draw.set_canvas_dimensions(canvas_width, canvas_height);
+            draw.set_letterbox_color(canvas_color_letterbox);
         }
-    }
+        CanvasMode::ScaledWithFlexibleAspectRatio {
+            canvas_width_min,
+            canvas_width_max,
+            canvas_height_min,
+            canvas_height_max,
+            canvas_color_letterbox,
+        } => {
+            draw.set_canvas_dimensions(canvas_width_max, canvas_height_max);
+            draw.set_letterbox_color(canvas_color_letterbox);
+            //todo!()
+        }
+    };
+}
 
-    if config.grab_input {
-        platform_window_set_cursor_grabbing(config.grab_input);
+pub fn game_setup_window(
+    preferences: &WindowPreferences,
+    window_framebuffer_width: u32,
+    window_framebuffer_height: u32,
+) {
+    if preferences.grab_input {
+        platform_window_set_cursor_grabbing(preferences.grab_input);
+    }
+    if preferences.windowed_mode_allow_resizing {
+        platform_window_set_allow_window_resizing_by_user(preferences.windowed_mode_allow_resizing);
+    }
+    if let Some((canvas_width, canvas_height)) = get_draw().get_canvas_dimensions() {
+        platform_window_set_windowed_mode_size(
+            canvas_width,
+            canvas_height,
+            canvas_width,
+            canvas_height,
+        );
+    } else {
+        platform_window_set_windowed_mode_size(
+            window_framebuffer_width,
+            window_framebuffer_height,
+            32,
+            32,
+        );
     }
 }
 

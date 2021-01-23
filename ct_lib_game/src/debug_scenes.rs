@@ -127,8 +127,8 @@ impl GameState {
 
             draw_debug_log(format!(
                 "screen: {}x{}",
-                window_screen_width(),
-                window_screen_height()
+                window_framebuffer_width(),
+                window_framebuffer_height()
             ));
             draw_debug_log(format!("canvas: {}x{}", canvas_width(), canvas_height(),));
             draw_debug_log(format!("mworld: {:?}", mouse_pos_world()));
