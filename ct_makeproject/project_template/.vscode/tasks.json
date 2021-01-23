@@ -63,6 +63,14 @@
             "problemMatcher": [
                 "$rustc"
             ]
+        },
+        {
+            "type": "shell",
+            "label": "web build",
+            "command": ".\\web_build.cmd",
+            "problemMatcher": [
+                "$rustc"
+            ]
         }
     ]
 }
