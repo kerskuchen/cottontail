@@ -1,10 +1,8 @@
 # DONE:
 
-- simplifications of lib_game
-- moves debug draw logging out of drawstate into global state
-- instantiate drawstate without textures and sprites
-- assure that assetpacker can write "untextured" white pixel into every atlas texture
-  
+- moves debug scene into its own module
+
+
 # CURRENT
 
 
@@ -423,3 +421,9 @@
 - added simple api for assets
 - added simple api for coordinate conversion
 - make draw/audio/other things global for easier use (we run everything on the same thread anyway)
+
+- simplifications of lib_game
+- moves debug draw logging out of drawstate into global state
+- instantiate drawstate without textures and sprites
+- assure that assetpacker can write "untextured" white pixel into every atlas texture
+  

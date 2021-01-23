@@ -15,6 +15,8 @@ pub use choreographer::*;
 
 pub mod debug;
 pub use debug::*;
+pub mod debug_scenes;
+pub use debug_scenes::*;
 
 pub mod gui;
 pub use gui::*;
