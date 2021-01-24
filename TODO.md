@@ -3,9 +3,12 @@
 - adds flexible canvas mode
 - make web build batchfile not pause if called from vscode task
 - remove deltatime from inputstate
+- don't sort non-translucent objects
 
 
 # CURRENT
+
+- disable depth write while drawing translucent objects
 
 
 # NEXT:

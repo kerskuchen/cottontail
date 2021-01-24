@@ -92,14 +92,16 @@ struct Drawable {
 }
 
 impl Drawable {
+    pub fn is_translucent(&self) -> bool {
+        self.uv_region_contains_translucency
+            || (self.drawparams.color_modulate.a < 1.0)
+            || (self.drawparams.additivity != ADDITIVITY_NONE)
+    }
+
     #[inline]
     pub fn compare(a: &Drawable, b: &Drawable) -> Ordering {
-        let a_has_translucency = a.uv_region_contains_translucency
-            || (a.drawparams.color_modulate.a < 1.0)
-            || (a.drawparams.additivity != ADDITIVITY_NONE);
-        let b_has_translucency = b.uv_region_contains_translucency
-            || (b.drawparams.color_modulate.a < 1.0)
-            || (b.drawparams.additivity != ADDITIVITY_NONE);
+        let a_has_translucency = a.is_translucent();
+        let b_has_translucency = b.is_translucent();
 
         // NOTE: We want all translucent objectes to be rendered last
         if a_has_translucency != b_has_translucency {
@@ -404,6 +406,7 @@ pub struct Drawstate {
     current_clear_depth: Depth,
 
     default_drawables: Vec<Drawable>,
+    default_drawables_translucent: Vec<Drawable>,
     default_shaderparams_world: ShaderParamsDefault,
     default_shaderparams_canvas: ShaderParamsDefault,
     default_shaderparams_screen: ShaderParamsDefault,
@@ -452,6 +455,7 @@ impl Drawstate {
             current_clear_depth: DEPTH_CLEAR,
 
             default_drawables: Vec::new(),
+            default_drawables_translucent: Vec::new(),
             default_shaderparams_world: ShaderParamsDefault::default(),
             default_shaderparams_canvas: ShaderParamsDefault::default(),
             default_shaderparams_screen: ShaderParamsDefault::default(),
@@ -551,6 +555,7 @@ impl Drawstate {
 
     pub fn begin_frame(&mut self) {
         self.default_drawables.clear();
+        self.default_drawables_translucent.clear();
     }
 
     pub fn finish_frame(&mut self) {
@@ -558,46 +563,78 @@ impl Drawstate {
         self.default_batches_canvas.clear();
         self.default_batches_screen.clear();
 
-        if self.default_drawables.is_empty() {
+        if self.default_drawables.is_empty() && self.default_drawables_translucent.is_empty() {
             return;
         }
-        self.default_drawables.sort_by(Drawable::compare);
-
-        // Collect draw batches
-        let mut current_batch = DrawBatch {
-            drawspace: self.default_drawables[0].drawparams.drawspace,
-            texture_index: self.default_drawables[0].texture_index,
-            indices_start_offset: 0,
-            indices_count: 0,
-        };
 
         self.default_vertexbuffer.clear();
         self.default_vertexbuffer_dirty = true;
-        for drawable in self.default_drawables.drain(..) {
+
+        if !self.default_drawables.is_empty() {
+            Drawstate::collect_drawbatches_default(
+                &mut self.default_drawables,
+                &mut self.default_batches_world,
+                &mut self.default_batches_canvas,
+                &mut self.default_batches_screen,
+                &mut self.default_vertexbuffer,
+            );
+        }
+
+        if !self.default_drawables_translucent.is_empty() {
+            self.default_drawables_translucent
+                .sort_by(Drawable::compare);
+
+            Drawstate::collect_drawbatches_default(
+                &mut self.default_drawables_translucent,
+                &mut self.default_batches_world,
+                &mut self.default_batches_canvas,
+                &mut self.default_batches_screen,
+                &mut self.default_vertexbuffer,
+            );
+        }
+    }
+
+    fn collect_drawbatches_default(
+        drawables: &mut Vec<Drawable>,
+        batches_world: &mut Vec<DrawBatch>,
+        batches_canvas: &mut Vec<DrawBatch>,
+        batches_screen: &mut Vec<DrawBatch>,
+        vertexbuffer: &mut VertexbufferDefault,
+    ) {
+        assert!(!drawables.is_empty());
+
+        let mut current_batch = DrawBatch {
+            drawspace: drawables[0].drawparams.drawspace,
+            texture_index: drawables[0].texture_index,
+            indices_start_offset: vertexbuffer.current_offset(),
+            indices_count: 0,
+        };
+
+        for drawable in drawables.drain(..) {
             if drawable.texture_index != current_batch.texture_index
                 || drawable.drawparams.drawspace != current_batch.drawspace
             {
                 match current_batch.drawspace {
-                    Drawspace::World => self.default_batches_world.push(current_batch),
-                    Drawspace::Canvas => self.default_batches_canvas.push(current_batch),
-                    Drawspace::Screen => self.default_batches_screen.push(current_batch),
+                    Drawspace::World => batches_world.push(current_batch),
+                    Drawspace::Canvas => batches_canvas.push(current_batch),
+                    Drawspace::Screen => batches_screen.push(current_batch),
                 }
                 current_batch = DrawBatch {
                     drawspace: drawable.drawparams.drawspace,
                     texture_index: drawable.texture_index,
-                    indices_start_offset: self.default_vertexbuffer.current_offset(),
+                    indices_start_offset: vertexbuffer.current_offset(),
                     indices_count: 0,
                 };
             }
 
-            let indices_count = self.default_vertexbuffer.push_drawable(drawable);
+            let indices_count = vertexbuffer.push_drawable(drawable);
             current_batch.indices_count += indices_count;
         }
 
         match current_batch.drawspace {
-            Drawspace::World => self.default_batches_world.push(current_batch),
-            Drawspace::Canvas => self.default_batches_canvas.push(current_batch),
-            Drawspace::Screen => self.default_batches_screen.push(current_batch),
+            Drawspace::World => batches_world.push(current_batch),
+            Drawspace::Canvas => batches_canvas.push(current_batch),
+            Drawspace::Screen => batches_screen.push(current_batch),
         }
     }
 
@@ -730,6 +767,14 @@ impl Drawstate {
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Drawing
 
+    fn push_drawable(&mut self, drawable: Drawable) {
+        if drawable.is_translucent() {
+            self.default_drawables_translucent.push(drawable);
+        } else {
+            self.default_drawables.push(drawable);
+        }
+    }
+
     #[inline]
     pub fn draw_quad(
         &mut self,
@@ -740,7 +785,7 @@ impl Drawstate {
         drawparams: Drawparams,
     ) {
         if !self.debug_use_flat_color_mode {
-            self.default_drawables.push(Drawable {
+            self.push_drawable(Drawable {
                 texture_index,
                 uv_region_contains_translucency,
                 drawparams,
@@ -756,7 +801,7 @@ impl Drawstate {
                 bottom: coords_vertical,
             };
 
-            self.default_drawables.push(Drawable {
+            self.push_drawable(Drawable {
                 texture_index,
                 uv_region_contains_translucency,
                 drawparams,
@@ -995,7 +1040,7 @@ impl Drawstate {
             vertices.len()
         ];
 
-        self.default_drawables.push(Drawable {
+        self.push_drawable(Drawable {
             texture_index: self.untextured_uv_center_atlas_page,
             uv_region_contains_translucency: false,
             drawparams,
@@ -1054,7 +1099,7 @@ impl Drawstate {
             vertices.len()
         ];
 
-        self.default_drawables.push(Drawable {
+        self.push_drawable(Drawable {
             texture_index: self.untextured_uv_center_atlas_page,
             uv_region_contains_translucency: false,
             drawparams,
@@ -1377,7 +1422,7 @@ impl Drawstate {
         indices.push(4 + 1); // right bottom
         indices.push(4 + 3); // left top
 
-        self.default_drawables.push(Drawable {
+        self.push_drawable(Drawable {
             texture_index: self.untextured_uv_center_atlas_page,
             uv_region_contains_translucency: true,
             drawparams: Drawparams {
@@ -1597,7 +1642,7 @@ impl Drawstate {
             vertices.len()
         ];
 
-        self.default_drawables.push(Drawable {
+        self.push_drawable(Drawable {
             texture_index: self.untextured_uv_center_atlas_page,
             uv_region_contains_translucency: false,
             drawparams,
