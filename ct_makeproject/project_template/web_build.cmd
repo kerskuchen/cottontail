@@ -56,7 +56,9 @@ goto :done
 REM ------------------------------------------------------------------------------------------------
 :error
 echo Failed with error #%errorlevel%.
-pause
+REM the `if %1.==.` checks if we passed an argument. If not we pause the script. This is useful
+REM if we want to call this script from VSCode and don't want to pause
+if %1.==. pause
 exit /b %errorlevel%
 
 REM ------------------------------------------------------------------------------------------------
