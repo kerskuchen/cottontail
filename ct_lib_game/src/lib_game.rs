@@ -672,33 +672,12 @@ fn game_setup_canvas(
             canvas_color_letterbox,
         } => {
             let mut scale_factor = 1;
-            let mut optimal_canvas_width = 0;
-            let mut optimal_canvas_height = 0;
+            let mut optimal_canvas_dimensions = Vec::new();
             loop {
                 let canvas_width_min_scaled = canvas_width_min * scale_factor;
                 let canvas_width_max_scaled = canvas_width_max * scale_factor;
                 let canvas_height_min_scaled = canvas_height_min * scale_factor;
                 let canvas_height_max_scaled = canvas_height_max * scale_factor;
-
-                if in_intervali(
-                    window_framebuffer_width as i32,
-                    canvas_width_min_scaled as i32,
-                    canvas_width_max_scaled as i32,
-                ) {
-                    optimal_canvas_width = window_framebuffer_width / scale_factor;
-                }
-
-                if in_intervali(
-                    window_framebuffer_height as i32,
-                    canvas_height_min_scaled as i32,
-                    canvas_height_max_scaled as i32,
-                ) {
-                    optimal_canvas_height = window_framebuffer_height / scale_factor;
-                }
-
-                if optimal_canvas_width != 0 || optimal_canvas_height != 0 {
-                    break;
-                }
 
                 if window_framebuffer_width < canvas_width_min_scaled
                     && window_framebuffer_height < canvas_height_min_scaled
@@ -706,8 +685,46 @@ fn game_setup_canvas(
                     break;
                 }
 
+                let optimal_canvas_width = if in_intervali(
+                    window_framebuffer_width as i32,
+                    canvas_width_min_scaled as i32,
+                    canvas_width_max_scaled as i32,
+                ) {
+                    window_framebuffer_width / scale_factor
+                } else {
+                    0
+                };
+
+                let optimal_canvas_height = if in_intervali(
+                    window_framebuffer_height as i32,
+                    canvas_height_min_scaled as i32,
+                    canvas_height_max_scaled as i32,
+                ) {
+                    window_framebuffer_height / scale_factor
+                } else {
+                    0
+                };
+
+                if optimal_canvas_width != 0 || optimal_canvas_height != 0 {
+                    optimal_canvas_dimensions.push((optimal_canvas_width, optimal_canvas_height));
+                }
+
                 scale_factor += 1;
             }
+
+            let (mut optimal_canvas_width, mut optimal_canvas_height) = {
+                if let Some(&(optimal_canvas_width, optimal_canvas_height)) =
+                    optimal_canvas_dimensions
+                        .iter()
+                        .find(|(canvas_width, canvas_height)| {
+                            *canvas_width != 0 && *canvas_height != 0
+                        })
+                {
+                    (optimal_canvas_width, optimal_canvas_height)
+                } else {
+                    optimal_canvas_dimensions.first().cloned().unwrap_or((0, 0))
+                }
+            };
 
             if optimal_canvas_width == 0 {
                 optimal_canvas_width = canvas_width_max
