@@ -9,9 +9,6 @@ use ct_lib_math::*;
 
 use std::collections::VecDeque;
 
-const CANVAS_WIDTH: f32 = 480.0;
-const CANVAS_HEIGHT: f32 = 270.0;
-
 const DEPTH_DRAW: Depth = 20.0;
 const DEPTH_GLITTER: Depth = 30.0;
 
@@ -917,7 +914,7 @@ impl SceneSprites {
 
         // TEST TRANSLUCENCE
         {
-            let sorcy_pos = Vec2::new(CANVAS_WIDTH / 3.0, CANVAS_HEIGHT - 40.0);
+            let sorcy_pos = Vec2::new(canvas_width() / 3.0, canvas_height() - 40.0);
 
             let ghosty_cycle = 2.0 * DEGREE_TO_RADIANS * measure_completion_angle / 2.0;
             let ghosty_pos = sorcy_pos + Vec2::filled_x(50.0 * (f32::cos(ghosty_cycle)));
@@ -976,7 +973,7 @@ impl SceneSprites {
 
         // ROTATING RECT
         {
-            let testpos = Vec2::new(CANVAS_WIDTH - 50.0, CANVAS_HEIGHT - 60.0);
+            let testpos = Vec2::new(canvas_width() - 50.0, canvas_height() - 60.0);
             draw_rect_transformed(
                 Vec2::new(30.0, 30.0),
                 true,
@@ -995,7 +992,7 @@ impl SceneSprites {
             .anim_sorcy_run
             .frame_at_percentage(halfbeat_completion_ratio);
         let xform_anim_wiggle = Transform {
-            pos: Vec2::new(CANVAS_WIDTH - 50.0, CANVAS_HEIGHT / 3.0),
+            pos: Vec2::new(canvas_width() - 50.0, canvas_height() / 3.0),
             scale: Vec2::new(1.0, 1.0),
             dir_angle: *self
                 .anim_test_wiggle
@@ -1003,7 +1000,7 @@ impl SceneSprites {
         }
         .pixel_snapped();
         let xform_anim_squash = Transform {
-            pos: Vec2::new(CANVAS_WIDTH - 100.0, CANVAS_HEIGHT / 3.0),
+            pos: Vec2::new(canvas_width() - 100.0, canvas_height() / 3.0),
             scale: Vec2::new(
                 *self
                     .anim_test_squash_horizontal
@@ -1016,13 +1013,13 @@ impl SceneSprites {
         }
         .pixel_snapped();
         let xform_rotating = Transform {
-            pos: Vec2::new(CANVAS_WIDTH - 170.0, CANVAS_HEIGHT / 3.0),
+            pos: Vec2::new(canvas_width() - 170.0, canvas_height() / 3.0),
             scale: Vec2::ones(),
             dir_angle: -measure_completion_angle,
         }
         .pixel_snapped();
         let xform_rotating_flipped = Transform {
-            pos: Vec2::new(CANVAS_WIDTH - 170.0, CANVAS_HEIGHT / 3.0),
+            pos: Vec2::new(canvas_width() - 170.0, canvas_height() / 3.0),
             scale: -Vec2::ones(),
             dir_angle: -measure_completion_angle,
         }
@@ -1568,7 +1565,7 @@ impl SceneSprites3dSpatialSound {
             "Press 'B'",
             assets_get_font(FONT_DEFAULT_TINY_NAME),
             1.0,
-            Vec2::new(CANVAS_WIDTH / 2.0, 20.0),
+            Vec2::new(canvas_width() / 2.0, 20.0),
             Vec2::filled_y(-5.0),
             Some(TextAlignment::top_left(true, false)),
             None,
