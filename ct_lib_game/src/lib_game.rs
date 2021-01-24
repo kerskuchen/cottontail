@@ -46,6 +46,12 @@ pub const DEPTH_SCREEN_FADER: Depth = 60.0;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Gamestate
 
+pub trait AppStateInterface: Clone {
+    fn get_window_preferences() -> WindowPreferences;
+    fn new() -> Self;
+    fn update(&mut self);
+}
+
 #[derive(Clone)]
 pub struct Globals {
     pub random: Random,
@@ -67,15 +73,6 @@ pub struct GameInfo {
     pub game_save_folder_name: String,
     pub game_company_name: String,
 }
-
-pub trait AppStateInterface: Clone {
-    fn get_window_preferences() -> WindowPreferences;
-    fn new() -> Self;
-    fn update(&mut self);
-}
-
-const SPLASHSCREEN_FADEIN_TIME: f32 = 0.3;
-const SPLASHSCREEN_FADEOUT_TIME: f32 = 0.5;
 
 struct AppResources {
     pub assets: GameAssets,
@@ -155,6 +152,9 @@ pub struct AppTicker<AppStateType: AppStateInterface> {
 
 impl<AppStateType: AppStateInterface> AppTicker<AppStateType> {
     fn new() -> Self {
+        const SPLASHSCREEN_FADEIN_TIME: f32 = 0.3;
+        const SPLASHSCREEN_FADEOUT_TIME: f32 = 0.5;
+
         let window_config = AppStateType::get_window_preferences();
         AppTicker {
             loadingscreen: LoadingScreen::new(
@@ -313,20 +313,19 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
 
             // Draw loadscreen if necessary
             if !self.loadingscreen.is_faded_out() {
-                let (canvas_width, canvas_height) = get_draw()
-                    .get_canvas_dimensions()
-                    .unwrap_or((window_framebuffer_width(), window_framebuffer_height()));
                 let splash_sprite = get_assets().get_sprite("splashscreen");
                 self.loadingscreen.update_and_draw(
                     time_since_last_frame,
-                    canvas_width,
-                    canvas_height,
+                    canvas_width() as u32,
+                    canvas_height() as u32,
                     splash_sprite,
                     get_assets().get_loading_percentage(),
                 );
             }
 
             if let Some(game) = self.game.as_mut() {
+                get_camera().set_canvas_dimensions(canvas_width(), canvas_height());
+
                 get_globals().cursors = {
                     Cursors::new(
                         &get_camera().cam,
@@ -386,8 +385,6 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                     }
                     draw_debug_log(format!("Deltatime: {:.6}", globals.deltatime));
                 }
-
-                get_camera().set_canvas_dimensions(canvas_width(), canvas_height());
 
                 get_audio().set_global_playback_speed_factor(time_deltatime_speed_factor_total());
                 get_audio().update_deltatime(time_deltatime());

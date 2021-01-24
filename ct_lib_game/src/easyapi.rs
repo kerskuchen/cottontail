@@ -162,11 +162,7 @@ pub fn window_framebuffer_height() -> u32 {
 
 #[inline]
 pub fn window_framebuffer_dimensions() -> (u32, u32) {
-    let input = get_input();
-    (
-        input.window_framebuffer_width,
-        input.window_framebuffer_height,
-    )
+    (window_framebuffer_width(), window_framebuffer_height())
 }
 
 #[inline]
