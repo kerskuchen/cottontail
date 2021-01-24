@@ -1,14 +1,11 @@
 # DONE:
 
-- moves debug scene into its own module
-- pass app_info directly without callback
-- make some batch files available in vscode tasks.json
-- refactoring window and canvas initialization
+- adds flexible canvas mode
+
 
 
 # CURRENT
 
-- make flexible canvas mode
 - make web build batchfile not pause if called from vscode task
 
 # NEXT:
@@ -433,3 +430,7 @@
 - instantiate drawstate without textures and sprites
 - assure that assetpacker can write "untextured" white pixel into every atlas texture
   
+- moves debug scene into its own module
+- pass app_info directly without callback
+- make some batch files available in vscode tasks.json
+- refactoring window and canvas initialization

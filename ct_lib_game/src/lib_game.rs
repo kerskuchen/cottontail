@@ -389,6 +389,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                     draw_debug_log(format!("Deltatime: {:.6}", globals.deltatime));
                 }
 
+                get_camera().set_canvas_dimensions(canvas_width(), canvas_height());
+
                 get_audio().set_global_playback_speed_factor(time_deltatime_speed_factor_total());
                 get_audio().update_deltatime(time_deltatime());
 
@@ -613,24 +615,7 @@ pub fn start_mainloop<GameStateType: 'static + AppStateInterface>(app_info: AppI
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Convenience functions
-
-/// Convenience function for camera movement with mouse
-pub fn game_handle_mouse_camera_zooming_panning() {
-    let camera = get_camera();
-    if mouse_is_down_middle() {
-        camera.pan(mouse_delta_canvas());
-    }
-    if mouse_wheel_event_happened() {
-        if mouse_wheel_delta() > 0 {
-            let new_zoom_level = f32::min(camera.cam.zoom_level * 2.0, 8.0);
-            camera.zoom_to_world_point(mouse_pos_world(), new_zoom_level);
-        } else if mouse_wheel_delta() < 0 {
-            let new_zoom_level = f32::max(camera.cam.zoom_level / 2.0, 1.0 / 32.0);
-            camera.zoom_to_world_point(mouse_pos_world(), new_zoom_level);
-        }
-    }
-}
+// Window and canvas
 
 #[derive(Clone, Copy)]
 pub enum CanvasMode {
@@ -660,7 +645,7 @@ pub struct WindowPreferences {
     pub color_splash_progressbar: Color,
 }
 
-pub fn game_setup_canvas(
+fn game_setup_canvas(
     draw: &mut Drawstate,
     preferences: &WindowPreferences,
     window_framebuffer_width: u32,
@@ -668,7 +653,9 @@ pub fn game_setup_canvas(
 ) {
     draw.set_clear_color_and_depth(preferences.color_clear, DEPTH_CLEAR);
     match preferences.canvas_mode {
-        CanvasMode::UseWindowFramebuffer => {}
+        CanvasMode::UseWindowFramebuffer => {
+            // No canvas
+        }
         CanvasMode::ScaledWithFixedAspectRatio {
             canvas_width,
             canvas_height,
@@ -684,14 +671,58 @@ pub fn game_setup_canvas(
             canvas_height_max,
             canvas_color_letterbox,
         } => {
-            draw.set_canvas_dimensions(canvas_width_max, canvas_height_max);
+            let mut scale_factor = 1;
+            let mut optimal_canvas_width = 0;
+            let mut optimal_canvas_height = 0;
+            loop {
+                let canvas_width_min_scaled = canvas_width_min * scale_factor;
+                let canvas_width_max_scaled = canvas_width_max * scale_factor;
+                let canvas_height_min_scaled = canvas_height_min * scale_factor;
+                let canvas_height_max_scaled = canvas_height_max * scale_factor;
+
+                if in_intervali(
+                    window_framebuffer_width as i32,
+                    canvas_width_min_scaled as i32,
+                    canvas_width_max_scaled as i32,
+                ) {
+                    optimal_canvas_width = window_framebuffer_width / scale_factor;
+                }
+
+                if in_intervali(
+                    window_framebuffer_height as i32,
+                    canvas_height_min_scaled as i32,
+                    canvas_height_max_scaled as i32,
+                ) {
+                    optimal_canvas_height = window_framebuffer_height / scale_factor;
+                }
+
+                if optimal_canvas_width != 0 || optimal_canvas_height != 0 {
+                    break;
+                }
+
+                if window_framebuffer_width < canvas_width_min_scaled
+                    && window_framebuffer_height < canvas_height_min_scaled
+                {
+                    break;
+                }
+
+                scale_factor += 1;
+            }
+
+            if optimal_canvas_width == 0 {
+                optimal_canvas_width = canvas_width_max
+            }
+            if optimal_canvas_height == 0 {
+                optimal_canvas_height = canvas_height_max
+            }
+
+            draw.set_canvas_dimensions(optimal_canvas_width, optimal_canvas_height);
             draw.set_letterbox_color(canvas_color_letterbox);
-            //todo!()
         }
     };
 }
 
-pub fn game_setup_window(
+fn game_setup_window(
     preferences: &WindowPreferences,
     window_framebuffer_width: u32,
     window_framebuffer_height: u32,
@@ -702,20 +733,60 @@ pub fn game_setup_window(
     if preferences.windowed_mode_allow_resizing {
         platform_window_set_allow_window_resizing_by_user(preferences.windowed_mode_allow_resizing);
     }
-    if let Some((canvas_width, canvas_height)) = get_draw().get_canvas_dimensions() {
-        platform_window_set_windowed_mode_size(
-            canvas_width,
-            canvas_height,
-            canvas_width,
-            canvas_height,
-        );
-    } else {
-        platform_window_set_windowed_mode_size(
-            window_framebuffer_width,
-            window_framebuffer_height,
-            32,
-            32,
-        );
+
+    match preferences.canvas_mode {
+        CanvasMode::UseWindowFramebuffer => {
+            platform_window_set_windowed_mode_size(
+                window_framebuffer_width,
+                window_framebuffer_height,
+                32,
+                32,
+            );
+        }
+        CanvasMode::ScaledWithFixedAspectRatio { .. } => {
+            let (canvas_width, canvas_height) =
+                get_draw().get_canvas_dimensions().expect("canvas missing");
+            platform_window_set_windowed_mode_size(
+                canvas_width,
+                canvas_height,
+                canvas_width,
+                canvas_height,
+            );
+        }
+        CanvasMode::ScaledWithFlexibleAspectRatio {
+            canvas_width_min,
+            canvas_height_min,
+            ..
+        } => {
+            let (canvas_width, canvas_height) =
+                get_draw().get_canvas_dimensions().expect("canvas missing");
+            platform_window_set_windowed_mode_size(
+                canvas_width,
+                canvas_height,
+                canvas_width_min,
+                canvas_height_min,
+            );
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Convenience functions
+
+/// Convenience function for camera movement with mouse
+pub fn game_handle_mouse_camera_zooming_panning() {
+    let camera = get_camera();
+    if mouse_is_down_middle() {
+        camera.pan(mouse_delta_canvas());
+    }
+    if mouse_wheel_event_happened() {
+        if mouse_wheel_delta() > 0 {
+            let new_zoom_level = f32::min(camera.cam.zoom_level * 2.0, 8.0);
+            camera.zoom_to_world_point(mouse_pos_world(), new_zoom_level);
+        } else if mouse_wheel_delta() < 0 {
+            let new_zoom_level = f32::max(camera.cam.zoom_level / 2.0, 1.0 / 32.0);
+            camera.zoom_to_world_point(mouse_pos_world(), new_zoom_level);
+        }
     }
 }
 

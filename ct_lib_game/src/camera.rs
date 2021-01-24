@@ -248,6 +248,11 @@ impl GameCamera {
         self.screenshakers.push(shake);
     }
 
+    pub fn set_canvas_dimensions(&mut self, canvas_width: f32, canvas_height: f32) {
+        self.cam.dim_canvas = Vec2::new(canvas_width, canvas_height);
+        self.cam.dim_frustum = self.cam.dim_canvas / self.cam.zoom_level;
+    }
+
     pub fn update(&mut self, deltatime: f32) {
         self.screenshake_offset = Vec2::zero();
 
