@@ -68,6 +68,9 @@
             "type": "shell",
             "label": "web build",
             "command": ".\\web_build.cmd",
+            "args": [
+                "nopause"
+            ],
             "problemMatcher": [
                 "$rustc"
             ]
@@ -76,6 +79,9 @@
             "type": "shell",
             "label": "project refresh",
             "command": ".\\project_refresh.cmd",
+            "args": [
+                "nopause"
+            ],
             "problemMatcher": [
                 "$rustc"
             ]
