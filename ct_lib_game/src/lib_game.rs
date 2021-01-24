@@ -184,16 +184,14 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
         renderer: &mut Renderer,
         audio_output: &mut AudioOutput,
     ) {
+        let time_since_last_frame =
+            snap_deltatime_to_nearest_common_refresh_rate(time_since_last_frame);
+
         game_setup_canvas(
             get_draw(),
             &GameStateType::get_window_preferences(),
             window_framebuffer_width(),
             window_framebuffer_height(),
-        );
-
-        get_input().begin_frame(
-            snap_deltatime_to_nearest_common_refresh_rate(time_since_last_frame),
-            time_since_startup,
         );
 
         if let Some(game) = self.game.as_mut() {
@@ -278,8 +276,8 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                         camera,
                         cursors,
 
-                        deltatime: get_input().deltatime,
-                        deltatime_without_speedup: get_input().deltatime,
+                        deltatime: time_since_last_frame,
+                        deltatime_without_speedup: time_since_last_frame,
                         deltatime_speed_factor_user: 1.0,
                         deltatime_speed_factor_debug: 1.0,
                         time_since_startup,
@@ -320,7 +318,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                     .unwrap_or((window_framebuffer_width(), window_framebuffer_height()));
                 let splash_sprite = get_assets().get_sprite("splashscreen");
                 self.loadingscreen.update_and_draw(
-                    get_input().deltatime,
+                    time_since_last_frame,
                     canvas_width,
                     canvas_height,
                     splash_sprite,
@@ -360,16 +358,16 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                         globals.deltatime_speed_factor_user * globals.deltatime_speed_factor_debug;
                     let final_deltatime = if globals.is_paused {
                         if key_recently_pressed(Scancode::N) {
-                            get_input().deltatime * deltatime_speed_factor
+                            time_since_last_frame * deltatime_speed_factor
                         } else {
                             0.0
                         }
                     } else {
-                        get_input().deltatime * deltatime_speed_factor
+                        time_since_last_frame * deltatime_speed_factor
                     };
 
                     globals.deltatime = final_deltatime;
-                    globals.deltatime_without_speedup = get_input().deltatime;
+                    globals.deltatime_without_speedup = time_since_last_frame;
                     globals.time_since_startup = time_since_startup;
 
                     if !is_effectively_zero(globals.deltatime_speed_factor_debug - 1.0) {
@@ -429,7 +427,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
                     distance_for_max_pan: get_camera().cam.dim_frustum.x / 2.0,
                 });
 
-                self.audio_chunk_timer += get_input().deltatime;
+                self.audio_chunk_timer += time_since_last_frame;
 
                 let mut audiochunk = AudioChunk::new_stereo();
                 let audiochunk_length_in_seconds =
@@ -479,7 +477,7 @@ impl<GameStateType: AppStateInterface> AppEventHandler for AppTicker<GameStateTy
         );
         input.window_framebuffer_width = new_width;
         input.window_framebuffer_height = new_height;
-        input.screen_framebuffer_dimensions_changed = true;
+        input.window_framebuffer_dimensions_changed = true;
         input.window_is_fullscreen = is_fullscreen;
     }
 

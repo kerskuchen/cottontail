@@ -21,10 +21,7 @@ pub struct InputState {
     pub window_is_fullscreen: bool,
     pub window_framebuffer_width: u32,
     pub window_framebuffer_height: u32,
-    pub screen_framebuffer_dimensions_changed: bool,
-
-    pub deltatime: f32,
-    pub time_since_startup: f64,
+    pub window_framebuffer_dimensions_changed: bool,
 }
 
 impl InputState {
@@ -34,15 +31,9 @@ impl InputState {
     }
 
     #[inline]
-    pub fn begin_frame(&mut self, time_since_last_frame: f32, time_since_startup: f64) {
-        self.deltatime = time_since_last_frame;
-        self.time_since_startup = time_since_startup;
-    }
-
-    #[inline]
     pub fn end_frame(&mut self) {
         // Clear input state
-        self.screen_framebuffer_dimensions_changed = false;
+        self.window_framebuffer_dimensions_changed = false;
         self.has_foreground_event = false;
         self.has_focus_event = false;
 

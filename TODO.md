@@ -1,12 +1,12 @@
 # DONE:
 
 - adds flexible canvas mode
-
+- make web build batchfile not pause if called from vscode task
+- remove deltatime from inputstate
 
 
 # CURRENT
 
-- make web build batchfile not pause if called from vscode task
 
 # NEXT:
 
