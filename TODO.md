@@ -4,11 +4,11 @@
 - replace all `expect` calls in wasm_app and wasm_audio with `unwrap_or_else`
 - adds experimental schedule buffer based wasm audio output 
 - using simpler buffer scheduling for wasm without callbacks
+- disable depth write while drawing translucent objects
 
 # CURRENT
 
 
-- disable depth write while drawing translucent objects
 
 
 # NEXT:
@@ -153,6 +153,7 @@
 - current hotspots are:
   - sorting drawables (they are pretty big to sort, maybe we can use references as payload?)
   - drawing rects by drawing bresenham lines 
+  - drawing rotated sprites??
 - Find and get rid of needles allocations and copies
 - Find out what causes garbage collector to trigger
 - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)

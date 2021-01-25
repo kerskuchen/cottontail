@@ -388,6 +388,7 @@ impl Drawparams {
 struct DrawBatch {
     pub drawspace: Drawspace,
     pub texture_index: TextureIndex,
+    pub is_translucent: bool,
     pub indices_start_offset: VertexIndex,
     pub indices_count: usize,
 }
@@ -577,6 +578,7 @@ impl Drawstate {
                 &mut self.default_batches_canvas,
                 &mut self.default_batches_screen,
                 &mut self.default_vertexbuffer,
+                false,
             );
         }
 
@@ -590,6 +592,7 @@ impl Drawstate {
                 &mut self.default_batches_canvas,
                 &mut self.default_batches_screen,
                 &mut self.default_vertexbuffer,
+                true,
             );
         }
     }
@@ -600,6 +603,7 @@ impl Drawstate {
         batches_canvas: &mut Vec<DrawBatch>,
         batches_screen: &mut Vec<DrawBatch>,
         vertexbuffer: &mut VertexbufferDefault,
+        is_translucent: bool,
     ) {
         assert!(!drawables.is_empty());
 
@@ -608,6 +612,7 @@ impl Drawstate {
             texture_index: drawables[0].texture_index,
             indices_start_offset: vertexbuffer.current_offset(),
             indices_count: 0,
+            is_translucent,
         };
 
         for drawable in drawables.drain(..) {
@@ -624,6 +629,7 @@ impl Drawstate {
                     texture_index: drawable.texture_index,
                     indices_start_offset: vertexbuffer.current_offset(),
                     indices_count: 0,
+                    is_translucent,
                 };
             }
 
@@ -704,7 +710,7 @@ impl Drawstate {
                 ),
                 world_batch.indices_start_offset,
                 world_batch.indices_count,
-                true,
+                !world_batch.is_translucent,
             );
         }
         for canvas_batch in &self.default_batches_canvas {
@@ -718,7 +724,7 @@ impl Drawstate {
                 ),
                 canvas_batch.indices_start_offset,
                 canvas_batch.indices_count,
-                true,
+                !canvas_batch.is_translucent,
             );
         }
 
@@ -759,7 +765,7 @@ impl Drawstate {
                 ),
                 screen_batch.indices_start_offset,
                 screen_batch.indices_count,
-                true,
+                !screen_batch.is_translucent,
             );
         }
     }
