@@ -402,9 +402,9 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
             // Make touch input exclusive for a while
             *prevent_mouse_input_for_n_frames.borrow_mut() = 120;
 
-            let html_canvas = html_get_canvas();
-            let offset_x = html_canvas.get_bounding_client_rect().left();
-            let offset_y = html_canvas.get_bounding_client_rect().top();
+            let bounding_client_rect = html_get_canvas().get_bounding_client_rect();
+            let offset_x = bounding_client_rect.left();
+            let offset_y = bounding_client_rect.top();
             let mut appcontext = appcontext.borrow_mut();
             for index in 0..event.changed_touches().length() {
                 if let Some(touch) = event.changed_touches().item(index) {
@@ -431,12 +431,13 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
             // Make touch input exclusive for a while
             *prevent_mouse_input_for_n_frames.borrow_mut() = 120;
 
-            let html_canvas = html_get_canvas();
-            let offset_x = html_canvas.get_bounding_client_rect().left();
-            let offset_y = html_canvas.get_bounding_client_rect().top();
+            let bounding_client_rect = html_get_canvas().get_bounding_client_rect();
+            let offset_x = bounding_client_rect.left();
+            let offset_y = bounding_client_rect.top();
+            let changed_touches = event.changed_touches();
             let mut appcontext = appcontext.borrow_mut();
-            for index in 0..event.changed_touches().length() {
-                if let Some(touch) = event.changed_touches().item(index) {
+            for index in 0..changed_touches.length() {
+                if let Some(touch) = changed_touches.item(index) {
                     let finger_id = touch.identifier() as FingerPlatformId;
                     let x =
                         ((touch.client_x() as f64 - offset_x) * device_pixel_ratio).floor() as i32;
@@ -460,12 +461,13 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
             // Make touch input exclusive for a while
             *prevent_mouse_input_for_n_frames.borrow_mut() = 120;
 
-            let html_canvas = html_get_canvas();
-            let offset_x = html_canvas.get_bounding_client_rect().left();
-            let offset_y = html_canvas.get_bounding_client_rect().top();
+            let bounding_client_rect = html_get_canvas().get_bounding_client_rect();
+            let offset_x = bounding_client_rect.left();
+            let offset_y = bounding_client_rect.top();
+            let changed_touches = event.changed_touches();
             let mut appcontext = appcontext.borrow_mut();
-            for index in 0..event.changed_touches().length() {
-                if let Some(touch) = event.changed_touches().item(index) {
+            for index in 0..changed_touches.length() {
+                if let Some(touch) = changed_touches.item(index) {
                     let finger_id = touch.identifier() as FingerPlatformId;
                     let x =
                         ((touch.client_x() as f64 - offset_x) * device_pixel_ratio).floor() as i32;
@@ -485,12 +487,13 @@ pub fn run_main<AppEventHandlerType: AppEventHandler + 'static>(
     {
         let appcontext = app.clone();
         let touchcancel_callback = Closure::wrap(Box::new(move |event: web_sys::TouchEvent| {
-            let html_canvas = html_get_canvas();
-            let offset_x = html_canvas.get_bounding_client_rect().left();
-            let offset_y = html_canvas.get_bounding_client_rect().top();
+            let bounding_client_rect = html_get_canvas().get_bounding_client_rect();
+            let offset_x = bounding_client_rect.left();
+            let offset_y = bounding_client_rect.top();
+            let changed_touches = event.changed_touches();
             let mut appcontext = appcontext.borrow_mut();
-            for index in 0..event.changed_touches().length() {
-                if let Some(touch) = event.changed_touches().item(index) {
+            for index in 0..changed_touches.length() {
+                if let Some(touch) = changed_touches.item(index) {
                     let finger_id = touch.identifier() as FingerPlatformId;
                     let x =
                         ((touch.client_x() as f64 - offset_x) * device_pixel_ratio).floor() as i32;

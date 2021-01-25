@@ -1,10 +1,6 @@
 # DONE:
 
-- adds flexible canvas mode
-- make web build batchfile not pause if called from vscode task
-- remove deltatime from inputstate
-- don't sort non-translucent objects
-
+- reduce wasm memory pressure in touch events slightly
 
 # CURRENT
 
@@ -72,8 +68,6 @@
 
 ## better platform layer
 - sort this list
-- we apparently can combine our mouse/touch/keyboard events respectively into only one callback
-  https://sdfgeoff.github.io/wasm_minigames/binding_events/index.html
 - implement appcommands in wasm
 - make screen orientation settable
 - rename things that are not necessarily game related to app
@@ -408,3 +402,8 @@
 - pass app_info directly without callback
 - make some batch files available in vscode tasks.json
 - refactoring window and canvas initialization
+
+- adds flexible canvas mode
+- make web build batchfile not pause if called from vscode task
+- remove deltatime from inputstate
+- don't sort non-translucent objects
