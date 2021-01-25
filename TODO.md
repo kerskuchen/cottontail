@@ -158,12 +158,22 @@
 - Find out what causes garbage collector to trigger
 - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)
 
+## Audiostate
+- Currently for WASM we have a coupling between `AUDIO_CHUNKSIZE_IN_FRAMES` in audio.rs and 
+  `AUDIO_BUFFER_FRAMECOUNT` which need to be exaclty the same
+
 ## Drawstate / Renderer
 - sort this list
 - evaluate what to do with DEFAULT_WORLD_ZNEAR and DEFAULT_WORLD_ZFAR constants that are duplicated
   in renderer and drawstate
-- can we make the sorting faster? alternatively can we get rid of sorting for non-translucent 
-  drawobjects by dividing them up into two drawbatches?
+- currently we dont sort non-tanslucent drawobject. as soon as we have one of the following:
+  * multiple textures
+  * multiple shaders
+  * uniforms changes inbetween draws
+  * more than one framebuffer
+  we need to either sort our drawables again or split them up into
+    num_framebuffers * num_shaders * num_textures * num_uniform_changes
+  drawbatches
   - To correctly draw translucent object we need to do the following in drawstate:
     for framebuffer
       for shader
@@ -173,6 +183,15 @@
       for tranclucent drawobject (ordered back to front with disabled depth write)
         set shader, set uniform, set texture if necessary
           draw drawobject
+  - cost of state changes http://media.steampowered.com/apps/steamdevdays/slides/beyondporting.pdf
+    framebuffer     ================= ~60k/s
+    shader          ============      ~300k/s
+    texture         =======           ~1.5M/s
+    vertex format   ======
+    buffer bindings ====
+    vertex bindings ==
+    uniform updates =                 ~10M/s
+
 - add ability to add new shaders from drawstate
 - implement shadow and lighting with signed-distance-fields/raymarching the help of these links
   - https://www.rykap.com/2020/09/23/distance-fields/
