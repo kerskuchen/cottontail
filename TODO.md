@@ -1,8 +1,11 @@
 # DONE:
 
 - reduce wasm memory pressure in touch events slightly
+- replace all `expect` calls in wasm_app and wasm_audio with `unwrap_or_else`
+- adds experimental schedule buffer based wasm audio output 
 
 # CURRENT
+
 
 - disable depth write while drawing translucent objects
 
