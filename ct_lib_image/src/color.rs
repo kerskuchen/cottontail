@@ -97,6 +97,15 @@ impl PixelRGBA {
             a: 0,
         }
     }
+    #[inline]
+    pub const fn greyscale(value: u8) -> PixelRGBA {
+        PixelRGBA {
+            r: value,
+            g: value,
+            b: value,
+            a: 255,
+        }
+    }
 
     #[inline]
     pub fn new_random(random: &mut Random) -> PixelRGBA {

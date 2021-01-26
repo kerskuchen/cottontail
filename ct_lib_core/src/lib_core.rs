@@ -466,3 +466,8 @@ pub fn sort_list_f64(values: &mut [f64]) {
             .unwrap_or_else(|| std::cmp::Ordering::Equal)
     })
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Useful code snippets
+
+// #[rustfmt::skip]
