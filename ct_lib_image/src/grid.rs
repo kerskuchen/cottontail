@@ -1005,7 +1005,7 @@ where
                     segment_height,
                 ));
                 assert!(
-                    subgrid.width == 0 || subgrid.height == 0,
+                    subgrid.width != 0 && subgrid.height != 0,
                     "Segment ({},{}) was empty",
                     x,
                     y

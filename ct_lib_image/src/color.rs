@@ -1,5 +1,6 @@
 use super::core::serde_derive::{Deserialize, Serialize};
 use super::math::*;
+pub use hsl;
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize, Eq, Hash)]
