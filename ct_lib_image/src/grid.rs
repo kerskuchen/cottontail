@@ -101,6 +101,11 @@ where
     }
 
     #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.width == 0 || self.height == 0
+    }
+
+    #[inline]
     pub fn dim(&self) -> Vec2i {
         Vec2i::new(self.width, self.height)
     }

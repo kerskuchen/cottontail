@@ -1,15 +1,19 @@
 # DONE:
 
-- reduce wasm memory pressure in touch events slightly
-- replace all `expect` calls in wasm_app and wasm_audio with `unwrap_or_else`
-- adds experimental schedule buffer based wasm audio output 
-- using simpler buffer scheduling for wasm without callbacks
-- disable depth write while drawing translucent objects
-
 # CURRENT
 
+- move launcher icon processing out of asset baker and into a dedicated crate that creates and 
+  assignes launcher icons for each platform
+  https://www.anthropicstudios.com/2021/01/05/setting-a-rust-windows-exe-icon/
+- create pixiestitch stitched preview image 
+- create pixiestitch fuse beads preview image 
 
+- We need to think about adding a premultiplied alpha flag to Bitmap
 
+- pixiestitch
+  - custom background color
+  - setting aida count and calculating final size
+  - optional 
 
 # NEXT:
 
@@ -431,3 +435,9 @@
 - make web build batchfile not pause if called from vscode task
 - remove deltatime from inputstate
 - don't sort non-translucent objects
+
+- reduce wasm memory pressure in touch events slightly
+- replace all `expect` calls in wasm_app and wasm_audio with `unwrap_or_else`
+- adds experimental schedule buffer based wasm audio output 
+- using simpler buffer scheduling for wasm without callbacks
+- disable depth write while drawing translucent objects
