@@ -1,3 +1,5 @@
+use crate::ColorBlendMode;
+
 pub use super::color::{Color, PixelRGBA};
 pub use super::font::{BitmapFont, Font, TextAlignment};
 pub use super::grid::GluePosition;
@@ -11,12 +13,6 @@ use super::math;
 use rect_packer;
 
 pub type Bitmap = super::grid::Grid<PixelRGBA>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AlphaBlendMode {
-    Normal,
-    Multiply,
-}
 
 impl Bitmap {
     pub fn as_bytes(&self) -> &[u8] {
@@ -87,10 +83,10 @@ impl Bitmap {
         other: &mut Bitmap,
         pos: Vec2i,
         allow_partial_blit: bool,
-        blend_mode: AlphaBlendMode,
+        blend_mode: ColorBlendMode,
     ) {
         match blend_mode {
-            AlphaBlendMode::Normal => self.blit_to_with_function(
+            ColorBlendMode::Normal => self.blit_to_with_function(
                 other,
                 pos,
                 allow_partial_blit,
@@ -101,7 +97,7 @@ impl Bitmap {
                     *pixel_dest = color_result.to_pixelrgba();
                 },
             ),
-            AlphaBlendMode::Multiply => self.blit_to_with_function(
+            ColorBlendMode::Multiply => self.blit_to_with_function(
                 other,
                 pos,
                 allow_partial_blit,
@@ -115,6 +111,7 @@ impl Bitmap {
                     todo!("Multiply is not correct yet")
                 },
             ),
+            _ => todo!(),
         }
     }
 

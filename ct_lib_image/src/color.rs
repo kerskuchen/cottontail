@@ -188,6 +188,24 @@ impl PixelRGBA {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ColorBlendMode {
+    Normal,
+    Multiply,
+    Screen,
+    Overlay,
+    Darken,
+    Lighten,
+    ColorDodge,
+    ColorBurn,
+    HardLight,
+    SoftLight,
+    Hue,
+    Saturation,
+    Color,
+    Luminosity,
+}
+
 /// Premultiplied RGBA
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
@@ -407,6 +425,171 @@ impl Color {
     pub fn to_relative_luminance(self) -> f32 {
         let color_srgba = self.convert_to_srgba();
         0.2126 * color_srgba.r + 0.7152 * color_srgba.g + 0.0722 * color_srgba.b
+    }
+
+    /// From https://cairographics.org/operators/
+    #[inline]
+    pub fn luminosity(self) -> f32 {
+        0.3 * self.r + 0.59 * self.g + 0.11 * self.b
+    }
+
+    /// From https://cairographics.org/operators/
+    #[inline]
+    pub fn saturation(self) -> f32 {
+        f32::max(f32::max(self.r, self.g), self.b) - f32::min(f32::max(self.r, self.g), self.b)
+    }
+
+    /// From https://cairographics.org/operators/
+    #[inline]
+    #[must_use = "This does not change the original color"]
+    pub fn with_replaced_luminosity(self, new_luminosity: f32) -> Color {
+        let d = new_luminosity - self.luminosity();
+        let mut result = Color {
+            r: self.r + d,
+            g: self.g + d,
+            b: self.b + d,
+            a: self.a,
+        };
+
+        // Clip Color
+        let l = result.luminosity();
+        let n = f32::min(f32::min(result.r, result.g), result.b);
+        let x = f32::max(f32::max(result.r, result.g), result.b);
+        if n < 0.0 {
+            result.r = l + (((result.r - l) * l) / (l - n));
+            result.g = l + (((result.g - l) * l) / (l - n));
+            result.b = l + (((result.b - l) * l) / (l - n));
+        }
+        if x > 1.0 {
+            result.r = l + (((result.r - l) * (1.0 - l)) / (x - l));
+            result.g = l + (((result.g - l) * (1.0 - l)) / (x - l));
+            result.b = l + (((result.b - l) * (1.0 - l)) / (x - l));
+        }
+
+        result
+    }
+
+    #[inline]
+    pub fn alpha_blend(source: Color, dest: Color, blend_mode: ColorBlendMode) -> Color {
+        match blend_mode {
+            ColorBlendMode::Normal => Color::alpha_blend_normal(source, dest),
+            ColorBlendMode::Multiply => {
+                Color::alpha_blend_with_function(source, dest, Color::blend_function_multiply)
+            }
+            ColorBlendMode::Screen => todo!(),
+            ColorBlendMode::Overlay => todo!(),
+            ColorBlendMode::Darken => todo!(),
+            ColorBlendMode::Lighten => todo!(),
+            ColorBlendMode::ColorDodge => todo!(),
+            ColorBlendMode::ColorBurn => todo!(),
+            ColorBlendMode::HardLight => todo!(),
+            ColorBlendMode::SoftLight => todo!(),
+            ColorBlendMode::Hue => todo!(),
+            ColorBlendMode::Saturation => todo!(),
+            ColorBlendMode::Color => todo!(),
+            ColorBlendMode::Luminosity => Color::alpha_blend_with_non_separable_function(
+                source,
+                dest,
+                Color::blend_function_luminosity,
+            ),
+        }
+    }
+
+    #[inline]
+    pub fn alpha_blend_with_function<F: Fn(f32, f32) -> f32>(
+        source: Color,
+        dest: Color,
+        blend_function: F,
+    ) -> Color {
+        // From https://cairographics.org/operators/
+        // result.a = source.a + dest.a·(1−source.a)
+        // result.x = (1/result.a)*[(1-dest.a)*source.a*source.x + (1-source.a)*dest.a*dest.x + source.a*dest.a*blend_func(source.x, dest.x)]
+
+        let a = source.a + dest.a * (1.0 - source.a);
+        if a == 0.0 {
+            Color::transparent()
+        } else {
+            let mul1 = (1.0 - dest.a) * source.a;
+            let mul2 = (1.0 - source.a) * dest.a;
+            let mul3 = source.a * dest.a;
+            let r = mul1 * source.r + mul2 * dest.r + mul3 * blend_function(source.r, dest.r);
+            let g = mul1 * source.g + mul2 * dest.g + mul3 * blend_function(source.g, dest.g);
+            let b = mul1 * source.b + mul2 * dest.b + mul3 * blend_function(source.b, dest.b);
+
+            Color {
+                r: r / a,
+                g: g / a,
+                b: b / a,
+                a,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn alpha_blend_with_non_separable_function<F: Fn(Color, Color) -> Color>(
+        source: Color,
+        dest: Color,
+        blend_function: F,
+    ) -> Color {
+        // From https://cairographics.org/operators/
+        // result.a = source.a + dest.a·(1−source.a)
+        // result.x = (1/result.a)*[(1-dest.a)*source.a*source.x + (1-source.a)*dest.a*dest.x + source.a*dest.a*blend_func(source.x, dest.x)]
+
+        let a = source.a + dest.a * (1.0 - source.a);
+        if a == 0.0 {
+            Color::transparent()
+        } else {
+            let mul1 = (1.0 - dest.a) * source.a;
+            let mul2 = (1.0 - source.a) * dest.a;
+            let mul3 = source.a * dest.a * blend_function(source, dest);
+            let r = mul1 * source.r + mul2 * dest.r + mul3.r;
+            let g = mul1 * source.g + mul2 * dest.g + mul3.g;
+            let b = mul1 * source.b + mul2 * dest.b + mul3.b;
+
+            Color {
+                r: r / a,
+                g: g / a,
+                b: b / a,
+                a,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn alpha_blend_normal(source: Color, dest: Color) -> Color {
+        let a = source.a + dest.a * (1.0 - source.a);
+        if a == 0.0 {
+            Color::transparent()
+        } else {
+            let r = (source.r * source.a + dest.r * dest.a * (1.0 - source.a)) / a;
+            let g = (source.g * source.a + dest.g * dest.a * (1.0 - source.a)) / a;
+            let b = (source.b * source.a + dest.b * dest.a * (1.0 - source.a)) / a;
+            Color { r, g, b, a }
+        }
+    }
+
+    #[inline]
+    pub fn alpha_blend_normal_premultiplied_alpha(source: Color, dest: Color) -> Color {
+        let a = source.a + dest.a * (1.0 - source.a);
+        let r = source.r + dest.r * (1.0 - source.a);
+        let g = source.g + dest.g * (1.0 - source.a);
+        let b = source.b + dest.b * (1.0 - source.a);
+        Color { r, g, b, a }
+    }
+
+    #[inline]
+    pub fn blend_function_normal(source: f32, _dest: f32) -> f32 {
+        source
+    }
+
+    #[inline]
+    pub fn blend_function_multiply(source: f32, dest: f32) -> f32 {
+        source * dest
+    }
+
+    #[inline]
+    pub fn blend_function_luminosity(source: Color, dest: Color) -> Color {
+        dest.with_replaced_luminosity(source.luminosity())
     }
 }
 

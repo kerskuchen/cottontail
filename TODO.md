@@ -6,6 +6,7 @@
   assignes launcher icons for each platform
   https://www.anthropicstudios.com/2021/01/05/setting-a-rust-windows-exe-icon/
 - create pixiestitch stitched preview image 
+- split preview into two layers
 - create pixiestitch fuse beads preview image 
 
 - We need to think about adding a premultiplied alpha flag to Bitmap
