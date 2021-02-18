@@ -77,8 +77,26 @@ impl Bitmap {
         result
     }
 
-    /// NOTE: This assumes that `self` and `other` are both premultiplied alpha
-    pub fn premultiplied_blit_to_alpha_blended(
+    // This assumes `self` and `other` to be premultiplied
+    #[must_use]
+    pub fn masked_by_premultiplied_alpha(&self, mask: &Bitmap) -> Bitmap {
+        assert!(self.width == mask.width);
+        assert!(self.height == mask.height);
+
+        let mut result = self.clone();
+        for (pixel, mask_pixel) in result.data.iter_mut().zip(mask.data.iter()) {
+            let mask_alpha = mask_pixel.a as f32 / 255.0;
+            pixel.r = (255.0 * (pixel.r as f32 / 255.0 * mask_alpha)) as u8;
+            pixel.g = (255.0 * (pixel.g as f32 / 255.0 * mask_alpha)) as u8;
+            pixel.b = (255.0 * (pixel.b as f32 / 255.0 * mask_alpha)) as u8;
+            pixel.a = (255.0 * (pixel.a as f32 / 255.0 * mask_alpha)) as u8;
+        }
+
+        result
+    }
+
+    // This assumes `self` and `other` to be premultiplied
+    pub fn blit_to_alpha_blended_premultiplied(
         &self,
         other: &mut Bitmap,
         pos: Vec2i,
@@ -93,7 +111,8 @@ impl Bitmap {
                 |pixel_source, pixel_dest| {
                     let color_source = pixel_source.to_color();
                     let color_dest = pixel_dest.to_color();
-                    let color_result = color_source + (color_dest * (1.0 - color_source.a));
+                    let color_result =
+                        Color::premultiplied_alpha_blend_normal(color_source, color_dest);
                     *pixel_dest = color_result.to_pixelrgba();
                 },
             ),
@@ -104,11 +123,33 @@ impl Bitmap {
                 |pixel_source, pixel_dest| {
                     let color_source = pixel_source.to_color();
                     let color_dest = pixel_dest.to_color();
-                    // TODO: This is still wrong
                     let color_result =
-                        color_dest + color_source * (color_dest * (1.0 - color_source.a));
+                        Color::premultiplied_alpha_blend_multiply(color_source, color_dest);
                     *pixel_dest = color_result.to_pixelrgba();
-                    todo!("Multiply is not correct yet")
+                },
+            ),
+            ColorBlendMode::Screen => self.blit_to_with_function(
+                other,
+                pos,
+                allow_partial_blit,
+                |pixel_source, pixel_dest| {
+                    let color_source = pixel_source.to_color();
+                    let color_dest = pixel_dest.to_color();
+                    let color_result =
+                        Color::premultiplied_alpha_blend_screen(color_source, color_dest);
+                    *pixel_dest = color_result.to_pixelrgba();
+                },
+            ),
+            ColorBlendMode::Luminosity => self.blit_to_with_function(
+                other,
+                pos,
+                allow_partial_blit,
+                |pixel_source, pixel_dest| {
+                    let color_source = pixel_source.to_color();
+                    let color_dest = pixel_dest.to_color();
+                    let color_result =
+                        Color::premultiplied_alpha_blend_luminosity(color_source, color_dest);
+                    *pixel_dest = color_result.to_pixelrgba();
                 },
             ),
             _ => todo!(),
