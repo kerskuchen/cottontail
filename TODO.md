@@ -10,10 +10,10 @@
     - run assetbaker
     - build exe
     - run resourcehacker
+    - automatically zip up to release
 
 # CURRENT
 
-- automatically zip up to release
 
 - We need to think hard about adding a premultiplied alpha flag to Bitmap
 

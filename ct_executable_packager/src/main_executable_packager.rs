@@ -6,7 +6,7 @@ use crate::core::*;
 
 use image::*;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::File, io::Write, path::Path};
 
 pub const VERSION_INFO_TEMPLATE: &[u8] = include_bytes!("../resources/versioninfo.rc");
 
@@ -75,6 +75,8 @@ fn main() {
         );
     }
 
+    create_zipfile(&project_details);
+
     log::info!(
         "PACKAGER FINISHED SUCCESSFULLY: Elapsed time: {:.3}s",
         start_time.elapsed().as_secs_f64()
@@ -98,44 +100,6 @@ fn create_versioninfo(project_details: &IndexMap<String, String>) {
         .unwrap();
     std::fs::write("target/temp_executable/versioninfo.rc", version_info)
         .expect("Could not write to 'target/temp_executable/versioninfo.rc'");
-}
-
-fn load_project_details() -> IndexMap<String, String> {
-    let mut project_details: IndexMap<String, String> = {
-        let metadata_string = std::fs::read_to_string("project_details.json").unwrap();
-        serde_json::from_str(&metadata_string)
-            .expect("Failed to parse project details from 'project_details.json'")
-    };
-    assert!(
-            project_details.contains_key("project_display_name"),
-            "`project_details.json` missing key `project_display_name` - please re-run `ct_makeproject`"
-        );
-    assert!(
-        project_details.contains_key("project_name"),
-        "`project_details.json` missing key `project_name` - please re-run `ct_makeproject`"
-    );
-    assert!(
-            project_details.contains_key("project_company_name"),
-            "`project_details.json` missing key `project_company_name` - please re-run `ct_makeproject`"
-        );
-    assert!(
-            project_details.contains_key("project_copyright_year"),
-            "`project_details.json` missing key `project_copyright_year` - please re-run `ct_makeproject`"
-        );
-
-    // Find out project version
-    assert!(path_exists("launcher/Cargo.toml"));
-    let project_version = std::fs::read_to_string("launcher/Cargo.toml")
-        .expect("Could not read 'launcher/Cargo.toml'")
-        .lines()
-        .filter(|line| line.starts_with("version=") || line.starts_with("version ="))
-        .map(|line| line.split("=").last().unwrap().trim().replace("\"", ""))
-        .next()
-        .expect("'launcher/Cargo.toml' does not contain a `version` line")
-        .to_owned();
-    project_details.insert("project_version".to_owned(), project_version);
-
-    project_details
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -214,4 +178,96 @@ fn create_windows_launcher_icon(
     iconpacker
         .write(output_file)
         .expect(&format!("Could not write to '{}'", icon_output_filepath));
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Misc
+
+fn create_zipfile(project_details: &IndexMap<String, String>) {
+    let files_to_zip = collect_files_recursive("shipping_windows");
+    let dirs_to_zip = collect_directories_recursive("shipping_windows");
+    let mut zip = {
+        let zipfile_path = format!(
+            "shipping_windows/{}_v{}.zip",
+            project_details["project_name"], project_details["project_version"]
+        );
+        let writer = File::create(&zipfile_path)
+            .expect(&format!("Cannot create output file {}", zipfile_path));
+        zip::ZipWriter::new(writer)
+    };
+    let options = zip::write::FileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o755);
+
+    // Add dirs to zipfile
+    for path in dirs_to_zip {
+        let name = path
+            .replace("shipping_windows/", "")
+            .replace("shipping_windows", "");
+        if !name.is_empty() {
+            println!("adding dir {:?} as {:?} ...", path, name);
+            #[allow(deprecated)]
+            zip.add_directory_from_path(Path::new(&name), options)
+                .expect(&format!(
+                    "Cannot add directory {:?} to zip as {:?}",
+                    path, name
+                ));
+        }
+    }
+
+    // Add files to zipfile
+    for path in files_to_zip.into_iter() {
+        let name = path.replace("shipping_windows/", "");
+
+        log::debug!("adding file {:?} as {:?} ...", &path, name);
+        let buffer = std::fs::read(&path).expect(&format!("Cannot read file {:?}", &path));
+
+        #[allow(deprecated)]
+        zip.start_file_from_path(Path::new(&name), options)
+            .expect(&format!("Cannot add file {:?} to zip as {:?}", path, name));
+        zip.write_all(&buffer).expect(&format!(
+            "Cannot write file {:?} to zip as {:?}",
+            path, name
+        ));
+    }
+
+    zip.finish().expect("Failed to finalize zip file");
+}
+
+fn load_project_details() -> IndexMap<String, String> {
+    let mut project_details: IndexMap<String, String> = {
+        let metadata_string = std::fs::read_to_string("project_details.json").unwrap();
+        serde_json::from_str(&metadata_string)
+            .expect("Failed to parse project details from 'project_details.json'")
+    };
+    assert!(
+            project_details.contains_key("project_display_name"),
+            "`project_details.json` missing key `project_display_name` - please re-run `ct_makeproject`"
+        );
+    assert!(
+        project_details.contains_key("project_name"),
+        "`project_details.json` missing key `project_name` - please re-run `ct_makeproject`"
+    );
+    assert!(
+            project_details.contains_key("project_company_name"),
+            "`project_details.json` missing key `project_company_name` - please re-run `ct_makeproject`"
+        );
+    assert!(
+            project_details.contains_key("project_copyright_year"),
+            "`project_details.json` missing key `project_copyright_year` - please re-run `ct_makeproject`"
+        );
+
+    // Find out project version
+    assert!(path_exists("launcher/Cargo.toml"));
+    let project_version = std::fs::read_to_string("launcher/Cargo.toml")
+        .expect("Could not read 'launcher/Cargo.toml'")
+        .lines()
+        .filter(|line| line.starts_with("version=") || line.starts_with("version ="))
+        .map(|line| line.split("=").last().unwrap().trim().replace("\"", ""))
+        .next()
+        .expect("'launcher/Cargo.toml' does not contain a `version` line")
+        .to_owned();
+    project_details.insert("project_version".to_owned(), project_version);
+
+    project_details
 }

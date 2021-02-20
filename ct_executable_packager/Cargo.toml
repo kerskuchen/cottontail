@@ -16,3 +16,4 @@ ct_lib_math = { path = "../ct_lib_math" }
 mustache = "0.9.0"
 ico = "0.1.0"
 serde = "1.0.118"
+zip = "0.5.10"
