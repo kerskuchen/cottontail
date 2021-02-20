@@ -401,6 +401,28 @@ impl Color {
         Color { a: 1.0, ..self }
     }
 
+    pub fn to_premultiplied_alpha(self) -> Color {
+        Color {
+            r: self.r * self.a,
+            g: self.g * self.a,
+            b: self.b * self.a,
+            a: self.a,
+        }
+    }
+
+    pub fn to_unpremultipled_alpha(self) -> Color {
+        if self.a == 0.0 {
+            Color::transparent()
+        } else {
+            Color {
+                r: self.r / self.a,
+                g: self.g / self.a,
+                b: self.b / self.a,
+                a: self.a,
+            }
+        }
+    }
+
     /// Based on https://en.wikipedia.org/wiki/SRGB#The_reverse_transformation
     #[inline]
     pub fn convert_to_srgba(self) -> Color {
@@ -500,35 +522,13 @@ impl Color {
 
     #[inline]
     pub fn premultiplied_alpha_blend_luminosity(source: Color, dest: Color) -> Color {
-        let TODO = "This is incorrect for premultiplied source/dest";
         Color::premultiplied_alpha_blend_with_non_separable_function(
             source,
             dest,
             |source, dest| {
-                let hsl_source = hsl::HSL::from_rgb(&[
-                    (source.r * 255.0) as u8,
-                    (source.g * 255.0) as u8,
-                    (source.b * 255.0) as u8,
-                ]);
-                let hsl_dest = hsl::HSL::from_rgb(&[
-                    (dest.r * 255.0) as u8,
-                    (dest.g * 255.0) as u8,
-                    (dest.b * 255.0) as u8,
-                ]);
-
-                let hsl_result = hsl::HSL {
-                    h: hsl_dest.h,
-                    s: hsl_dest.s,
-                    l: hsl_source.l,
-                };
-
-                let rgb_result = hsl_result.to_rgb();
-                Color {
-                    r: rgb_result.0 as f32 / 255.0,
-                    g: rgb_result.1 as f32 / 255.0,
-                    b: rgb_result.2 as f32 / 255.0,
-                    a: source.a,
-                }
+                let source = source.to_unpremultipled_alpha();
+                let dest = dest.to_unpremultipled_alpha();
+                dest.with_replaced_luminosity(source.luminosity())
             },
         )
     }
@@ -581,7 +581,6 @@ impl Color {
         } else {
             let mul1 = 1.0 - dest.a;
             let mul2 = 1.0 - source.a;
-            let TODO = "This is incorrect for premultiplied source/dest";
             let mul3 = source.a * dest.a * blend_function(source, dest);
             let r = mul1 * source.r + mul2 * dest.r + mul3.r;
             let g = mul1 * source.g + mul2 * dest.g + mul3.g;
