@@ -983,16 +983,26 @@ fn main() {
         std::process::abort();
     }));
 
-    recreate_directory("target/assets_temp");
-
-    if path_exists("assets") && !path_dir_empty("assets") {
+    if (path_exists("assets") && !path_dir_empty("assets"))
+        || (path_exists("assets_copy") && !path_dir_empty("assets_copy"))
+    {
         recreate_directory("resources");
         std::fs::write(
             "resources/assetbaker.lock",
             "Asset baking in progress".as_bytes(),
         )
         .expect("Cannot write lockfile");
+    }
 
+    if path_exists("assets_copy") && !path_dir_empty("assets_copy") {
+        let files_to_copy = collect_files_recursive("assets_copy");
+        for filepath in &files_to_copy {
+            path_copy_file(&filepath, &filepath.replace("assets_copy/", "resources/"));
+        }
+    }
+
+    if path_exists("assets") && !path_dir_empty("assets") {
+        recreate_directory("target/assets_temp");
         if path_exists("assets/credits.txt") {
             recreate_directory("target/assets_temp/content");
             create_credits_file(
