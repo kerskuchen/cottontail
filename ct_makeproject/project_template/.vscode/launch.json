@@ -45,6 +45,24 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug executable 'ct_executable_packager'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=ct_executable_packager",
+                    "--package=ct_executable_packager"
+                ],
+                "filter": {
+                    "name": "ct_executable_packager",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug executable 'ct_makeproject'",
             "cargo": {
                 "args": [

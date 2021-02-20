@@ -33,6 +33,19 @@
         },
         {
             "type": "shell",
+            "label": "package executable",
+            "command": "cargo",
+            "args": [
+                "run",
+                "-p",
+                "ct_executable_packager"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ]
+        },
+        {
+            "type": "shell",
             "label": "check",
             "command": "cargo",
             "args": [

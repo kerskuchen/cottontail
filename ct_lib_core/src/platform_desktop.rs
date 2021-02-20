@@ -1,5 +1,5 @@
-use std::ffi::OsStr;
 use std::path::Path;
+use std::{ffi::OsStr, path::PathBuf};
 
 pub use easy_process;
 
@@ -250,6 +250,45 @@ pub fn path_copy_file(from_filepath: &str, to_filepath: &str) {
     });
 }
 
+pub fn path_recreate_directory_looped(path: &str) {
+    if path_exists(path) {
+        loop {
+            let dir_content = collect_files_recursive(path);
+
+            let mut has_error = false;
+            for path_to_delete in dir_content {
+                if PathBuf::from(&path_to_delete).is_dir() {
+                    if let Err(error) = std::fs::remove_dir_all(&path_to_delete) {
+                        has_error = true;
+                        log::warn!(
+                            "Unable to delete '{}' dir, are files from this folder still open? : {}",
+                            path_to_delete,
+                            error,
+                        );
+                    }
+                } else {
+                    if let Err(error) = std::fs::remove_file(&path_to_delete) {
+                        has_error = true;
+                        log::warn!(
+                            "Unable to delete file '{}', is it still open? : {}",
+                            path_to_delete,
+                            error,
+                        );
+                    }
+                }
+            }
+
+            if has_error {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            } else {
+                break;
+            }
+        }
+    } else {
+        std::fs::create_dir_all(path).expect(&format!("Unable to create '{}' dir", path));
+    }
+}
+
 /// NOTE: This also creates all necessary folders including the `to_folderpath`
 pub fn path_copy_directory_contents_recursive(from_folderpath: &str, to_folderpath: &str) {
     assert!(
@@ -360,7 +399,10 @@ pub fn collect_files_by_glob_pattern(root_folder: &str, glob_pattern: &str) -> V
 }
 
 // Returns stdout and stderr
-pub fn run_systemcommand_fail_on_error(command: &str, print_command: bool) -> easy_process::Output {
+pub fn run_systemcommand(
+    command: &str,
+    print_command: bool,
+) -> Result<easy_process::Output, String> {
     let result = easy_process::run(command);
     if let Ok(output) = result {
         let result = format!(
@@ -370,21 +412,25 @@ pub fn run_systemcommand_fail_on_error(command: &str, print_command: bool) -> ea
         if print_command {
             println!("{}", result);
         }
-        output
+        Ok(output)
     } else {
         let error = result.unwrap_err();
         match error {
-            easy_process::Error::Failure(error_status, output) => {
-                panic!(
-                    "Failed command:\n'{}'\nstatus: '{}'\nstdout: '{}'\nstderr: '{}'",
-                    command, error_status, output.stdout, output.stderr
-                );
-            }
-            easy_process::Error::Io(error) => {
-                panic!("Unable to execute command:\n'{}'\n{}", command, error)
-            }
+            easy_process::Error::Failure(error_status, output) => Err(format!(
+                "Failed command:\n'{}'\nstatus: '{}'\nstdout: '{}'\nstderr: '{}'",
+                command, error_status, output.stdout, output.stderr
+            )),
+            easy_process::Error::Io(error) => Err(format!(
+                "Unable to execute command:\n'{}'\n{}",
+                command, error
+            )),
         }
     }
+}
+
+// Returns stdout and stderr
+pub fn run_systemcommand_fail_on_error(command: &str, print_command: bool) -> easy_process::Output {
+    run_systemcommand(command, print_command).unwrap_or_else(|err| panic!("{}", err))
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

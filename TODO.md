@@ -1,20 +1,27 @@
 # DONE:
 
-# CURRENT
-
 - move launcher icon processing out of asset baker and into a dedicated crate that creates and 
   assignes launcher icons for each platform
   https://www.anthropicstudios.com/2021/01/05/setting-a-rust-windows-exe-icon/
-- create pixiestitch stitched preview image 
-- split preview into two layers
-- create pixiestitch fuse beads preview image 
+  NOTE: We are still using ResourceHacker
+  - we can even put the whole pipeline into this crate:
+    - create icons
+    - create resource file with current version and project settings
+    - run assetbaker
+    - build exe
+    - run resourcehacker
 
-- We need to think about adding a premultiplied alpha flag to Bitmap
+# CURRENT
 
-- pixiestitch
-  - custom background color
-  - setting aida count and calculating final size
-  - optional 
+- automatically zip up to release
+
+- We need to think hard about adding a premultiplied alpha flag to Bitmap
+
+- pixiestitch 
+  - create fuse beads preview image 
+  - Add GUI for
+    - custom background color
+    - setting aida count and calculating final size
 
 # NEXT:
 

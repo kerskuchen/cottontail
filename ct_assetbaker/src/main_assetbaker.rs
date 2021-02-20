@@ -20,10 +20,7 @@ use math::*;
 
 use rayon::prelude::*;
 
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-};
+use std::collections::{HashMap, HashSet};
 
 const TEST_TEXTURE_PACKER: bool = false;
 
@@ -817,83 +814,6 @@ fn convert_animation_3d(
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Launcher icon
-
-fn load_existing_launcher_icon_images(search_dir: &str) -> HashMap<i32, Bitmap> {
-    let mut result = HashMap::new();
-    let image_paths = collect_files_by_extension_recursive(search_dir, ".png");
-    for image_path in &image_paths {
-        let image = Bitmap::from_png_file_or_panic(image_path);
-        let size = path_to_filename_without_extension(image_path)
-            .parse()
-            .expect(&format!(
-                "Launcher icon name '{}' invalid, see README_ICONS.md",
-                image_path,
-            ));
-
-        assert!(
-            image.width == size && image.height == size,
-            "Launcher icon name '{}' does not match its dimension ({}x{}), see README_ICONS.md",
-            image_path,
-            image.width,
-            image.height
-        );
-        result.insert(size, image);
-    }
-    assert!(
-        !result.is_empty(),
-        "No launcher icons found at '{}'",
-        search_dir
-    );
-    result
-}
-
-fn create_windows_launcher_icon_images(
-    existing_launcher_icons: &HashMap<i32, Bitmap>,
-) -> HashMap<i32, Bitmap> {
-    let biggest_size = existing_launcher_icons.keys().max().unwrap();
-    let windows_icon_sizes = [256, 128, 64, 48, 32, 16];
-    let mut result = HashMap::new();
-    for &size in windows_icon_sizes.iter() {
-        if !existing_launcher_icons.contains_key(&size) {
-            let scaled_image = existing_launcher_icons
-                .get(&biggest_size)
-                .unwrap()
-                .scaled_sample_nearest_neighbor(size as u32, size as u32);
-            result.insert(size, scaled_image);
-        } else {
-            let image = existing_launcher_icons.get(&size).unwrap();
-            result.insert(size, image.clone());
-        }
-    }
-    result
-}
-
-fn create_windows_launcher_icon(
-    windows_icon_images: &HashMap<i32, Bitmap>,
-    icon_output_filepath: &str,
-) {
-    let mut iconpacker = ico::IconDir::new(ico::ResourceType::Icon);
-    for (_size, image) in windows_icon_images.iter() {
-        let icon_image = ico::IconImage::from_rgba_data(
-            image.width as u32,
-            image.height as u32,
-            image.to_bytes(),
-        );
-
-        iconpacker.add_entry(ico::IconDirEntry::encode(&icon_image).expect(&format!(
-            "Cannot encode icon ({}x{}) into launcher icon",
-            image.width, image.height,
-        )));
-    }
-    let output_file = std::fs::File::create(icon_output_filepath)
-        .expect(&format!("Could not create path '{}'", icon_output_filepath));
-    iconpacker
-        .write(output_file)
-        .expect(&format!("Could not write to '{}'", icon_output_filepath));
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main
 
 fn create_credits_file(
@@ -931,45 +851,6 @@ fn create_credits_file(
     std::fs::write(output_filepath, credits_content).unwrap();
 }
 
-fn recreate_directory(path: &str) {
-    if path_exists(path) {
-        loop {
-            let dir_content = collect_files_recursive(path);
-
-            let mut has_error = false;
-            for path_to_delete in dir_content {
-                if PathBuf::from(&path_to_delete).is_dir() {
-                    if let Err(error) = std::fs::remove_dir_all(&path_to_delete) {
-                        has_error = true;
-                        log::warn!(
-                            "Unable to delete '{}' dir, are files from this folder still open? : {}",
-                            path_to_delete,
-                            error,
-                        );
-                    }
-                } else {
-                    if let Err(error) = std::fs::remove_file(&path_to_delete) {
-                        has_error = true;
-                        log::warn!(
-                            "Unable to delete file '{}', is it still open? : {}",
-                            path_to_delete,
-                            error,
-                        );
-                    }
-                }
-            }
-
-            if has_error {
-                std::thread::sleep(std::time::Duration::from_secs(1));
-            } else {
-                break;
-            }
-        }
-    } else {
-        std::fs::create_dir_all(path).expect(&format!("Unable to create '{}' dir", path));
-    }
-}
-
 fn main() {
     let start_time = std::time::Instant::now();
 
@@ -986,7 +867,7 @@ fn main() {
     if (path_exists("assets") && !path_dir_empty("assets"))
         || (path_exists("assets_copy") && !path_dir_empty("assets_copy"))
     {
-        recreate_directory("resources");
+        path_recreate_directory_looped("resources");
         std::fs::write(
             "resources/assetbaker.lock",
             "Asset baking in progress".as_bytes(),
@@ -1002,9 +883,9 @@ fn main() {
     }
 
     if path_exists("assets") && !path_dir_empty("assets") {
-        recreate_directory("target/assets_temp");
+        path_recreate_directory_looped("target/assets_temp");
         if path_exists("assets/credits.txt") {
-            recreate_directory("target/assets_temp/content");
+            path_recreate_directory_looped("target/assets_temp/content");
             create_credits_file(
                 "assets/credits.txt",
                 &["assets", "assets_executable", "cottontail"],
@@ -1045,36 +926,6 @@ fn main() {
 
         if TEST_TEXTURE_PACKER {
             std::fs::remove_dir_all("assets/random_pngs_test").expect("Cannot remove png test dir");
-        }
-    }
-
-    // Process icons and executable resource info
-    if path_exists("assets_executable") && !path_dir_empty("assets_executable") {
-        recreate_directory("resources_executable");
-
-        // Copy version info
-        if path_exists("assets_executable/versioninfo.rc") {
-            std::fs::copy(
-                "assets_executable/versioninfo.rc",
-                "resources_executable/versioninfo.rc",
-            )
-            .expect(
-                "Could not copy from 'assets_executable/versioninfo.rc' to 'resources_executable/versioninfo.rc'",
-            );
-        }
-
-        // Create launcher icon
-        if path_exists("assets_executable/launcher_icon") {
-            let existing_launcher_icons =
-                load_existing_launcher_icon_images("assets_executable/launcher_icon");
-            let windows_icon_images = create_windows_launcher_icon_images(&existing_launcher_icons);
-            for (&size, image) in windows_icon_images.iter() {
-                Bitmap::write_to_png_file(
-                    image,
-                    &format!("target/assets_temp/launcher_icons_windows/{}.png", size),
-                );
-            }
-            create_windows_launcher_icon(&windows_icon_images, "resources_executable/launcher.ico");
         }
     }
 
@@ -1165,7 +1016,7 @@ impl GraphicsSheet {
     fn pack_and_serialize(mut self, pack_name: &str) {
         let pack_temp_out_dir = format!("target/assets_temp/{}", pack_name);
         let pack_out_filepath = format!("resources/{}.data", pack_name);
-        recreate_directory(&pack_temp_out_dir);
+        path_recreate_directory_looped(&pack_temp_out_dir);
 
         // Pack textures
         let (mut textures, sprite_positions) = {

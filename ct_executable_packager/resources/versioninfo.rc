@@ -15,8 +15,8 @@ BLOCK "StringFileInfo"
 		VALUE "CompanyName", "{{project_company_name}}"
 		VALUE "LegalCopyright", "{{project_company_name}} - Copyright (C) {{project_copyright_year}}"
 		VALUE "ProductName", "{{project_display_name}}"
-		VALUE "FileVersion", "1.0.0.0"
-		VALUE "ProductVersion", "1.0.0.0"
+		VALUE "FileVersion", "{{project_version}}"
+		VALUE "ProductVersion", "{{project_version}}"
 	}
 }
 
