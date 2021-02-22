@@ -156,6 +156,20 @@ impl Bitmap {
         }
     }
 
+    pub fn from_greyscale_bytes_premultiplied(bytes: &[u8], width: u32, height: u32) -> Bitmap {
+        assert_eq!(bytes.len(), (width * height) as usize);
+        let mut result = Bitmap::new(width, height);
+
+        for (pixel, &byte) in result.data.iter_mut().zip(bytes.iter()) {
+            pixel.r = byte;
+            pixel.g = byte;
+            pixel.b = byte;
+            pixel.a = byte;
+        }
+
+        result
+    }
+
     pub fn from_png_data(png_data: &[u8]) -> Result<Bitmap, String> {
         let mut decoder = png::Decoder::new(std::io::Cursor::new(png_data));
         decoder.set_transformations(png::Transformations::EXPAND);
