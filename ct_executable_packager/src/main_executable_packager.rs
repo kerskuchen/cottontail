@@ -34,7 +34,9 @@ fn main() {
     path_recreate_directory_looped("shipping_windows");
     run_systemcommand_fail_on_error("cargo build --release --package launcher", false);
     run_systemcommand_fail_on_error("cargo run --package ct_assetbaker", false);
-    path_copy_directory_contents_recursive("resources", "shipping_windows/resources");
+    if path_exists("resources") {
+        path_copy_directory_contents_recursive("resources", "shipping_windows/resources");
+    }
 
     // Check if resource hacker exists
     let resource_hacker_in_path = run_systemcommand("where ResourceHacker.exe", false).is_ok();
