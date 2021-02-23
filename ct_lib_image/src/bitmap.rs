@@ -210,7 +210,7 @@ impl Bitmap {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn from_png_file_or_panic(png_filepath: &str) -> Bitmap {
-        Bitmap::from_png_file(png_filepath).unwrap()
+        Bitmap::from_png_file(png_filepath).expect("Failed to read png file")
     }
 
     pub fn create_from_text(
