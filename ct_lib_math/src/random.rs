@@ -19,6 +19,17 @@ impl Random {
         }
     }
 
+    #[inline]
+    pub fn new_from_seed_multiple(seed: u64, count: usize) -> Vec<Random> {
+        (0..count)
+            .into_iter()
+            .map(|index| Random {
+                seed,
+                generator: oorandom::Rand32::new_inc(seed, index as u64),
+            })
+            .collect()
+    }
+
     // Picks a random element from given slice
     #[inline]
     pub fn pick_from_slice<ElemType>(&mut self, slice: &[ElemType]) -> ElemType
