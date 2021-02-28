@@ -16,6 +16,7 @@ const PROGRAM_USAGE: &str = "Expected usage:
 fn create_default_project_details(project_name: String) -> (ProjectDetails, ProjectDetailsLocal) {
     let project_display_name = project_name.to_title_case();
     let project_company_name = "SnailSpaceGames".to_owned();
+    let project_copyright_year = Utc::now().year().to_string();
 
     let windows_appdata_dir = project_display_name.to_camel_case();
     let mobile_display_orientation = "portrait".to_owned();
@@ -27,6 +28,7 @@ fn create_default_project_details(project_name: String) -> (ProjectDetails, Proj
         "project_company_name".to_owned(),
         project_company_name.clone(),
     );
+    details.insert("project_copyright_year".to_owned(), project_copyright_year);
     details.insert("windows_appdata_dir".to_owned(), windows_appdata_dir);
     details.insert(
         "mobile_display_orientation".to_owned(),
@@ -82,6 +84,10 @@ fn get_or_generate_project_details(project_name: String) -> ProjectDetailsMerged
         }
     }
 
+    // Update copyright year
+    let project_copyright_year = Utc::now().year().to_string();
+    project_details.insert("project_copyright_year".to_owned(), project_copyright_year);
+
     // Write back updated project details
     std::fs::write(
         "project_details.json",
@@ -97,11 +103,6 @@ fn get_or_generate_project_details(project_name: String) -> ProjectDetailsMerged
     }
 
     project_details.extend(project_details_local);
-
-    // NOTE: We append project_copyright_year here so it is not written back to the .json file. We
-    //       refresh it anyway to be up-to-date
-    let project_copyright_year = Utc::now().year().to_string();
-    project_details.insert("project_copyright_year".to_owned(), project_copyright_year);
 
     project_details
 }
