@@ -284,9 +284,12 @@ pub fn path_recreate_directory_looped(path: &str) {
                 break;
             }
         }
-    } else {
-        std::fs::create_dir_all(path).expect(&format!("Unable to create '{}' dir", path));
+
+        // NOTE: We remove the root as well to get rid of empty folders
+        std::fs::remove_dir_all(path).expect(&format!("Unable to remove '{}' dir", path));
     }
+
+    std::fs::create_dir_all(path).expect(&format!("Unable to create '{}' dir", path));
 }
 
 /// NOTE: This also creates all necessary folders including the `to_folderpath`
@@ -382,6 +385,26 @@ pub fn collect_files_with_depth(root_folder: &str, max_depth: usize) -> Vec<Stri
         .into_iter()
         .filter_map(|maybe_entry| maybe_entry.ok())
         .filter(|entry| !entry.path().is_dir())
+        .map(|entry| entry.path().to_string_owned_or_panic().replace("\\", "/"))
+        .collect()
+}
+
+/// NOTE: Result is prefixed by the given `root_folder` and contains Unix-style file seperators only
+pub fn collect_files_and_folders(root_folder: &str) -> Vec<String> {
+    collect_files_and_folders_with_depth(root_folder, 1)
+}
+
+/// NOTE: Result is prefixed by the given `root_folder` and contains Unix-style file seperators only
+pub fn collect_files_and_folders_recursive(root_folder: &str) -> Vec<String> {
+    collect_files_and_folders_with_depth(root_folder, std::usize::MAX)
+}
+
+/// NOTE: Result is prefixed by the given `root_folder` and contains Unix-style file seperators only
+pub fn collect_files_and_folders_with_depth(root_folder: &str, max_depth: usize) -> Vec<String> {
+    walkdir::WalkDir::new(root_folder)
+        .max_depth(max_depth)
+        .into_iter()
+        .filter_map(|maybe_entry| maybe_entry.ok())
         .map(|entry| entry.path().to_string_owned_or_panic().replace("\\", "/"))
         .collect()
 }
