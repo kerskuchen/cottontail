@@ -177,22 +177,70 @@ impl Bitmap {
             .read_info()
             .map_err(|error| format!("Could not read png data info: {}", error))?;
 
-        let size_bytes = if png_info.color_type == png::ColorType::RGBA {
-            4 * png_info.width as usize * png_info.height as usize
-        } else {
-            return Err(format!(
-                "Currently only RGBA png data is supported - got color type '{:?}'",
-                png_info.color_type
-            ));
+        let pixel_size_bytes = match png_info.color_type {
+            png::ColorType::Grayscale => 1,
+            png::ColorType::RGB => 3,
+            png::ColorType::Indexed => 1,
+            png::ColorType::GrayscaleAlpha => 2,
+            png::ColorType::RGBA => 4,
         };
+
+        match png_info.bit_depth {
+            png::BitDepth::Eight => {}
+            _ => {
+                return Err(format!(
+                    "Currently only 8-Bit-per-pixel png data is supported - got {:?}",
+                    png_info.bit_depth
+                ))
+            }
+        }
+
+        let size_bytes = pixel_size_bytes * png_info.width as usize * png_info.height as usize;
         let mut buffer =
-            vec![PixelRGBA::transparent(); size_bytes / std::mem::size_of::<PixelRGBA>()];
-        {
+            vec![PixelRGBA::transparent(); (png_info.width * png_info.height) as usize];
+        if png_info.color_type == png::ColorType::RGBA {
+            // Fast path - we can directly cast our buffer into our target type
             let buffer_raw = super::core::transmute_slice_to_byte_slice_mut(&mut buffer);
             png_reader
                 .next_frame(buffer_raw)
                 .map_err(|error| format!("Could not decode png data: {}", error))?;
-        }
+        } else {
+            // Slow path - needs conversion
+            let mut buffer_raw = vec![0u8; size_bytes];
+            png_reader
+                .next_frame(&mut buffer_raw)
+                .map_err(|error| format!("Could not decode png data: {}", error))?;
+            match png_info.color_type {
+                png::ColorType::RGBA => unreachable!(),
+                png::ColorType::RGB => {
+                    for (rgb, pixel) in buffer_raw.chunks_exact(3).zip(buffer.iter_mut()) {
+                        pixel.r = rgb[0];
+                        pixel.g = rgb[1];
+                        pixel.b = rgb[2];
+                        pixel.a = 255;
+                    }
+                }
+                png::ColorType::Grayscale => {
+                    for (grey, pixel) in buffer_raw.into_iter().zip(buffer.iter_mut()) {
+                        pixel.r = grey;
+                        pixel.g = grey;
+                        pixel.b = grey;
+                        pixel.a = 255;
+                    }
+                }
+                png::ColorType::GrayscaleAlpha => {
+                    for (ga, pixel) in buffer_raw.chunks_exact(2).zip(buffer.iter_mut()) {
+                        pixel.r = ga[0];
+                        pixel.g = ga[0];
+                        pixel.b = ga[0];
+                        pixel.a = ga[1];
+                    }
+                }
+                png::ColorType::Indexed => {
+                    return Err("Currently indexed png data is not supported".to_owned());
+                }
+            }
+        };
 
         Ok(Bitmap::new_from_buffer(
             png_info.width,
