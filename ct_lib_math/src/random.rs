@@ -178,18 +178,12 @@ impl Random {
 /// https://gamedevelopment.tutsplus.com/tutorials/shuffle-bags-making-random-feel-more-random--gamedev-1249
 /// https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
 ///
-pub struct Shufflebag<ElemType>
-where
-    ElemType: Clone + Copy,
-{
+pub struct Shufflebag<ElemType: Clone> {
     pub elems: Vec<ElemType>,
     current_bagsize: usize,
 }
 
-impl<ElemType> Shufflebag<ElemType>
-where
-    ElemType: Clone + Copy,
-{
+impl<ElemType: Clone> Shufflebag<ElemType> {
     #[inline]
     pub fn new(elems: Vec<ElemType>) -> Shufflebag<ElemType> {
         assert!(
@@ -213,7 +207,7 @@ where
                 "Shufflebag only supports u32 sized containers"
             );
             for _ in 0..*count {
-                elems.push(*elem);
+                elems.push(elem.clone());
             }
         }
 
@@ -229,15 +223,20 @@ where
     }
 
     #[inline]
+    pub fn reset(&mut self) {
+        self.current_bagsize = self.elems.len();
+    }
+
+    #[inline]
     pub fn get_next(&mut self, random: &mut Random) -> ElemType {
         if self.current_bagsize == 1 {
             self.current_bagsize = self.elems.len();
-            self.elems[0]
+            self.elems[0].clone()
         } else {
             let index = random.u32_bounded_exclusive(self.current_bagsize as u32) as usize;
             self.current_bagsize -= 1;
             self.elems.swap(index, self.current_bagsize);
-            self.elems[self.current_bagsize]
+            self.elems[self.current_bagsize].clone()
         }
     }
 }
