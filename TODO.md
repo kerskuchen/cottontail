@@ -171,6 +171,18 @@
 - simplify and optimize audio rendering (less pipelining, bigger buffers, less copy, less iterators)
 
 ## Audiostate
+- Regardless of buffersize we will get audio stuttering with our current audio rendering approach
+  especially on wasm. what we would need optimally is to:
+    - actually use the WebAudio backend on wasm (that would be the first non-trivial rewrite)
+    - rewrite our audio processing on desktop to render on the audiothread 
+      (using lockless non-allocating state). This would be not unlike implementing parts of the
+      webaudio spec on desktop (that is the second non-trivial rewrite)
+    - figure out how we would load long music audio files in wasm. apparently we can only 
+      directly load the whole file at once with `context.decodeAudioData()` where we would need to 
+      wait. or stream via the `<audio>` tags and `audioContext.createMediaElementSource()`. 
+      the last option has the limitation that the browser `decides` when it plays the audio based on 
+      how likely it is that it can finish decoding the rest of the file while playing back. 
+      also we would need to mess around with html which is unfortunate.
 - Currently for WASM we have a coupling between `AUDIO_CHUNKSIZE_IN_FRAMES` in audio.rs and 
   `AUDIO_BUFFER_FRAMECOUNT` which need to be exaclty the same
 
