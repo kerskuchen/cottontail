@@ -343,10 +343,10 @@ impl GuiState {
                     GuiAction::Previous => self.keyboard_highlighted_item = self.last_widget,
                     GuiAction::Next => self.keyboard_highlighted_item = None,
                     GuiAction::Decrease | GuiAction::Left => {
-                        return Some(clampf(cur_value - 0.1, 0.0, 1.0))
+                        return Some(f32::clamp(cur_value - 0.1, 0.0, 1.0))
                     }
                     GuiAction::Increase | GuiAction::Right => {
-                        return Some(clampf(cur_value + 0.1, 0.0, 1.0))
+                        return Some(f32::clamp(cur_value + 0.1, 0.0, 1.0))
                     }
                     _ => {}
                 }
@@ -356,7 +356,7 @@ impl GuiState {
         self.last_widget = Some(id);
 
         if self.active_item == Some(id) {
-            let mouse_x = clampf(
+            let mouse_x = f32::clamp(
                 self.mouse_canvas_pos.x - (slider_rect.pos.x),
                 0.0,
                 slider_rect.dim.x,
@@ -541,7 +541,7 @@ impl GuiState {
 
         let text_height = linecount as f32 * font_scale as f32 * font.vertical_advance() as f32;
         let max_pos = -(text_height - rect.height());
-        new_pos = clampf(new_pos, max_pos, 0.0);
+        new_pos = f32::clamp(new_pos, max_pos, 0.0);
         if (new_pos == 0.0) || (new_pos == -max_pos) {
             new_vel = 0.0;
             new_acc = 0.0;

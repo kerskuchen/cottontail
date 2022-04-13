@@ -1520,7 +1520,7 @@ impl AudioStreamSpatialParams {
         listener_pos: Vec2,
         distance_for_max_pan: f32,
     ) -> f32 {
-        clampf(
+        f32::clamp(
             (source_pos.x - listener_pos.x) / distance_for_max_pan,
             -1.0,
             1.0,
@@ -1551,7 +1551,7 @@ impl AudioStreamSpatialParams {
         let vel_relative_source_ratio =
             doppler_effect_strength * vel_relative_source / doppler_effect_medium_velocity_abs_max;
 
-        1.0 / (1.0 + clampf(vel_relative_source_ratio, -0.5, 0.5))
+        1.0 / (1.0 + f32::clamp(vel_relative_source_ratio, -0.5, 0.5))
     }
 
     fn calculate_spatial_volume_factor(

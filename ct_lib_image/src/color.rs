@@ -126,10 +126,10 @@ impl PixelRGBA {
     #[inline]
     pub fn from_color(input: Color) -> PixelRGBA {
         PixelRGBA {
-            r: clampf(input.r * 255.0, 0.0, 255.0) as u8,
-            g: clampf(input.g * 255.0, 0.0, 255.0) as u8,
-            b: clampf(input.b * 255.0, 0.0, 255.0) as u8,
-            a: clampf(input.a * 255.0, 0.0, 255.0) as u8,
+            r: f32::clamp(input.r * 255.0, 0.0, 255.0) as u8,
+            g: f32::clamp(input.g * 255.0, 0.0, 255.0) as u8,
+            b: f32::clamp(input.b * 255.0, 0.0, 255.0) as u8,
+            a: f32::clamp(input.a * 255.0, 0.0, 255.0) as u8,
         }
     }
 

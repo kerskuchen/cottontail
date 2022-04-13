@@ -189,8 +189,8 @@ pub fn screen_point_to_canvas_point(
         canvas_height,
     );
 
-    let pos_blitrect_x = clampi(screen_pos_x - blit_rect.offset_x, 0, blit_rect.width - 1);
-    let pos_blitrect_y = clampi(screen_pos_y - blit_rect.offset_y, 0, blit_rect.height - 1);
+    let pos_blitrect_x = i32::clamp(screen_pos_x - blit_rect.offset_x, 0, blit_rect.width - 1);
+    let pos_blitrect_y = i32::clamp(screen_pos_y - blit_rect.offset_y, 0, blit_rect.height - 1);
 
     let pos_canvas_x = canvas_width as f32 * (pos_blitrect_x as f32 / blit_rect.width as f32);
     let pos_canvas_y = canvas_height as f32 * (pos_blitrect_y as f32 / blit_rect.height as f32);

@@ -145,8 +145,8 @@ impl Vec2i {
     #[inline]
     pub fn clamped_to_recti(self, rect: Recti) -> Vec2i {
         Vec2i::new(
-            clampi(self.x, rect.left(), rect.right()),
-            clampi(self.y, rect.top(), rect.bottom()),
+            i32::clamp(self.x, rect.left(), rect.right()),
+            i32::clamp(self.y, rect.top(), rect.bottom()),
         )
     }
 }

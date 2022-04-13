@@ -273,8 +273,8 @@ impl Vec2 {
     #[inline]
     pub fn clamped_to_recti(self, rect: Recti) -> Vec2 {
         Vec2::new(
-            clampf(self.x, rect.left() as f32, rect.right() as f32),
-            clampf(self.y, rect.top() as f32, rect.bottom() as f32),
+            f32::clamp(self.x, rect.left() as f32, rect.right() as f32),
+            f32::clamp(self.y, rect.top() as f32, rect.bottom() as f32),
         )
     }
 
@@ -283,8 +283,8 @@ impl Vec2 {
     #[inline]
     pub fn clamped_to_rect(self, rect: Rect) -> Vec2 {
         Vec2::new(
-            clampf(self.x, rect.left(), rect.right()),
-            clampf(self.y, rect.top(), rect.bottom()),
+            f32::clamp(self.x, rect.left(), rect.right()),
+            f32::clamp(self.y, rect.top(), rect.bottom()),
         )
     }
 

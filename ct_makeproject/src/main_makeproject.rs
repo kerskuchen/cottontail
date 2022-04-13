@@ -314,7 +314,7 @@ fn main() {
 
     let (project_name, project_git_url) = {
         let args: Vec<String> = std::env::args().collect();
-        assert!(args.len() <= 3, PROGRAM_USAGE);
+        assert!(args.len() <= 3, "{}", PROGRAM_USAGE);
 
         if args.len() == 3 {
             (Some(args[1].clone()), Some(args[2].clone()))

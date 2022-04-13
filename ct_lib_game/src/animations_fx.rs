@@ -43,7 +43,7 @@ impl<FrameType: Clone> Animation<FrameType> {
         let time = if wrap_around {
             wrap_value_in_range(time, self.length)
         } else {
-            clampf(time, 0.0, self.length)
+            f32::clamp(time, 0.0, self.length)
         };
 
         let mut frame_start = 0.0;
@@ -146,7 +146,7 @@ impl<FrameType: Clone> AnimationPlayer<FrameType> {
         if self.looping {
             self.current_frametime = wrap_value_in_range(new_frametime, self.animation.length);
         } else {
-            self.current_frametime = clampf(new_frametime, 0.0, self.animation.length);
+            self.current_frametime = f32::clamp(new_frametime, 0.0, self.animation.length);
             if self.current_frametime == self.animation.length && self.playback_speed > 0.0 {
                 self.has_finished = true;
             }

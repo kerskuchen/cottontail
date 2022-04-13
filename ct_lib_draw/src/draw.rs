@@ -1613,7 +1613,7 @@ impl Drawstate {
         let end = start + dir;
         self.draw_line_bresenham(start, end, false, drawparams);
 
-        let size = clampf(dir.magnitude() / 10.0, 1.0, 5.0);
+        let size = f32::clamp(dir.magnitude() / 10.0, 1.0, 5.0);
         let perp_left = size * (end - start).perpendicular().normalized();
         let perp_right = -perp_left;
 

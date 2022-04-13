@@ -166,16 +166,6 @@ pub fn clampf_absolute(x: f32, abs_max: f32) -> f32 {
     sign * clamped
 }
 
-#[inline]
-pub fn clampf(x: f32, min: f32, max: f32) -> f32 {
-    f32::min(max, f32::max(min, x))
-}
-
-#[inline]
-pub fn clampi(x: i32, min: i32, max: i32) -> i32 {
-    i32::min(max, i32::max(min, x))
-}
-
 /// Wraps a value in the range [start, begin]
 #[inline]
 pub fn wrap_value_in_interval(value: f32, start: f32, end: f32) -> f32 {
@@ -665,7 +655,7 @@ impl Circle {
         let num_vertices =
             ceili(2.0 * PI / f32::acos(2.0 * (1.0 - 0.5 / radius) * (1.0 - 0.5 / radius) - 1.0));
 
-        clampi(make_even_upwards(num_vertices), 4, 128) as usize
+        i32::clamp(make_even_upwards(num_vertices), 4, 128) as usize
     }
 
     #[inline]

@@ -1397,7 +1397,7 @@ impl EngineSound {
 
     pub fn update(&mut self, pos: Vec2, vel: Vec2, audio: &mut Audiostate, speed_percent: f32) {
         let (volume_stand, volume_move) =
-            crossfade_sinuoidal(self.volume_base, clampf(speed_percent, 0.1, 0.9));
+            crossfade_sinuoidal(self.volume_base, f32::clamp(speed_percent, 0.1, 0.9));
 
         let playback_speed_stand = 2.0;
         let playback_speed_move = 2.0 + speed_percent;
@@ -1527,7 +1527,7 @@ impl Susi {
         let move_distance = globals.deltatime * vel;
         self.xform.pos += move_distance;
 
-        let move_speed_ratio = clampf(
+        let move_speed_ratio = f32::clamp(
             self.speed.abs() / MOVE_VEL + self.turn_speed.abs() / TURN_VEL,
             0.0,
             1.0,
