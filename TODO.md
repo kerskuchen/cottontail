@@ -175,8 +175,9 @@
   especially on wasm. what we would need optimally is to:
     - actually use the WebAudio backend on wasm (that would be the first non-trivial rewrite)
     - rewrite our audio processing on desktop to render on the audiothread 
-      (using lockless non-allocating state). This would be not unlike implementing parts of the
-      webaudio spec on desktop (that is the second non-trivial rewrite)
+      using lockless non-allocating state which operates on command message passing. 
+      This would be very similar to implementing parts of the webaudio spec on desktop using a 
+      control and rendering thread (that is the second non-trivial rewrite)
     - figure out how we would load long music audio files in wasm. apparently we can only 
       directly load the whole file at once with `context.decodeAudioData()` where we would need to 
       wait. or stream via the `<audio>` tags and `audioContext.createMediaElementSource()`. 
